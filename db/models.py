@@ -14,7 +14,7 @@ import binascii
 import os
 class User(BaseModel):
     username = CharField(max_length=FIELD_LENGTH, unique=True)
-    password = CharField(max_length=FIELD_LENGTH
+    password = CharField(max_length=FIELD_LENGTH)
     is_admin = BooleanField(default=False)
     buttons = CharField(max_length=FIELD_LENGTH, default="")
 
