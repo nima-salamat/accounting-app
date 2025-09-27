@@ -9,7 +9,7 @@ class ReceiptProductManagement(TableManagement):
             display_fields=["product", "receipt", "buy_price", "sell_price", "quantity"],
             create_fields=["product", "receipt", "sell_price", "buy_price", "quantity"],
             searchable_fields=["product", "receipt", "id"],
-            field_labels={"product": "محصول", "buy_price": "قیمت حرید", "quantity": "تعداد", "receipt":"رسید", "sell_price": "قیمت فروش"},
+            field_labels={"product": "محصول", "buy_price": "قیمت خرید", "quantity": "تعداد", "receipt":"رسید", "sell_price": "قیمت فروش"},
 
         )
         self.setModel(ReceiptProduct)
