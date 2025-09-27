@@ -78,20 +78,16 @@ C:\Users\<User>\AppData\Local\accounting_app\app.db
 
 <table>
   <tr>
-    <td align="center"><img src="screenshots/login_dark.png" alt="ورود - تاریک" width="340" /></td>
-    <td align="center"><img src="screenshots/login_light.png" alt="ورود - روشن" width="340" /></td>
+    <td align="center"><img src="screenshots/login_dark.png" alt="ورود - تاریک" width="520" /></td>
+    <td align="center"><img src="screenshots/login_light.png" alt="ورود - روشن" width="520" /></td>
   </tr>
   <tr>
-    <td align="center"><img src="screenshots/home_dark.png" alt="خانه - تاریک" width="340" /></td>
-    <td align="center"><img src="screenshots/home_light.png" alt="خانه - روشن" width="340" /></td>
+    <td align="center"><img src="screenshots/home_dark.png" alt="خانه - تاریک" width="520" /></td>
+    <td align="center"><img src="screenshots/home_light.png" alt="خانه - روشن" width="520" /></td>
   </tr>
   <tr>
-    <td align="center"><img src="screenshots/screensaver_ball_dark.png" alt="اسکرین‌سیور توپ - تاریک" width="340" /></td>
-    <td align="center"><img src="screenshots/screensaver_ball_light.png" alt="اسکرین‌سیور توپ - روشن" width="340" /></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="screenshots/screensaver_clock_dark.png" alt="اسکرین‌سیور ساعت - تاریک" width="340" /></td>
-    <td align="center"><img src="screenshots/screensaver_clock_light.png" alt="اسکرین‌سیور ساعت - روشن" width="340" /></td>
+    <td align="center"><img src="screenshots/screensaver_clock_dark.png" alt="اسکرین‌سیور ساعت - تاریک" width="520" /></td>
+   <td align="center"><img src="screenshots/screensaver_ball_light.png" alt="اسکرین‌سیور توپ - روشن" width="520" /></td>
   </tr>
   <tr>
     <td align="center"><img src="screenshots/user_managment.png" alt="مدیریت کاربران" width="520" /></td>
@@ -102,12 +98,16 @@ C:\Users\<User>\AppData\Local\accounting_app\app.db
     <td align="center"><img src="screenshots/user_table_search_is_not_admin.png" alt="نتیجه جستجو - non-admin" width="520" /></td>
   </tr>
   <tr>
-    <td align="center"><img src="screenshots/add_product.png" alt="افزودن محصول" width="340" /></td>
-    <td align="center"><img src="screenshots/add_product_2.png" alt="افزودن محصول - جزئیات" width="340" /></td>
+    <td align="center"><img src="screenshots/add_product.png" alt="افزودن محصول" width="520" /></td>
+    <td align="center"><img src="screenshots/add_product_2.png" alt="افزودن محصول - جزئیات" width="520" /></td>
   </tr>
   <tr>
-    <td align="center"><img src="screenshots/sell_1.png" alt="افزودن محصول" width="340" /></td>
-    <td align="center"><img src="screenshots/sell_2.png" alt="افزودن محصول - جزئیات" width="340" /></td>
+    <td align="center"><img src="screenshots/sell_1.png" alt="sell page" width="520" /></td>
+    <td align="center"><img src="screenshots/sell_2.png" alt="sell page" width="520" /></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="screenshots/sell_report_1.png" alt="sell report" width="520" /></td>
+    <td align="center"><img src="screenshots/sell_report_2.png" alt="sell report" width="520" /></td>
   </tr>
 </table>
 
