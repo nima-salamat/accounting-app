@@ -62,14 +62,10 @@ class MainWindow(QMainWindow):
 
         self.showMaximized()
 
-
-        
-        
-
     def _check_idle(self):
         self._idle += 1
         cur = self.page_stack.currentIndex()
-        if self._idle >= 12 and cur != 2:
+        if self._idle >= 600 and cur != 2:
             self._prev = cur
             widget = self.page_stack.widget(2)
 
@@ -130,14 +126,12 @@ class MainWindow(QMainWindow):
                         
                     }
                     
-                    
                     with open(path_keys, "w") as f:
                         f.write(json.dumps(keys))
                     self_inner.finished.emit()
                 except Exception as e:
                     self_inner.error.emit(str(e))
 
-        # ایجاد thread و worker
         self.thread = QThread()
         self.worker = Worker()
         self.worker.moveToThread(self.thread)
