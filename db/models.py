@@ -14,21 +14,21 @@ import binascii
 import os
 class User(BaseModel):
     username = CharField(max_length=FIELD_LENGTH, unique=True)
-    password = CharField(max_length=FIELD_LENGTH)  # در اینجا رمز به صورت salt+hash ذخیره می‌شود
+    password = CharField(max_length=FIELD_LENGTH
     is_admin = BooleanField(default=False)
     buttons = CharField(max_length=FIELD_LENGTH, default="")
 
     def set_password(self, password):
-        salt = os.urandom(16)  # تولید salt تصادفی 16 بایتی
+        salt = os.urandom(16) 
         pwdhash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
         self.password = binascii.hexlify(salt + pwdhash).decode('ascii')
 
     def check_password(self, password):
-        # اگر رمز ذخیره شده به شکل هگز نیست، با همین روش ساده چک کن
+       
         try:
             stored = binascii.unhexlify(self.password.encode('ascii'))
         except binascii.Error:
-            # پسورد ساده هش شده با sha256
+           
             return self.password == hashlib.sha256(password.encode()).hexdigest()
 
         salt = stored[:16]
@@ -110,5 +110,3 @@ class CheckOut(BaseModel):
     price = FloatField(null=False, default=0)
     date = CharField(max_length=FIELD_LENGTH)
     payed = BooleanField(default=False)
-
-    

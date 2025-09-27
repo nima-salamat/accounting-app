@@ -89,14 +89,14 @@ class UserPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumWidth(700)
-        self.setFont(QFont("Segoe UI", 10))  # تنظیم فونت کلی
+        self.setFont(QFont("Segoe UI", 10))
 
         header = QLabel("مدیریت کاربران", alignment=Qt.AlignCenter)
         header.setFixedHeight(30)
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(16, 16, 16, 16)
-        main_layout.setSpacing(20)  # افزایش فاصله عمودی کل
+        main_layout.setSpacing(20) 
         main_layout.addWidget(header)
 
         body = QHBoxLayout()
@@ -114,7 +114,7 @@ class UserPanel(QWidget):
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(20)  # فاصله عمودی بین عنوان و فرم
+        layout.setSpacing(20) 
         layout.setAlignment(Qt.AlignTop)
 
         title = QLabel("افزودن کاربر جدید", alignment=Qt.AlignCenter)
@@ -123,9 +123,9 @@ class UserPanel(QWidget):
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignRight)
         form.setFormAlignment(Qt.AlignLeft)
-        form.setSpacing(12)          # فاصله کلی بین سطرها
-        form.setVerticalSpacing(12)  # فاصله عمودی بین لیبل و فیلد
-        form.setHorizontalSpacing(8) # فاصله افقی کم بین لیبل و فیلد
+        form.setSpacing(12)         
+        form.setVerticalSpacing(12)  
+        form.setHorizontalSpacing(8) 
 
         self.inp_new_username = QLineEdit()
         self.inp_new_username.setPlaceholderText("نام کاربری حداقل ۴ کاراکتر")
