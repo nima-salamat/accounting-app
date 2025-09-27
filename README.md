@@ -105,5 +105,9 @@ C:\Users\<User>\AppData\Local\accounting_app\app.db
     <td align="center"><img src="screenshots/add_product.png" alt="افزودن محصول" width="340" /></td>
     <td align="center"><img src="screenshots/add_product_2.png" alt="افزودن محصول - جزئیات" width="340" /></td>
   </tr>
+  <tr>
+    <td align="center"><img src="screenshots/sell_1.png" alt="افزودن محصول" width="340" /></td>
+    <td align="center"><img src="screenshots/sell_2.png" alt="افزودن محصول - جزئیات" width="340" /></td>
+  </tr>
 </table>
 
