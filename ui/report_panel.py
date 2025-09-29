@@ -121,17 +121,17 @@ class SearchLineEdit(QWidget):
         self.line = QLineEdit(self)
         self.line.setPlaceholderText("نام محصول را بنویس...")
         
-        # مدل دادهٔ QStringList برای completer
+       
         self.string_model = QStringListModel(self)
         
-        # تعریف QCompleter
+
         self.completer = QCompleter(self.string_model, self)
         self.completer.setCaseSensitivity(Qt.CaseInsensitive)
-        self.completer.setFilterMode(Qt.MatchContains)  # جستجو در هر نقطهٔ رشته
+        self.completer.setFilterMode(Qt.MatchContains)
         self.completer.setCompletionMode(QCompleter.PopupCompletion)
         self.line.setCompleter(self.completer)
         
-        # وصل کردن سیگنال برای به‌روز‌رسانی پیشنهادها
+        
         self.line.textEdited.connect(self.update_suggestions)
         
         layout = QVBoxLayout(self)
@@ -141,24 +141,22 @@ class SearchLineEdit(QWidget):
     def update_suggestions(self, text: str):
         text = text.strip()
         if not text:
-            # اگر ورودی خالی یا فقط فاصله است، خالی کن
+            
             self.string_model.setStringList([])
             return
         
-        # کوئری peewee برای نام‌هایی که شامل متن هستند
-        # (LIKE %text%)
+       
         qs = Product.select(Product.name)\
                     .where(Product.name.contains(text))\
                     .limit(10)
         results = [p.name for p in qs]
         
-        # فقط وقتی لیست تغییر کرده، مدل را آپدیت کن
+        
         if results != self.string_model.stringList():
             self.string_model.setStringList(results)
-        
-        # اگر نتیجه وجود دارد، popup را نمایش بده
+     
         if results:
-            # position و عرض خودکار handled by QCompleter
+
             self.completer.complete()
         else:
             self.completer.popup().hide()
@@ -412,7 +410,7 @@ class ProductSalesChartPanel(QMainWindow):
 
         return w
 
-    # -------------------------------------------------------------------------
+
     def _sales_product_tab(self):
 
 
@@ -422,9 +420,9 @@ class ProductSalesChartPanel(QMainWindow):
 
         splitter.addWidget(top_widget)
         splitter.addWidget(bottom_widget)
-        splitter.setSizes([300, 300])  # مقدار اولیه تقسیم
+        splitter.setSizes([300, 300])
 
-        # ---- بخش بالایی (فیلترها و دکمه‌ها) ----
+
         top_layout = QVBoxLayout(top_widget)
         top_layout.setContentsMargins(6, 6, 6, 6)
         top_layout.setSpacing(4)
@@ -460,7 +458,7 @@ class ProductSalesChartPanel(QMainWindow):
         btn_layout.addWidget(btn_show_table)
         top_layout.addLayout(btn_layout)
 
-        # ---- بخش پایینی (نمودار) ----
+
         bottom_layout = QVBoxLayout(bottom_widget)
         bottom_layout.setContentsMargins(4, 4, 4, 4)
         fig = Figure(figsize=(8, 4))
@@ -468,13 +466,13 @@ class ProductSalesChartPanel(QMainWindow):
         canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         bottom_layout.addWidget(canvas)
 
-        # ---- فایل خروجی ----
+
         def export_table():
             path, _ = QFileDialog.getSaveFileName(self, "ذخیره جدول", filter="CSV Files (*.csv)")
             if path and hasattr(splitter, 'df'):
                 splitter.df.to_csv(path, index=False)
 
-        # ---- نمایش جدول ----
+
         def show_table_dialog():
             if not hasattr(splitter, 'df') or splitter.df.empty:
                 QMessageBox.warning(self, "هشدار", "داده‌ای برای نمایش وجود ندارد.")
@@ -494,7 +492,7 @@ class ProductSalesChartPanel(QMainWindow):
 
             dlg.exec_()
 
-        # ---- کوئری ----
+  
         def query_func():
             try:
                 start_j = f"{dt_from_date.text()} {dt_from_time.text()}:00".replace("/", "-")
@@ -544,7 +542,6 @@ class ProductSalesChartPanel(QMainWindow):
                 })
             return pd.DataFrame(data)
 
-        # ---- آماده‌سازی داده‌ها ----
         def on_data_ready(df):
             fig.clf()
             ax = fig.add_subplot(111)
@@ -558,7 +555,7 @@ class ProductSalesChartPanel(QMainWindow):
             if df is not None and not df.empty:
                 splitter.df = df
 
-        # ---- اتصال دکمه‌ها ----
+
         def load():
             btn_bar.setEnabled(False)
             self._sales_product_worker = QueryWorker(query_func)
@@ -574,7 +571,6 @@ class ProductSalesChartPanel(QMainWindow):
 
 
 
-    # -------------------- تب موجودی انبار --------------------
     def _inventory_tab(self):
         w = QWidget()
         lo = QVBoxLayout(w)
@@ -633,7 +629,7 @@ class ProductSalesChartPanel(QMainWindow):
                 dlg.exec_()
                 return
 
-        # تنظیم جدول با قابلیت اسکرول و جمع کل در سطر آخر
+
             table.clear()
             table.setColumnCount(6)
             table.setHorizontalHeaderLabels([
@@ -662,7 +658,7 @@ class ProductSalesChartPanel(QMainWindow):
                 
                 
 
-            # سطر جمع کل
+         
             footer = ["جمع کل:", "", "", "", f"{total_costs:.2f}"]
             for col, text in enumerate(footer):
                 item = QTableWidgetItem(text)
@@ -696,7 +692,7 @@ class ProductSalesChartPanel(QMainWindow):
         w = QWidget()
         lo = QVBoxLayout(w)
 
-        # نوار ابزار: انتخاب حالت و دکمه گزارش
+    
         mode_layout = QHBoxLayout()
         mode_combo = QComboBox()
         mode_combo.addItems(["بر اساس تعداد", "بر اساس مبلغ فروش"])
@@ -708,7 +704,7 @@ class ProductSalesChartPanel(QMainWindow):
         mode_layout.addWidget(btn_refresh)
         lo.addLayout(mode_layout)
 
-        # نمودار
+      
         fig = Figure(figsize=(6, 6))
         canvas = FigureCanvas(fig)
         lo.addWidget(canvas)
@@ -727,7 +723,7 @@ class ProductSalesChartPanel(QMainWindow):
                     .join(Receipt)
                     .switch(ReceiptProduct)
                     .join(Product, JOIN.LEFT_OUTER)
-                    .join(Category, JOIN.LEFT_OUTER)  # join دسته
+                    .join(Category, JOIN.LEFT_OUTER) 
                     .where(Receipt.payed == True)
                     .group_by(Category.name)
                 )
@@ -753,8 +749,8 @@ class ProductSalesChartPanel(QMainWindow):
 
 
         def on_data_ready(df):
-            fig.clf()  # 🧼 پاک‌سازی کامل
-            ax = fig.add_subplot(111)  # ✅ فقط یکی، بدون اضافه‌کاری
+            fig.clf() 
+            ax = fig.add_subplot(111) 
             ax.clear()
 
             if not df.empty:
@@ -785,9 +781,9 @@ class ProductSalesChartPanel(QMainWindow):
     def _product_search(self):
         product_name = self.line.line.text().strip()
         if not product_name:
-            return  # محصول انتخاب نشده
+            return  
         from jalali_core import JalaliToGregorian
-        # تبدیل تاریخ جلالی به میلادی
+       
         try:
             start_j = f"{self.dt_from_date.text()} {self.dt_from_time.text()}:00".replace("/", "-")
             end_j = f"{self.dt_to_date.text()} {self.dt_to_time.text()}:00".replace("/", "-")
@@ -804,7 +800,7 @@ class ProductSalesChartPanel(QMainWindow):
             return
 
 
-        # کوئری اصلی: join روی Receipt برای فیلتر تاریخ
+        
         try:
             product = Product.get(Product.name == product_name)
         except Product.DoesNotExist:
@@ -838,7 +834,7 @@ class ProductSalesChartPanel(QMainWindow):
             dlg.exec_()
             return
 
-        # تنظیم جدول با قابلیت اسکرول و جمع کل در سطر آخر
+    
         self.table.clear()
         self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels([
@@ -865,7 +861,7 @@ class ProductSalesChartPanel(QMainWindow):
             self.table.setItem(row, 3, QTableWidgetItem(f"{cost:.2f}"))
             self.table.setItem(row, 4, QTableWidgetItem(f"{profit:.2f}"))
 
-        # سطر جمع کل
+
         footer = ["جمع کل:", "", f"{total_sales:.2f}", "", f"{total_profit:.2f}"]
         for col, text in enumerate(footer):
             item = QTableWidgetItem(text)
@@ -884,7 +880,7 @@ class ProductSalesChartPanel(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # 1. SearchLineEdit برای انتخاب محصول
+        # 1. SearchLineEdit 
         self.line = SearchLineEdit()
         layout.addWidget(self.line)
 
@@ -905,7 +901,7 @@ class ProductSalesChartPanel(QMainWindow):
         from_layout.addWidget(self.dt_from_time)
         date_layout.addLayout(from_layout)
 
-        # To section
+
         to_layout = QHBoxLayout()
         to_layout.addWidget(QLabel("تا:"))
         self.dt_to_date = QLineEdit()
@@ -920,7 +916,6 @@ class ProductSalesChartPanel(QMainWindow):
 
         layout.addWidget(self.date_group)
 
-        # 3. دکمه گزارش
         btn_report = QPushButton("گزارش")
         btn_report.clicked.connect(self._product_search)
         layout.addWidget(btn_report)
@@ -932,7 +927,7 @@ class ProductSalesChartPanel(QMainWindow):
         self.scroll.setWidget(self.table)
         layout.addWidget(self.scroll)
 
-        # لیبل مجموع کل زیر جدول
+       
         self.lbl_totals = QLabel()
         self.lbl_totals.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.lbl_totals)
@@ -1162,14 +1157,11 @@ class ProductSalesChartPanel(QMainWindow):
 
     
     def _check_tab(self):
-        """
-        پنل بررسی چک‌ها شامل دو بخش: طلبکاری (CheckIn) و بدهکاری (CheckOut)
-        با فیلتر بازه تاریخ در فیلد date و وضعیت پاس شدن (payed) و جمع کل مبلغ چک‌ها.
-        """
+      
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # گروه بازه تاریخ
+
         date_group = QGroupBox("بازه زمانی")
         date_layout = QHBoxLayout(date_group)
         date_layout.addWidget(QLabel("از:"))
@@ -1184,7 +1176,6 @@ class ProductSalesChartPanel(QMainWindow):
         date_layout.addWidget(dt_to_date)
         layout.addWidget(date_group)
 
-        # انتخاب نوع چک: طلبکاری یا بدهکاری
         type_box = QGroupBox("نوع چک")
         type_layout = QHBoxLayout(type_box)
         rb_in = QRadioButton("طلبکاری")
@@ -1194,7 +1185,7 @@ class ProductSalesChartPanel(QMainWindow):
         type_layout.addWidget(rb_out)
         layout.addWidget(type_box)
 
-        # وضعیت پاس شده
+       
         payed_box = QGroupBox("وضعیت پاس شده")
         payed_layout = QHBoxLayout(payed_box)
         cb_payed = QCheckBox("پاس شده")
@@ -1205,62 +1196,48 @@ class ProductSalesChartPanel(QMainWindow):
         payed_layout.addWidget(cb_unpayed)
         layout.addWidget(payed_box)
 
-        # دکمه اجرا
         btn_run = QPushButton("نمایش چک‌ها")
         layout.addWidget(btn_run)
 
-        # جدول نتایج
         table = QTableWidget()
         table.setColumnCount(5)
         table.setHorizontalHeaderLabels(["نام", "شماره چک", "مبلغ", "تاریخ", "وضعیت پاس"])
         layout.addWidget(table)
 
-        # لیبل مجموع کل
         lbl_total = QLabel()
         lbl_total.setAlignment(Qt.AlignCenter)
         layout.addWidget(lbl_total)
 
-        # تنظیم لاگینگ برای نوشتن UTF-8 در فایل
 
         import re
         def normalize_jalali_date(date_str):
-            # حذف کاراکترهای غیر عددی و یکپارچه‌سازی اسلش
             s = re.sub(r'[^0-9/]', '', date_str)
             s = re.sub(r'/+', '/', s).strip('/')
-            # تبدیل اسلش به خط تیره
             return s.replace('/', '-')
 
         def query_func():
-            # ایجاد بازه زمانی
             raw_from = normalize_jalali_date(dt_from_date.text())
             raw_to   = normalize_jalali_date(dt_to_date.text())
 
             year, month, day = map(int, raw_to.split('-'))
 
-            # ساخت jdatetime.date
             j_date = jdatetime.date(year, month, day)
-            # تبدیل به میلادی
             g_today = j_date.togregorian()
 
-            # جمع با یک روز
             g_tomorrow = g_today + timedelta(days=1)
 
-            # تبدیل دوباره به شمسی
             j_tomorrow = jdatetime.date.fromgregorian(date=g_tomorrow).strftime('%Y-%m-%d')
-            # تبدیل به datetime
             start = from_jalali(f"{raw_from} 00:00:00", is_datetime=True)
             end   = from_jalali(f"{j_tomorrow} 00:00:00", is_datetime=True)
 
             Model = CheckIn if rb_in.isChecked() else CheckOut
 
-            # شرط وضعیت پاس
             conds = []
             if cb_payed.isChecked(): conds.append(Model.payed == True)
             if cb_unpayed.isChecked(): conds.append(Model.payed == False)
             condition = conds[0] if conds else SQL('1=1')
             for c in conds[1:]: condition |= c
 
-            # واکشی اولیه
             query = Model.select(Model.name, Model.check_id, Model.price, Model.date, Model.payed).where(condition)
 
             rows = []
@@ -1276,7 +1253,6 @@ class ProductSalesChartPanel(QMainWindow):
                         "payed": "بله" if r.payed else "خیر"
                     })
             df = pd.DataFrame(rows)
-            # لاگ دیتافریم
             return df
 
         def on_data_ready(df: pd.DataFrame):

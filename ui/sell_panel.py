@@ -1,13 +1,12 @@
-
 import os
 from PySide2.QtWidgets import (
     QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QStackedWidget,
-    QLabel, QMessageBox, QScrollArea, QSizePolicy, QTableWidget,
-    QTableWidgetItem, QTabWidget, QHeaderView, QCheckBox, QSizeGrip, QLayout, QSplitter
+    QLabel, QMessageBox, QScrollArea, QSizePolicy, QTableWidget, QCompleter,
+    QTableWidgetItem, QTabWidget, QHeaderView, QCheckBox, QSizeGrip, QLayout, QSplitter, QLineEdit, QFrame
 )
 from PySide2.QtGui import QPixmap, Qt, QRegion, QFont
 from PySide2.QtCore import QTimer, QEasingCurve, QPropertyAnimation, QSize, QPoint, QRect, Property, Signal
-from PySide2.QtCore import QParallelAnimationGroup
+from PySide2.QtCore import QParallelAnimationGroup, QStringListModel
 from collections import defaultdict
 from datetime import datetime, date
 from db.models import Product, Receipt, ReceiptProduct, Category
@@ -33,7 +32,7 @@ COLORS = [
 ]
 
 
-# ثابت در طول اجرا
+
 def get_color_from_name(name: str) -> str:
     h = int(hashlib.md5(name.encode()).hexdigest(), 16)
     return COLORS[h % len(COLORS)]
@@ -386,7 +385,15 @@ class ProductCard(QWidget):
 
     def add_to_cart(self):
         qty = self.qty if self._parent._parent._parent.SHOW_PRODUCT_IMAGES else 1
-        self.add_callback(self.product, qty)
+        # call provided callback
+        try:
+            self.add_callback(self.product, qty)
+        except Exception:
+            # fallback if callback expects different signature
+            try:
+                self.add_callback(self.product)
+            except Exception:
+                pass
         if self._parent._parent._parent.SHOW_PRODUCT_IMAGES:
             self.qty = 1
             self.qty_label.setText(str(self.qty))
@@ -440,7 +447,7 @@ class CartItemCard(QWidget):
         layout.setContentsMargins(8, 0, 8, 0)
         layout.setSpacing(14)
 
-        # تصویر محصول یا جایگزینش
+ 
         img_label = QLabel(alignment=Qt.AlignCenter)
         img_label.setFixedSize(80, 80)
         if self._parent._parent._parent.SHOW_PRODUCT_IMAGES:
@@ -455,7 +462,7 @@ class CartItemCard(QWidget):
                 img_label.setAlignment(Qt.AlignCenter)
             layout.addWidget(img_label)
 
-        # اطلاعات محصول
+     
         info_layout = QVBoxLayout()
         info_layout.setSpacing(4)
         info_layout.setAlignment(Qt.AlignVCenter)
@@ -467,7 +474,7 @@ class CartItemCard(QWidget):
         price_label = QLabel(f"{self.product.sell_price:,} تومان")
         info_layout.addWidget(price_label)
 
-        # کنترل تعداد
+
         qty_controls = QHBoxLayout()
         qty_controls.setSpacing(6)
         qty_controls.setAlignment(Qt.AlignLeft)
@@ -495,7 +502,7 @@ class CartItemCard(QWidget):
         info_layout.addLayout(qty_controls)
         layout.addLayout(info_layout)
 
-        # دکمه حذف
+
         remove_btn = QPushButton("❌")
         remove_btn.setObjectName("remove_btn")
         remove_btn.setFixedSize(30, 30)
@@ -586,7 +593,7 @@ class CheckoutWorker(QThread):
 
             today = date.today()
 
-            # اگر در حالت ویرایش هستیم، شماره قبلی رو نگه می‌داریم
+            
             if self.edit_mode and self.receipt_to_delete:
                 old_day_receipt_id = self.receipt_to_delete.day_receipt_id
             else:
@@ -601,7 +608,7 @@ class CheckoutWorker(QThread):
                 except:
                     old_day_receipt_id = 1 
 
-            # ساخت رسید جدید
+            
             receipt = Receipt.create(
                 user=self.user,
                 payed=self.payed,
@@ -627,6 +634,83 @@ class CheckoutWorker(QThread):
             import traceback
             print(traceback.format_exc())
             self.finished.emit(False, "خطایی در ثبت فروش رخ داد.")
+            
+class SearchLineEdit(QWidget):
+    """
+    Search widget placed inside the "All Products" tab.
+    - shows suggestions via QCompleter (product names)
+    - on Enter or search button, emits search and triggers filtering of the 'All Products' flow
+    """
+    searchTriggered = Signal(str)
+
+    def __init__(self, sellpanel):
+        super().__init__(sellpanel)
+        self.sellpanel = sellpanel
+        self.line = QLineEdit(self)
+        self.line.setPlaceholderText("نام محصول (کامل یا قسمتی) را تایپ کنید و Enter بزنید...")
+        self.search_btn = QPushButton("🔍", self)
+        self.search_btn.setFixedHeight(self.line.sizeHint().height())
+        self.search_btn.setProperty("class", "flat")
+
+        # completer for suggestions (shows product names)
+        self.string_model = QStringListModel(self)
+        self.completer = QCompleter(self.string_model, self)
+        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.completer.setFilterMode(Qt.MatchContains)
+        self.completer.setCompletionMode(QCompleter.PopupCompletion)
+        self.line.setCompleter(self.completer)
+
+        h = QHBoxLayout(self)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(6)
+        h.addWidget(self.line)
+        h.addWidget(self.search_btn)
+        self.setLayout(h)
+
+        # signals
+        self.search_btn.clicked.connect(self._on_search_clicked)
+        self.line.returnPressed.connect(self._on_search_clicked)
+        self.line.textEdited.connect(self._on_text_edited)
+
+        # internal list of products (Product models)
+        self._products = []
+
+    def set_products(self, products: list):
+        """Provide list of Product models for suggestions."""
+        self._products = products or []
+        # initialize completer list with all names
+        names = [p.name for p in self._products]
+        self.string_model.setStringList(names)
+
+    def _on_text_edited(self, text: str):
+        s = text.strip()
+        if not s:
+            names = [p.name for p in self._products]
+        else:
+            names = [p.name for p in self._products if s.lower() in (p.name or "").lower()]
+
+        if names != self.string_model.stringList():
+            self.string_model.setStringList(names)
+            # ensure completer uses the fresh model
+            try:
+                self.completer.setModel(self.string_model)
+            except Exception:
+                pass
+
+        # try to show popup (only if there are suggestions)
+        if names:
+            try:
+                self.completer.complete()
+            except Exception:
+                pass
+
+
+    def _on_search_clicked(self):
+        text = self.line.text().strip()
+        # emit the search text; SellPanel will handle filtering
+        self.searchTriggered.emit(text)
+
+
 class SellPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -664,6 +748,7 @@ class SellPanel(QWidget):
         self.btn_receipts = QPushButton("رسیدها")
         self.btn_refresh = QPushButton("🔄 بروزرسانی")
 
+
         for btn in [self.btn_products, self.btn_cart, self.btn_checkout, self.btn_receipts, self.btn_refresh]:
             self.nav_layout.addWidget(btn)
 
@@ -679,7 +764,7 @@ class SellPanel(QWidget):
     def set_active_nav_button(self, active_button: QPushButton):
         for btn in [self.btn_products, self.btn_cart, self.btn_checkout, self.btn_receipts, self.btn_refresh]:
             btn.setProperty("class", "")
-            btn.setStyleSheet("")  # پاک کردن استایل قبلی
+            btn.setStyleSheet("") 
         active_button.setProperty("class", "active")
         active_button.setStyleSheet("background-color: #3F51B5; color: white; border-radius: 6px; padding: 4px 8px;")
 
@@ -919,6 +1004,9 @@ class SellPanel(QWidget):
                         scroll_area.updateGeometry()
 
     def on_data_fetched(self, products: list, categories: list):
+ 
+        self.categories = categories or []
+
         if hasattr(self, 'tab_widget'):
             self.tab_widget.deleteLater()
 
@@ -950,14 +1038,32 @@ class SellPanel(QWidget):
 
             all_products_tab = QWidget()
             all_products_layout = QVBoxLayout(all_products_tab)
+            # create search widget that will live inside the "All Products" tab
+            self.all_products_search = SearchLineEdit(self)
+            # connect search signal to filter function
+            self.all_products_search.searchTriggered.connect(self.filter_all_products)
+            all_products_layout.addWidget(self.all_products_search)
+
             scroll_all_products = QScrollArea()
             scroll_all_products.setWidgetResizable(True)
             container_all_products = QWidget()
             flow_all_products = FlowLayout(container_all_products)
 
+            # keep references so we can filter later
+            self._all_products_flow = flow_all_products
+            self._all_products_container = container_all_products
+            self._all_products_scroll = scroll_all_products
+            self._all_products_widgets = []  # store (product, card) pairs
+            self._all_products_list = products  # list of Product models
+
+            # populate flow with all products initially
             for product in products:
                 card = ProductCard(product, self.add_to_cart, self._parent)
                 flow_all_products.addWidget(card)
+                self._all_products_widgets.append((product, card))
+
+            # provide products list to search widget for suggestions
+            self.all_products_search.set_products(self._all_products_list)
 
             scroll_all_products.setWidget(container_all_products)
             all_products_layout.addWidget(scroll_all_products)
@@ -996,6 +1102,32 @@ class SellPanel(QWidget):
         left_layout = self.left_widget.layout()
         left_layout.addWidget(self.tab_widget)
         self.show_notification("محصولات و دسته‌بندی‌ها با موفقیت به‌روزرسانی شدند")
+    def filter_all_products(self, query: str):
+        """
+        Filter product cards shown in the 'All Products' flow by query.
+        Uses case-insensitive substring match. Shows/hides existing cards
+        (does NOT remove/recreate layout items).
+        """
+        q = (query or "").strip().lower()
+
+        widgets = getattr(self, "_all_products_widgets", None)
+        if not widgets:
+            return
+
+        for product, card in widgets:
+            # if empty query -> show all
+            if not q:
+                card.setVisible(True)
+            else:
+                card.setVisible(q in (product.name or "").lower())
+
+        # adjust geometry so scroll area updates
+        container = getattr(self, "_all_products_container", None)
+        if container:
+            container.adjustSize()
+        scroll = getattr(self, "_all_products_scroll", None)
+        if scroll:
+            scroll.updateGeometry()
 
     def select_category(self, category: Category):
         tab_text = "بدون دسته‌بندی" if category is None else category.name
