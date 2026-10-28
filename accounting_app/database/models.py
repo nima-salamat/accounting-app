@@ -106,6 +106,7 @@ class Receipt(BaseModel):
 class ReceiptProduct(BaseModel):
     receipt = ForeignKeyField(Receipt, backref="items", on_delete="CASCADE")
     product = ForeignKeyField(Product, backref="receipts", null=True, on_delete="SET NULL")
+    product_name = CharField(max_length=FIELD_LENGTH, default="")
     buy_price = FloatField(null=False, default=0)
     sell_price = FloatField(null=False, default=0)
     quantity = IntegerField()
@@ -131,8 +132,9 @@ class Warehouse(BaseModel):
 
 class StockMovement(BaseModel):
     """Append-only audit record for inventory adjustments and sale consumption."""
-    product = ForeignKeyField(Product, backref="stock_movements", on_delete="CASCADE")
-    user = ForeignKeyField(User, backref="stock_movements", on_delete="RESTRICT")
+    product = ForeignKeyField(Product, backref="stock_movements", on_delete="RESTRICT")
+    user = ForeignKeyField(User, backref="stock_movements", null=True, on_delete="SET NULL")
+    performed_by = CharField(max_length=FIELD_LENGTH, default="Unknown")
     quantity_change = FloatField()
     stock_before = FloatField()
     stock_after = FloatField()
