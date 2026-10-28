@@ -32,7 +32,7 @@ jobs:
       - name: Import the API-backed client UI (offscreen)
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -c "import PySide6; import client.desktop; import client.ui.auth_page; import client.ui.setup_wizard; import client.ui.main_window; import client.ui.dashboard_page; import client.ui.data_pages; import client.ui.admin_pages; import client.ui.sales_page; import client.ui.settings_page; print('API-backed PySide6 UI imports OK', PySide6.__version__)"
+        run: python -c "import PySide6; import client.desktop; import client.ui.auth_page; import client.ui.setup_wizard; import client.ui.main_window; import client.ui.dashboard_page; import client.ui.data_pages; import client.ui.admin_pages; import client.ui.sales_page; import client.ui.settings_page; import client.ui.purchasing_page; import client.ui.invoice_templates_page; import client.ui.touch_keyboard; import client.kiosk; print('API-backed PySide6 UI imports OK', PySide6.__version__)"
       - name: Instantiate client widgets (offscreen)
         env:
           QT_QPA_PLATFORM: offscreen
