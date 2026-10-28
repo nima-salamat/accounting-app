@@ -20,7 +20,7 @@ _LEGACY_CASHIER = {
     "checks_in": "r",
     "checks_out": "r",
     "sales": "c",
-    "receipts": "rud",
+    "receipts": "r",
     "reports": "r",
     "invoices": "r",
 }
