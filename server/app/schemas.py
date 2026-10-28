@@ -132,6 +132,13 @@ class ProductOut(BaseModel):
     updated_at: datetime
 
 
+class ProductPageOut(BaseModel):
+    items: List[ProductOut]
+    page: int
+    page_size: int
+    total: int
+
+
 class InventoryAdjustmentInput(StrictModel):
     product_id: UUID
     quantity_change: Decimal = Field(max_digits=16, decimal_places=4)
@@ -158,6 +165,13 @@ class StockMovementOut(BaseModel):
     reference_id: Optional[str] = None
     notes: Optional[str] = None
     created_at: datetime
+
+
+class StockMovementPageOut(BaseModel):
+    items: List[StockMovementOut]
+    page: int
+    page_size: int
+    total: int
 
 
 class WarehouseCreate(StrictModel):
@@ -235,6 +249,7 @@ class ReceiptProductOut(BaseModel):
     buy_price: float
     sell_price: float
     quantity: int
+    product_name: str = "محصول حذف‌شده"
     created_at: datetime
     updated_at: datetime
 
