@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 from client.ui.forms import RecordDialog
 from client.ui.permissions import can_access
 from client.ui.invoice_dialog import InvoiceDialog
+from client.ui.returns_page import ReturnDialog
 
 
 def display_value(key, value):
@@ -476,10 +477,11 @@ class ReceiptsPage(QFrame):
         self.refresh_button = QPushButton("↻ بازخوانی"); self.refresh_button.clicked.connect(self.refresh)
         self.detail_button = QPushButton("جزئیات"); self.detail_button.clicked.connect(self.details)
         self.invoice_button = QPushButton("نمایش فاکتور"); self.invoice_button.clicked.connect(self.show_invoice)
+        self.return_button = QPushButton("مرجوعی / استرداد"); self.return_button.clicked.connect(self.create_return)
         self.delete_button = QPushButton("حذف رسید"); self.delete_button.setObjectName("DangerButton")
         self.delete_button.clicked.connect(self.delete_receipt)
         self.export_button = QPushButton("خروجی CSV"); self.export_button.clicked.connect(self.export_csv)
-        for button in (self.refresh_button,self.detail_button,self.invoice_button,self.delete_button,self.export_button): header.addWidget(button)
+        for button in (self.refresh_button,self.detail_button,self.invoice_button,self.return_button,self.delete_button,self.export_button): header.addWidget(button)
         layout.addLayout(header)
         self.table = QTableWidget(0,len(self.columns))
         self.table.setHorizontalHeaderLabels([label for _key, label in self.columns])
@@ -582,6 +584,7 @@ class ReceiptsPage(QFrame):
         user = self.window.current_user
         self.delete_button.setVisible(can_access(user, "receipts", "delete"))
         self.invoice_button.setVisible(can_access(user, "invoices", "read"))
+        self.return_button.setVisible(can_access(user, "returns", "create") and can_access(user, "receipts", "read"))
 
     def _page_size_changed(self, *_args):
         self.page_size = int(self.page_size_combo.currentData() or 25)
@@ -616,6 +619,51 @@ class ReceiptsPage(QFrame):
         lines += ["{} × {} | خرید {} | فروش {}".format(item.get("product_name") or "محصول حذف‌شده",
                   item["quantity"],item["buy_price"],item["sell_price"]) for item in receipt.get("items",[])]
         QMessageBox.information(self,"جزئیات رسید","\n".join(lines))
+
+    def create_return(self):
+        record = self.selected()
+        if not record:
+            self.window.show_error("ابتدا فاکتور اصلی را انتخاب کنید.")
+            return
+        if not can_access(self.window.current_user, "returns", "create"):
+            self.window.show_error("مجوز ثبت مرجوعی ندارید.")
+            return
+        self.window.run_api(
+            lambda: self.window.api.get_receipt(record["id"]),
+            self._open_return_dialog,
+        )
+
+    def _open_return_dialog(self, receipt):
+        dialog = ReturnDialog(receipt, self)
+        if dialog.exec() != ReturnDialog.DialogCode.Accepted:
+            return
+        values = dialog.values()
+        self.window.run_api(
+            lambda: self.window.api.create_return(
+                receipt["id"],
+                values["items"],
+                refund_method=values["refund_method"],
+                reason=values["reason"],
+                notes=values["notes"],
+            ),
+            self._return_created,
+            busy=self.return_button,
+        )
+
+    def _return_created(self, result):
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(
+            self,
+            "مرجوعی ثبت شد",
+            "سند مرجوعی به‌صورت موفق ثبت شد. مبلغ ثبت‌شده: {:,.2f}".format(
+                float(result.get("total_amount") or 0)
+            ),
+        )
+        self.window.set_status("مرجوعی برای فاکتور شمارهٔ {} ثبت شد.".format(result.get("day_receipt_id", "—")))
+        self.refresh()
+        returns_page = getattr(self.window, "returns_page", None)
+        if returns_page is not None:
+            returns_page.refresh()
 
     def show_invoice(self):
         record = self.selected()
