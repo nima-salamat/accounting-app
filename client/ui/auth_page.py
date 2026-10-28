@@ -2,7 +2,12 @@
 import os
 import socket
 
-from PySide6.QtCore import Qt, QTimer, Signal, Slot
+try:
+    import keyring
+except ImportError:
+    keyring = None
+
+from PySide6.QtCore import Qt, QTimer, QSettings, Signal, Slot
 from PySide6.QtWidgets import (
     QCheckBox, QFrame, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QVBoxLayout, QWidget, QProgressBar,
@@ -23,7 +28,9 @@ class AuthPage(QWidget):
         super().__init__(parent)
         self.mode = mode
         self.api = None
+        self.local_settings = QSettings("AccountingApp", "DesktopClient")
         self.setup_required = False
+        self._restore_attempted_for_url = None
         self.pending_ticket = None
         self._poll_running = False
         self._workers = {}
@@ -131,6 +138,13 @@ class AuthPage(QWidget):
         login_layout.addRow("رمز عبور", self.password)
         login_layout.addRow("نام دستگاه", self.client_name)
         card_layout.addWidget(self.login_form)
+
+        self.remember_session_checkbox = QCheckBox("بازیابی نشست این دستگاه در ورود بعدی")
+        self.remember_session_checkbox.setChecked(
+            self.local_settings.value("remember_session", True, type=bool)
+        )
+        self.remember_session_checkbox.toggled.connect(self._remember_setting_changed)
+        card_layout.addWidget(self.remember_session_checkbox)
 
         self.login_button = QPushButton("ورود امن  ←")
         self.login_button.setObjectName("PrimaryButton")
@@ -246,11 +260,96 @@ class AuthPage(QWidget):
         )
         self.server_status.setText("●  سرور آماده است")
         self.server_status.setStyleSheet("color:#0F9D83;font-weight:700;")
+        self._attempt_restore_session()
 
     @Slot(str, object)
     def _connection_failed(self, _ticket, error):
         self.server_status.setText("●  سرور در دسترس نیست")
         self.message.setText(str(error))
+
+    @staticmethod
+    def _keyring_account(server_url):
+        return str(server_url or "").strip().rstrip("/")
+
+    def _remember_setting_changed(self, enabled):
+        self.local_settings.setValue("remember_session", bool(enabled))
+        self.local_settings.sync()
+        if not enabled:
+            self.clear_remembered_session()
+
+    def clear_remembered_session(self):
+        if keyring is not None:
+            try:
+                keyring.delete_password(
+                    "Accounting App Desktop Session",
+                    self._keyring_account(self.server_url.text()),
+                )
+            except Exception:
+                pass
+
+    def _persist_session(self):
+        if not self.remember_session_checkbox.isChecked():
+            self.clear_remembered_session()
+            return
+        if keyring is None or self.api is None or not self.api.access_token:
+            self.message.setText("ورود انجام شد، اما ذخیرهٔ امن نشست در این سیستم در دسترس نیست.")
+            return
+        try:
+            keyring.set_password(
+                "Accounting App Desktop Session",
+                self._keyring_account(self.api.base_url),
+                self.api.access_token,
+            )
+            self.local_settings.setValue("last_server_url", self.api.base_url)
+            self.local_settings.sync()
+        except Exception as exc:
+            self.message.setText("ورود انجام شد، اما ذخیرهٔ امن نشست ناموفق بود: {}".format(exc))
+
+    def _attempt_restore_session(self):
+        if self.api is None or not self.remember_session_checkbox.isChecked() or keyring is None:
+            return
+        url = self._keyring_account(self.api.base_url)
+        if self._restore_attempted_for_url == url:
+            return
+        self._restore_attempted_for_url = url
+        try:
+            token = keyring.get_password("Accounting App Desktop Session", url)
+        except Exception:
+            token = None
+        if not token:
+            return
+        self.api.set_access_token(token)
+        self.server_status.setText("●  در حال بازیابی نشست امن…")
+        self.login_button.setEnabled(False)
+        self._run(
+            self.api.me,
+            self._session_restored,
+            failure=self._session_restore_failed,
+        )
+
+    @Slot(str, object)
+    def _session_restored(self, _ticket, user):
+        if not isinstance(user, dict) or not user.get("username"):
+            self._session_restore_failed("", RuntimeError("پاسخ نشست معتبر نیست."))
+            return
+        self.password.clear()
+        self.username.setText(user.get("username", ""))
+        self.server_status.setText("●  نشست قبلی بازیابی شد")
+        self.server_status.setStyleSheet("color:#0F9D83;font-weight:700;")
+        self.login_button.setEnabled(True)
+        self.authenticated.emit(user)
+
+    @Slot(str, object)
+    def _session_restore_failed(self, _ticket, error):
+        status_code = getattr(error, "status_code", None)
+        if status_code == 401:
+            self.clear_remembered_session()
+        if self.api is not None:
+            self.api.clear_session()
+        self.login_button.setEnabled(True)
+        self.server_status.setText("●  ورود دوباره لازم است")
+        self.message.setText("نشست ذخیره‌شده دیگر معتبر نیست؛ رمز عبور را وارد کنید." if status_code == 401 else
+                             "نشست قبلی بازیابی نشد؛ اتصال را بررسی کنید. {}".format(error))
 
     def login(self):
         if self.api is None:
@@ -274,6 +373,7 @@ class AuthPage(QWidget):
         self.password.clear()
         if payload.get("status") == "active" and payload.get("user"):
             self.stop_pending()
+            self._persist_session()
             self.authenticated.emit(payload["user"])
             return
         if payload.get("status") == "pending_activation" and payload.get("session_ticket"):
@@ -307,6 +407,7 @@ class AuthPage(QWidget):
             return
         if status == "active" and payload.get("user"):
             self.stop_pending()
+            self._persist_session()
             self.authenticated.emit(payload["user"])
             return
         self.stop_pending()
@@ -350,4 +451,5 @@ class AuthPage(QWidget):
     def _setup_complete(self, user):
         self.setup_required = False
         self.setup_button.hide()
+        self._persist_session()
         self.authenticated.emit(user)
