@@ -28,6 +28,9 @@ _LEGACY_CASHIER = {
     "fiscal_years": "",
     "audit": "",
     "pos_devices": "",
+    "partners": "r",
+    "purchase_invoices": "r",
+    "expenses": "r",
 }
 
 RESOURCE_LABELS = {
@@ -47,6 +50,9 @@ RESOURCE_LABELS = {
     "fiscal_years": "سال مالی",
     "audit": "سوابق فعالیت کارکنان",
     "pos_devices": "دستگاه‌های صندوق",
+    "partners": "مشتریان و تأمین‌کنندگان",
+    "purchase_invoices": "فاکتورهای خرید",
+    "expenses": "هزینه‌ها و پرداخت‌ها",
 }
 
 
