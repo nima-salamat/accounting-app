@@ -1,304 +1,391 @@
-"""Visual invoice designer with draggable sections, page setup and editable alignment."""
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+"""WYSIWYG invoice designer with a physical page canvas, movable fields and grouped properties."""
+from copy import deepcopy
+
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QBrush, QPen
 from PySide6.QtWidgets import (
-    QCheckBox, QColorDialog, QComboBox, QFormLayout, QFrame, QHBoxLayout,
-    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
-    QScrollArea, QSplitter, QSpinBox, QDoubleSpinBox, QTextBrowser, QTextEdit, QVBoxLayout,
-    QWidget, QAbstractItemView,
+    QCheckBox, QColorDialog, QComboBox, QFormLayout, QFrame, QGraphicsItem,
+    QGraphicsRectItem, QGraphicsScene, QGraphicsView, QHBoxLayout, QLabel,
+    QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
+    QScrollArea, QSpinBox, QSplitter, QTextEdit, QVBoxLayout, QWidget,
 )
 
-from client.ui.invoice_render import DEFAULT_TEMPLATE, render_invoice_html
+from client.ui.invoice_render import (
+    DEFAULT_TEMPLATE, ELEMENT_TYPES, default_elements_for_paper, draw_invoice_element,
+    normalize_elements, page_dimensions, render_invoice_html,
+)
 from client.ui.permissions import can_access
 
 
-BLOCK_LABELS = {
-    "company": "سربرگ و مشخصات شرکت",
-    "metadata": "شماره فاکتور، تاریخ و وضعیت",
-    "items": "جدول کالاها",
+SAMPLE_RECEIPT = {
+    "id": "preview-invoice", "day_receipt_id": "۱۰۰۱",
+    "created_at": "2026-10-29T12:00:00", "payed": True, "total_price": 1285000,
+    "items": [
+        {"product_name": "نمونه کالا", "quantity": 2, "sell_price": 450000},
+        {"product_name": "کالای دوم", "quantity": 1, "sell_price": 385000},
+        {"product_name": "لوازم جانبی", "quantity": 1, "sell_price": 85000},
+    ],
+    "seat_number": "۱۲",
+}
+ELEMENT_LABELS = {
+    "company": "نام و مشخصات مجموعه",
+    "invoice_number": "شماره فاکتور",
+    "invoice_date": "تاریخ فاکتور",
+    "payment_status": "وضعیت پرداخت",
+    "seat_number": "شماره میز / صندلی",
+    "items_table": "جدول کالاها",
     "totals": "مبلغ نهایی",
     "footer": "متن پایانی",
+    "text": "متن آزاد",
 }
-COLUMN_LABELS = (("تمام عرض", "full"), ("ستون راست", "right"), ("ستون چپ", "left"))
-ALIGN_LABELS = (("راست‌چین", "right"), ("وسط‌چین", "center"), ("چپ‌چین", "left"))
-TABLE_COLUMN_LABELS = {
-    "index": "شماره ردیف", "name": "نام کالا", "quantity": "تعداد",
-    "unit_price": "قیمت واحد", "line_total": "جمع ردیف",
-}
+PRESETS = [
+    ("formal", "فاکتور رسمی A4"),
+    ("minimal", "فاکتور مینیمال A4"),
+    ("a5", "فاکتور فروشگاهی A5"),
+    ("thermal80", "رسید حرارتی ۸۰ میلی‌متر"),
+    ("cafe", "قالب کافه با شماره میز"),
+]
+
+
+class _DesignerScene(QGraphicsScene):
+    elementMoved = Signal(object)
+
+
+class _DesignerElementItem(QGraphicsRectItem):
+    def __init__(self, element, page, scene):
+        super().__init__(QRectF(0, 0, float(element["w_mm"]), float(element["h_mm"])))
+        self.element = element
+        self.page = page
+        self.setPos(float(element["x_mm"]), float(element["y_mm"]))
+        self.setZValue(10)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
+        self.setCursor(Qt.CursorShape.SizeAllCursor)
+
+    def paint(self, painter, option, widget=None):
+        self.element["x_mm"] = float(self.pos().x())
+        self.element["y_mm"] = float(self.pos().y())
+        self.element["w_mm"] = float(self.rect().width())
+        self.element["h_mm"] = float(self.rect().height())
+        draw_invoice_element(
+            painter, self.rect(), self.element, SAMPLE_RECEIPT,
+            self.page._values(), editor=True, selected=self.isSelected(),
+        )
+
+    def itemChange(self, change, value):
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():
+            bounds = self.scene().sceneRect()
+            x = max(0.0, min(float(value.x()), max(0.0, bounds.width() - self.rect().width())))
+            y = max(0.0, min(float(value.y()), max(0.0, bounds.height() - self.rect().height())))
+            return QPointF(x, y)
+        result = super().itemChange(change, value)
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged and self.scene():
+            self.scene().elementMoved.emit(self)
+            self.update()
+        return result
+
+    def update_element(self, element):
+        self.element = element
+        self.setRect(QRectF(0, 0, float(element["w_mm"]), float(element["h_mm"])))
+        self.setPos(float(element["x_mm"]), float(element["y_mm"]))
+        self.update()
 
 
 class InvoiceTemplatesPage(QFrame):
+    """A single studio-like workspace; page shape and on-paper positions match the saved invoice."""
+
     def __init__(self, window):
         super().__init__()
         self.window = window
         self._loading = False
-        self.block_settings = dict(DEFAULT_TEMPLATE["block_settings"])
-        self.table_alignment = dict(DEFAULT_TEMPLATE["table_alignment"])
+        self._elements = []
+        self._items_by_id = {}
+        self._selected_id = None
+        self._last_page_size = page_dimensions(DEFAULT_TEMPLATE)
         self.accent_color_value = DEFAULT_TEMPLATE["accent_color"]
         self.frame_border_color_value = DEFAULT_TEMPLATE["frame_border_color"]
         self.setObjectName("Card")
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+
         root = QVBoxLayout(self)
-        root.setContentsMargins(18, 18, 18, 18)
-        root.setSpacing(12)
+        root.setContentsMargins(16, 16, 16, 16)
+        root.setSpacing(10)
 
         heading = QHBoxLayout()
-        titles = QVBoxLayout()
-        title = QLabel("طراحی حرفه‌ای فاکتور و برگه‌های چاپی")
+        title_box = QVBoxLayout()
+        title = QLabel("طراح بصری فاکتور")
         title.setObjectName("PageTitle")
         subtitle = QLabel(
-            "اندازه و جهت کاغذ، قاب، رنگ، ترتیب بلوک‌ها با کشیدن، ستون و تراز را تنظیم کنید. "
-            "همین قالب روی پیش‌نمایش، PDF و چاپ رسیدهای فروش اعمال می‌شود."
+            "المان‌ها را روی خود برگه بکشید؛ مختصات بر حسب میلی‌متر ذخیره می‌شود. "
+            "اندازهٔ کاغذ و جهت صفحه، قاب پیش‌نمایش و خروجی چاپ را تغییر می‌دهند."
         )
         subtitle.setObjectName("PageSubtitle")
         subtitle.setWordWrap(True)
-        titles.addWidget(title)
-        titles.addWidget(subtitle)
-        heading.addLayout(titles, 1)
-        self.refresh_button = QPushButton("بازخوانی قالب")
+        title_box.addWidget(title)
+        title_box.addWidget(subtitle)
+        heading.addLayout(title_box, 1)
+        self.refresh_button = QPushButton("بازخوانی")
         self.refresh_button.clicked.connect(self.refresh)
+        self.save_button = QPushButton("ذخیرهٔ قالب")
+        self.save_button.setObjectName("PrimaryButton")
+        self.save_button.clicked.connect(self.save_template)
         heading.addWidget(self.refresh_button)
+        heading.addWidget(self.save_button)
         root.addLayout(heading)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        editor_scroll = QScrollArea()
-        editor_scroll.setWidgetResizable(True)
-        editor_scroll.setMinimumWidth(430)
-        editor = QWidget()
-        editor.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        editor_layout = QVBoxLayout(editor)
-        editor_layout.setContentsMargins(4, 4, 4, 4)
-        editor_layout.setSpacing(12)
-
-        identity_card = QFrame()
-        identity_card.setObjectName("Card")
-        identity_form = QFormLayout(identity_card)
-        identity_form.setContentsMargins(14, 14, 14, 14)
-        identity_form.setSpacing(9)
-        self.company_name = QLineEdit()
-        self.company_name.setPlaceholderText("نام فروشگاه / شرکت")
-        self.legal_id = QLineEdit()
-        self.legal_id.setPlaceholderText("شناسه ثبت یا مالیاتی (اختیاری)")
-        self.address = QTextEdit()
-        self.address.setPlaceholderText("نشانی چاپ‌شده روی برگه")
-        self.address.setFixedHeight(64)
-        self.phone = QLineEdit()
-        self.phone.setPlaceholderText("تلفن تماس")
-        self.seat_number_label = QLineEdit()
-        self.seat_number_label.setPlaceholderText("مثلاً: شماره میز / صندلی")
-        self.footer = QTextEdit()
-        self.footer.setPlaceholderText("متن پایین فاکتور")
-        self.footer.setFixedHeight(64)
-        identity_form.addRow("نام مجموعه", self.company_name)
-        identity_form.addRow("شناسه", self.legal_id)
-        identity_form.addRow("نشانی", self.address)
-        identity_form.addRow("تلفن", self.phone)
-        identity_form.addRow("برچسب صندلی کافه", self.seat_number_label)
-        identity_form.addRow("متن پایین", self.footer)
-        editor_layout.addWidget(identity_card)
-
-        page_card = QFrame()
-        page_card.setObjectName("Card")
-        page_form = QFormLayout(page_card)
-        page_form.setContentsMargins(14, 14, 14, 14)
-        page_form.setSpacing(9)
+        toolbar = QFrame()
+        toolbar.setObjectName("Card")
+        toolbar_layout = QHBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(10, 8, 10, 8)
+        toolbar_layout.setSpacing(8)
+        self.preset = QComboBox()
+        for key, label in PRESETS:
+            self.preset.addItem(label, key)
+        self.apply_preset_button = QPushButton("استفاده از قالب آماده")
+        self.apply_preset_button.clicked.connect(self.apply_preset)
         self.paper_size = QComboBox()
-        self.paper_size.addItem("A4 · 210 × 297 mm", "A4")
-        self.paper_size.addItem("A5 · 148 × 210 mm", "A5")
-        self.paper_size.addItem("A6 · 105 × 148 mm", "A6")
-        self.paper_size.addItem("رسید حرارتی · 80 mm", "receipt80")
-        self.paper_size.addItem("رسید حرارتی · 58 mm", "receipt58")
+        self.paper_size.addItem("A4 · ۲۱۰ × ۲۹۷", "A4")
+        self.paper_size.addItem("A5 · ۱۴۸ × ۲۱۰", "A5")
+        self.paper_size.addItem("A6 · ۱۰۵ × ۱۴۸", "A6")
+        self.paper_size.addItem("رسید حرارتی · ۸۰mm", "receipt80")
+        self.paper_size.addItem("رسید حرارتی · ۵۸mm", "receipt58")
         self.orientation = QComboBox()
-        self.orientation.addItem("عمودی (Portrait)", "portrait")
-        self.orientation.addItem("افقی (Landscape)", "landscape")
+        self.orientation.addItem("عمودی", "portrait")
+        self.orientation.addItem("افقی", "landscape")
         self.margin_mm = QSpinBox()
-        self.margin_mm.setRange(3, 30)
+        self.margin_mm.setRange(2, 30)
         self.margin_mm.setSuffix(" mm")
-        self.show_border = QCheckBox("نمایش قاب دور برگه")
+        self.show_border = QCheckBox("قاب چاپ")
         self.show_border.setChecked(True)
-        self.accent_color_button = QPushButton("انتخاب رنگ اصلی…")
-        self.accent_color_button.clicked.connect(lambda: self._pick_color("accent"))
-        self.border_color_button = QPushButton("رنگ قاب…")
-        self.border_color_button.clicked.connect(lambda: self._pick_color("border"))
+        self.accent_button = QPushButton("رنگ اصلی")
+        self.accent_button.clicked.connect(lambda: self._pick_color("accent"))
         self.accent_swatch = QLabel()
-        self.accent_swatch.setMinimumHeight(18)
+        self.accent_swatch.setFixedWidth(24)
+        self.accent_swatch.setMinimumHeight(22)
+        self.border_button = QPushButton("رنگ قاب")
+        self.border_button.clicked.connect(lambda: self._pick_color("border"))
         self.border_swatch = QLabel()
-        self.border_swatch.setMinimumHeight(18)
-        page_form.addRow("اندازه کاغذ", self.paper_size)
-        page_form.addRow("جهت صفحه", self.orientation)
-        page_form.addRow("حاشیه کاغذ", self.margin_mm)
-        page_form.addRow("", self.show_border)
-        page_form.addRow("رنگ اصلی", self._color_row(self.accent_color_button, self.accent_swatch))
-        page_form.addRow("رنگ قاب", self._color_row(self.border_color_button, self.border_swatch))
-        editor_layout.addWidget(page_card)
+        self.border_swatch.setFixedWidth(24)
+        self.border_swatch.setMinimumHeight(22)
+        toolbar_layout.addWidget(QLabel("قالب"))
+        toolbar_layout.addWidget(self.preset, 1)
+        toolbar_layout.addWidget(self.apply_preset_button)
+        toolbar_layout.addWidget(QLabel("کاغذ"))
+        toolbar_layout.addWidget(self.paper_size)
+        toolbar_layout.addWidget(self.orientation)
+        toolbar_layout.addWidget(QLabel("حاشیه"))
+        toolbar_layout.addWidget(self.margin_mm)
+        toolbar_layout.addWidget(self.show_border)
+        toolbar_layout.addWidget(self.accent_button)
+        toolbar_layout.addWidget(self.accent_swatch)
+        toolbar_layout.addWidget(self.border_button)
+        toolbar_layout.addWidget(self.border_swatch)
+        root.addWidget(toolbar)
 
-        typography_card = QFrame()
-        typography_card.setObjectName("Card")
-        typography_layout = QVBoxLayout(typography_card)
-        typography_layout.setContentsMargins(14, 14, 14, 14)
-        typography_layout.setSpacing(9)
-        typography_title = QLabel("فونت، خوانایی و زبان فاکتور")
-        typography_title.setObjectName("PageTitle")
-        typography_hint = QLabel("فونت نصب‌شده روی سیستم چاپ را انتخاب کنید؛ تنظیمات در پیش‌نمایش، PDF و چاپ استفاده می‌شوند.")
-        typography_hint.setObjectName("PageSubtitle")
-        typography_hint.setWordWrap(True)
-        typography_layout.addWidget(typography_title)
-        typography_layout.addWidget(typography_hint)
-        typography_form = QFormLayout()
-        typography_form.setSpacing(9)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
+
+        # Right-hand properties inspector.
+        properties_scroll = QScrollArea()
+        properties_scroll.setWidgetResizable(True)
+        properties_scroll.setMinimumWidth(245)
+        properties = QWidget()
+        properties.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        properties_layout = QVBoxLayout(properties)
+        properties_layout.setContentsMargins(4, 4, 4, 4)
+        properties_layout.setSpacing(10)
+
+        element_card = QFrame()
+        element_card.setObjectName("Card")
+        element_layout = QVBoxLayout(element_card)
+        element_layout.setContentsMargins(12, 12, 12, 12)
+        element_layout.setSpacing(8)
+        selected_heading = QLabel("تنظیمات المان انتخاب‌شده")
+        selected_heading.setObjectName("PageTitle")
+        element_layout.addWidget(selected_heading)
+        self.selected_kind = QLabel("برای ویرایش، یک المان روی برگه انتخاب کنید.")
+        self.selected_kind.setObjectName("PageSubtitle")
+        self.selected_kind.setWordWrap(True)
+        element_layout.addWidget(self.selected_kind)
+        form = QFormLayout()
+        form.setHorizontalSpacing(10)
+        form.setVerticalSpacing(8)
+        self.element_label = QLineEdit()
+        self.element_label.setPlaceholderText("برچسب یا متن المان")
+        self.x_mm = self._spin(0, 600, " mm")
+        self.y_mm = self._spin(0, 600, " mm")
+        self.w_mm = self._spin(3, 600, " mm")
+        self.h_mm = self._spin(3, 600, " mm")
+        self.element_font_size = self._spin(6, 32, " pt")
+        self.element_align = QComboBox()
+        self.element_align.addItem("راست‌چین", "right")
+        self.element_align.addItem("وسط‌چین", "center")
+        self.element_align.addItem("چپ‌چین", "left")
+        self.element_bold = QCheckBox("متن ضخیم")
+        form.addRow("متن / برچسب", self.element_label)
+        form.addRow("موقعیت افقی X", self.x_mm)
+        form.addRow("موقعیت عمودی Y", self.y_mm)
+        form.addRow("عرض", self.w_mm)
+        form.addRow("ارتفاع", self.h_mm)
+        form.addRow("اندازهٔ نوشته", self.element_font_size)
+        form.addRow("تراز نوشته", self.element_align)
+        form.addRow("", self.element_bold)
+        element_layout.addLayout(form)
+        self.duplicate_button = QPushButton("تکثیر المان")
+        self.duplicate_button.clicked.connect(self.duplicate_element)
+        self.delete_button = QPushButton("حذف المان انتخاب‌شده")
+        self.delete_button.setObjectName("DangerButton")
+        self.delete_button.clicked.connect(self.delete_element)
+        element_layout.addWidget(self.duplicate_button)
+        element_layout.addWidget(self.delete_button)
+        properties_layout.addWidget(element_card)
+
+        business_card = QFrame()
+        business_card.setObjectName("Card")
+        business_layout = QVBoxLayout(business_card)
+        business_layout.setContentsMargins(12, 12, 12, 12)
+        business_layout.setSpacing(8)
+        business_title = QLabel("اطلاعات عمومی فاکتور")
+        business_title.setObjectName("PageTitle")
+        business_layout.addWidget(business_title)
+        business_form = QFormLayout()
+        business_form.setSpacing(8)
+        self.company_name = QLineEdit()
+        self.legal_id = QLineEdit()
+        self.phone = QLineEdit()
+        self.address = QTextEdit()
+        self.address.setFixedHeight(58)
+        self.footer = QTextEdit()
+        self.footer.setFixedHeight(58)
         self.font_family = QComboBox()
         self.font_family.setEditable(True)
-        self.font_family.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.font_family.addItems(["Vazirmatn", "Noto Sans Arabic", "Noto Naskh Arabic", "Tahoma", "Segoe UI", "Arial", "IRANSans", "B Nazanin"])
-        self.font_family.setCurrentText(DEFAULT_TEMPLATE["font_family"])
-        self.font_size = QSpinBox()
-        self.font_size.setRange(8, 18)
-        self.font_size.setSuffix(" px")
-        self.header_font_size = QSpinBox()
-        self.header_font_size.setRange(14, 32)
-        self.header_font_size.setSuffix(" px")
-        self.line_height = QDoubleSpinBox()
-        self.line_height.setRange(1.2, 2.4)
-        self.line_height.setSingleStep(0.1)
-        self.line_height.setDecimals(1)
-        self.text_direction = QComboBox()
-        self.text_direction.addItem("راست‌به‌چپ (فارسی)", "rtl")
-        self.text_direction.addItem("چپ‌به‌راست", "ltr")
-        typography_form.addRow("خانوادهٔ فونت", self.font_family)
-        typography_form.addRow("اندازهٔ متن", self.font_size)
-        typography_form.addRow("اندازهٔ عنوان", self.header_font_size)
-        typography_form.addRow("فاصلهٔ خطوط", self.line_height)
-        typography_form.addRow("جهت نوشتار", self.text_direction)
-        typography_layout.addLayout(typography_form)
-        editor_layout.addWidget(typography_card)
+        self.font_family.addItems([
+            "Vazirmatn", "Noto Sans Arabic", "Noto Naskh Arabic", "Tahoma",
+            "Segoe UI", "Arial", "IRANSans", "B Nazanin",
+        ])
+        self.global_font_size = self._spin(8, 32, " pt")
+        business_form.addRow("نام مجموعه", self.company_name)
+        business_form.addRow("شناسه / مالیاتی", self.legal_id)
+        business_form.addRow("تلفن", self.phone)
+        business_form.addRow("نشانی", self.address)
+        business_form.addRow("متن پایین فاکتور", self.footer)
+        business_form.addRow("فونت", self.font_family)
+        business_form.addRow("اندازهٔ پایه", self.global_font_size)
+        business_layout.addLayout(business_form)
+        properties_layout.addWidget(business_card)
+        properties_layout.addStretch(1)
+        properties_scroll.setWidget(properties)
 
-        layout_card = QFrame()
-        layout_card.setObjectName("Card")
-        layout_form = QVBoxLayout(layout_card)
-        layout_form.setContentsMargins(14, 14, 14, 14)
-        layout_form.setSpacing(8)
-        block_title = QLabel("ترتیب و جای بلوک‌ها")
-        block_title.setObjectName("PageTitle")
-        block_hint = QLabel("با ماوس یا لمس، بلوک‌ها را جابه‌جا کنید. سپس بلوک را انتخاب و ستون و تراز آن را تغییر دهید.")
-        block_hint.setObjectName("PageSubtitle")
-        block_hint.setWordWrap(True)
-        layout_form.addWidget(block_title)
-        layout_form.addWidget(block_hint)
-        self.layout_order_list = QListWidget()
-        self.layout_order_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
-        self.layout_order_list.setDefaultDropAction(Qt.DropAction.MoveAction)
-        self.layout_order_list.setMinimumHeight(170)
-        for key in DEFAULT_TEMPLATE["layout_order"]:
-            item = QListWidgetItem(BLOCK_LABELS[key])
-            item.setData(Qt.ItemDataRole.UserRole, key)
-            self.layout_order_list.addItem(item)
-        self.layout_order_list.setCurrentRow(0)
-        layout_form.addWidget(self.layout_order_list)
+        # Physical page in the center.
+        canvas_card = QFrame()
+        canvas_card.setObjectName("Card")
+        canvas_layout = QVBoxLayout(canvas_card)
+        canvas_layout.setContentsMargins(8, 8, 8, 8)
+        canvas_layout.setSpacing(6)
+        self.page_info = QLabel("A4 · عمودی · ۲۱۰ × ۲۹۷ میلی‌متر")
+        self.page_info.setObjectName("StatusPill")
+        self.page_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        canvas_layout.addWidget(self.page_info)
+        self.scene = _DesignerScene(self)
+        self.scene.elementMoved.connect(self._element_moved)
+        self.canvas = QGraphicsView(self.scene)
+        self.canvas.setObjectName("InvoiceDesignerCanvas")
+        self.canvas.setBackgroundBrush(QBrush(QColor("#E9EDF4")))
+        self.canvas.setFrameShape(QFrame.Shape.NoFrame)
+        self.canvas.setRenderHints(self.canvas.renderHints())
+        self.canvas.setDragMode(QGraphicsView.DragMode.NoDrag)
+        self.canvas.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.canvas.setMinimumWidth(360)
+        self.canvas.setMinimumHeight(400)
+        self.scene.selectionChanged.connect(self._canvas_selection_changed)
+        canvas_layout.addWidget(self.canvas, 1)
+        self.canvas_help = QLabel(
+            "راهنما: کادرها را با ماوس بکشید. مختصات و اندازه را هم می‌توانید در بخش ویژگی‌ها دقیق وارد کنید."
+        )
+        self.canvas_help.setObjectName("PageSubtitle")
+        self.canvas_help.setWordWrap(True)
+        canvas_layout.addWidget(self.canvas_help)
 
-        block_picker_form = QFormLayout()
-        self.block_picker = QComboBox()
-        for key, label in BLOCK_LABELS.items():
-            self.block_picker.addItem(label, key)
-        self.block_column = QComboBox()
-        for label, value in COLUMN_LABELS:
-            self.block_column.addItem(label, value)
-        self.block_align = QComboBox()
-        for label, value in ALIGN_LABELS:
-            self.block_align.addItem(label, value)
-        block_picker_form.addRow("بلوک تنظیم‌شونده", self.block_picker)
-        block_picker_form.addRow("جایگاه", self.block_column)
-        block_picker_form.addRow("تراز متن", self.block_align)
-        layout_form.addLayout(block_picker_form)
-        editor_layout.addWidget(layout_card)
+        # Element palette and layer list on the left.
+        palette_scroll = QScrollArea()
+        palette_scroll.setWidgetResizable(True)
+        palette_scroll.setMinimumWidth(210)
+        palette = QWidget()
+        palette.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        palette_layout = QVBoxLayout(palette)
+        palette_layout.setContentsMargins(4, 4, 4, 4)
+        palette_layout.setSpacing(10)
+        add_card = QFrame()
+        add_card.setObjectName("Card")
+        add_layout = QVBoxLayout(add_card)
+        add_layout.setContentsMargins(12, 12, 12, 12)
+        add_layout.setSpacing(8)
+        add_title = QLabel("افزودن المان")
+        add_title.setObjectName("PageTitle")
+        add_layout.addWidget(add_title)
+        self.new_kind = QComboBox()
+        for kind in ELEMENT_TYPES:
+            self.new_kind.addItem(ELEMENT_LABELS[kind], kind)
+        self.add_button = QPushButton("＋ افزودن به برگه")
+        self.add_button.setObjectName("PrimaryButton")
+        self.add_button.clicked.connect(self.add_element)
+        add_layout.addWidget(self.new_kind)
+        add_layout.addWidget(self.add_button)
+        self.elements_list = QListWidget()
+        self.elements_list.setMinimumHeight(180)
+        self.elements_list.currentRowChanged.connect(self._list_selection_changed)
+        add_layout.addWidget(QLabel("المان‌های برگه"))
+        add_layout.addWidget(self.elements_list, 1)
+        self.reset_layout_button = QPushButton("بازنشانی چیدمان قالب")
+        self.reset_layout_button.clicked.connect(self.reset_layout)
+        add_layout.addWidget(self.reset_layout_button)
+        palette_layout.addWidget(add_card)
+        palette_layout.addStretch(1)
+        palette_scroll.setWidget(palette)
 
-        table_card = QFrame()
-        table_card.setObjectName("Card")
-        table_layout = QVBoxLayout(table_card)
-        table_layout.setContentsMargins(14, 14, 14, 14)
-        table_layout.setSpacing(8)
-        table_title = QLabel("تراز ستون‌های جدول کالا")
-        table_title.setObjectName("PageTitle")
-        table_layout.addWidget(table_title)
-        table_form = QFormLayout()
-        self.table_alignment_inputs = {}
-        for key, label in TABLE_COLUMN_LABELS.items():
-            combo = QComboBox()
-            for align_label, value in ALIGN_LABELS:
-                combo.addItem(align_label, value)
-            combo.currentIndexChanged.connect(self._table_alignment_changed)
-            self.table_alignment_inputs[key] = combo
-            table_form.addRow(label, combo)
-        table_layout.addLayout(table_form)
-        editor_layout.addWidget(table_card)
-
-        self.save_button = QPushButton("ذخیره قالب در سرور")
-        self.save_button.setObjectName("PrimaryButton")
-        self.save_button.setMinimumHeight(44)
-        self.save_button.clicked.connect(self.save_template)
-        editor_layout.addWidget(self.save_button)
-        editor_scroll.setWidget(editor)
-        splitter.addWidget(editor_scroll)
-
-        preview_card = QFrame()
-        preview_card.setObjectName("Card")
-        preview_layout = QVBoxLayout(preview_card)
-        preview_layout.setContentsMargins(12, 12, 12, 12)
-        preview_title = QLabel("پیش‌نمایش چاپ")
-        preview_title.setObjectName("PageTitle")
-        preview_layout.addWidget(preview_title)
-        self.preview = QTextBrowser()
-        self.preview.setOpenExternalLinks(False)
-        self.preview.setStyleSheet("QTextBrowser { background:#FFFFFF; color:#182235; border:1px solid #CBD5E1; }")
-        preview_layout.addWidget(self.preview, 1)
-        splitter.addWidget(preview_card)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
+        splitter.addWidget(properties_scroll)
+        splitter.addWidget(canvas_card)
+        splitter.addWidget(palette_scroll)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(2, 0)
+        splitter.setSizes([290, 660, 240])
         root.addWidget(splitter, 1)
 
-        for field in (self.company_name, self.legal_id, self.phone, self.seat_number_label):
-            field.textChanged.connect(self.update_preview)
-        self.address.textChanged.connect(self.update_preview)
-        self.footer.textChanged.connect(self.update_preview)
-        for control in (self.paper_size, self.orientation, self.margin_mm):
-            control.currentIndexChanged.connect(self.update_preview) if isinstance(control, QComboBox) else control.valueChanged.connect(self.update_preview)
-        self.show_border.toggled.connect(self.update_preview)
-        self.font_family.currentTextChanged.connect(self.update_preview)
-        self.font_size.valueChanged.connect(self.update_preview)
-        self.header_font_size.valueChanged.connect(self.update_preview)
-        self.line_height.valueChanged.connect(self.update_preview)
-        self.text_direction.currentIndexChanged.connect(self.update_preview)
-        self.layout_order_list.model().rowsMoved.connect(self.update_preview)
-        self.layout_order_list.currentRowChanged.connect(self._layout_block_selected)
-        self.block_picker.currentIndexChanged.connect(self._block_picker_changed)
-        self.block_column.currentIndexChanged.connect(self._block_setting_changed)
-        self.block_align.currentIndexChanged.connect(self._block_setting_changed)
-        self._load_template(dict(DEFAULT_TEMPLATE))
+        self.paper_size.currentIndexChanged.connect(self._page_dimensions_changed)
+        self.orientation.currentIndexChanged.connect(self._page_dimensions_changed)
+        self.margin_mm.valueChanged.connect(self._page_style_changed)
+        self.show_border.toggled.connect(self._page_style_changed)
+        self.element_label.textEdited.connect(self._selected_property_changed)
+        for control in (self.x_mm, self.y_mm, self.w_mm, self.h_mm, self.element_font_size):
+            control.valueChanged.connect(self._selected_property_changed)
+        self.element_align.currentIndexChanged.connect(self._selected_property_changed)
+        self.element_bold.toggled.connect(self._selected_property_changed)
+        for control in (self.company_name, self.legal_id, self.phone):
+            control.textChanged.connect(self._global_setting_changed)
+        self.address.textChanged.connect(self._global_setting_changed)
+        self.footer.textChanged.connect(self._global_setting_changed)
+        self.font_family.currentTextChanged.connect(self._global_setting_changed)
+        self.global_font_size.valueChanged.connect(self._global_setting_changed)
+
+        self._load_template(deepcopy(DEFAULT_TEMPLATE))
         self.set_permissions(window.current_user)
 
     @staticmethod
-    def _color_row(button, swatch):
-        row = QHBoxLayout()
-        row.addWidget(button, 1)
-        row.addWidget(swatch)
-        return row
-
-    def _pick_color(self, target):
-        current = self.accent_color_value if target == "accent" else self.frame_border_color_value
-        chosen = QColorDialog.getColor(QColor(current), self, "انتخاب رنگ")
-        if not chosen.isValid():
-            return
-        color = chosen.name().upper()
-        if target == "accent":
-            self.accent_color_value = color
-            self.accent_swatch.setStyleSheet("background:{};border:1px solid #9AA9BB;border-radius:4px;".format(color))
-        else:
-            self.frame_border_color_value = color
-            self.border_swatch.setStyleSheet("background:{};border:1px solid #9AA9BB;border-radius:4px;".format(color))
-        self.update_preview()
+    def _spin(minimum, maximum, suffix):
+        control = QSpinBox()
+        control.setRange(minimum, maximum)
+        control.setSuffix(suffix)
+        return control
 
     def set_permissions(self, user):
         self.save_button.setVisible(can_access(user, "invoices", "update"))
         self.refresh_button.setVisible(can_access(user, "invoices", "read"))
+        self.apply_preset_button.setEnabled(can_access(user, "invoices", "update"))
+        self.add_button.setEnabled(can_access(user, "invoices", "update"))
+        self.delete_button.setEnabled(can_access(user, "invoices", "update"))
+        self.duplicate_button.setEnabled(can_access(user, "invoices", "update"))
 
     def refresh(self):
         if self.window.api and can_access(self.window.current_user, "invoices", "read"):
@@ -309,145 +396,393 @@ class InvoiceTemplatesPage(QFrame):
                 busy=self.refresh_button,
             )
 
-    def _load_template(self, values):
-        values = dict(DEFAULT_TEMPLATE, **(values or {}))
-        self._loading = True
-        for field, value in (
-            (self.company_name, values.get("company_name", "")),
-            (self.legal_id, values.get("legal_id", "")),
-            (self.phone, values.get("phone", "")),
-            (self.seat_number_label, values.get("seat_number_label", "شماره صندلی / میز")),
-        ):
-            field.setText(str(value))
-        self.address.setPlainText(str(values.get("address", "")))
-        self.footer.setPlainText(str(values.get("footer", "")))
-        self.paper_size.setCurrentIndex(max(0, self.paper_size.findData(values.get("paper_size", "A4"))))
-        self.orientation.setCurrentIndex(max(0, self.orientation.findData(values.get("orientation", "portrait"))))
-        self.margin_mm.setValue(int(values.get("margin_mm", 12)))
-        self.show_border.setChecked(bool(values.get("show_border", True)))
-        self.font_family.setCurrentText(str(values.get("font_family", DEFAULT_TEMPLATE["font_family"])))
-        self.font_size.setValue(int(values.get("font_size", DEFAULT_TEMPLATE["font_size"])))
-        self.header_font_size.setValue(int(values.get("header_font_size", DEFAULT_TEMPLATE["header_font_size"])))
-        self.line_height.setValue(float(values.get("line_height", DEFAULT_TEMPLATE["line_height"])))
-        direction_index = self.text_direction.findData(values.get("text_direction", "rtl"))
-        self.text_direction.setCurrentIndex(max(0, direction_index))
-        self.accent_color_value = str(values.get("accent_color", "#3157A4"))
-        self.frame_border_color_value = str(values.get("frame_border_color", "#CBD5E1"))
-        self.accent_swatch.setStyleSheet("background:{};border:1px solid #9AA9BB;border-radius:4px;".format(self.accent_color_value))
-        self.border_swatch.setStyleSheet("background:{};border:1px solid #9AA9BB;border-radius:4px;".format(self.frame_border_color_value))
-        self.block_settings = dict(DEFAULT_TEMPLATE["block_settings"])
-        self.block_settings.update(values.get("block_settings") or {})
-        self.table_alignment = dict(DEFAULT_TEMPLATE["table_alignment"])
-        self.table_alignment.update(values.get("table_alignment") or {})
-        order = values.get("layout_order") or list(DEFAULT_TEMPLATE["layout_order"])
-        self.layout_order_list.clear()
-        seen = set()
-        for key in order + [key for key in BLOCK_LABELS if key not in order]:
-            if key not in BLOCK_LABELS or key in seen:
-                continue
-            seen.add(key)
-            item = QListWidgetItem(BLOCK_LABELS[key])
-            item.setData(Qt.ItemDataRole.UserRole, key)
-            self.layout_order_list.addItem(item)
-        for key, combo in self.table_alignment_inputs.items():
-            combo.setCurrentIndex(max(0, combo.findData(self.table_alignment.get(key, "right"))))
-        self.block_picker.setCurrentIndex(0)
-        self._loading = False
-        selected_key = self.block_picker.currentData() or "company"
-        self._load_block_settings(selected_key)
-        self.update_preview()
-
-    def _load_block_settings(self, key):
-        if self._loading or key not in BLOCK_LABELS:
-            return
-        settings = self.block_settings.get(key, {"column": "full", "align": "right"})
-        self.block_column.blockSignals(True)
-        self.block_align.blockSignals(True)
-        self.block_column.setCurrentIndex(max(0, self.block_column.findData(settings.get("column", "full"))))
-        self.block_align.setCurrentIndex(max(0, self.block_align.findData(settings.get("align", "right"))))
-        self.block_column.blockSignals(False)
-        self.block_align.blockSignals(False)
-
-    def _layout_block_selected(self, row):
-        if self._loading or row < 0 or row >= self.layout_order_list.count():
-            return
-        key = self.layout_order_list.item(row).data(Qt.ItemDataRole.UserRole)
-        idx = self.block_picker.findData(key)
-        if idx >= 0 and self.block_picker.currentIndex() != idx:
-            self.block_picker.blockSignals(True)
-            self.block_picker.setCurrentIndex(idx)
-            self.block_picker.blockSignals(False)
-        self._load_block_settings(key)
-
-    def _block_picker_changed(self, *_args):
-        if self._loading:
-            return
-        key = self.block_picker.currentData()
-        for row in range(self.layout_order_list.count()):
-            if self.layout_order_list.item(row).data(Qt.ItemDataRole.UserRole) == key:
-                self.layout_order_list.blockSignals(True)
-                self.layout_order_list.setCurrentRow(row)
-                self.layout_order_list.blockSignals(False)
-                break
-        self._load_block_settings(key)
-
-    def _block_setting_changed(self, *_args):
-        if self._loading:
-            return
-        key = self.block_picker.currentData()
-        if key:
-            self.block_settings[key] = {
-                "column": self.block_column.currentData(),
-                "align": self.block_align.currentData(),
-            }
-        self.update_preview()
-
-    def _table_alignment_changed(self, *_args):
-        if self._loading:
-            return
-        for key, combo in self.table_alignment_inputs.items():
-            self.table_alignment[key] = combo.currentData()
-        self.update_preview()
+    def _current_page_settings(self):
+        return {
+            "paper_size": self.paper_size.currentData() or "A4",
+            "orientation": self.orientation.currentData() or "portrait",
+            "margin_mm": self.margin_mm.value(),
+        }
 
     def _values(self):
-        order = []
-        for row in range(self.layout_order_list.count()):
-            order.append(self.layout_order_list.item(row).data(Qt.ItemDataRole.UserRole))
-        return {
-            "company_name": self.company_name.text().strip(),
+        result = {
+            "company_name": self.company_name.text().strip() or "نام کسب‌وکار",
             "legal_id": self.legal_id.text().strip(),
             "address": self.address.toPlainText().strip(),
             "phone": self.phone.text().strip(),
-            "seat_number_label": self.seat_number_label.text().strip() or "شماره صندلی / میز",
+            "seat_number_label": "شماره میز / صندلی",
             "footer": self.footer.toPlainText().strip(),
             "paper_size": self.paper_size.currentData() or "A4",
             "orientation": self.orientation.currentData() or "portrait",
             "margin_mm": self.margin_mm.value(),
-            "font_family": self.font_family.currentText().strip() or DEFAULT_TEMPLATE["font_family"],
-            "font_size": self.font_size.value(),
-            "header_font_size": self.header_font_size.value(),
-            "line_height": self.line_height.value(),
-            "text_direction": self.text_direction.currentData() or "rtl",
+            "font_family": self.font_family.currentText().strip() or "Vazirmatn",
+            "font_size": self.global_font_size.value(),
+            "header_font_size": self.global_font_size.value() + 6,
+            "line_height": 1.5,
+            "text_direction": "rtl",
             "accent_color": self.accent_color_value,
             "show_border": self.show_border.isChecked(),
             "frame_border_color": self.frame_border_color_value,
-            "layout_order": order,
-            "block_settings": dict(self.block_settings),
-            "table_alignment": dict(self.table_alignment),
+            "layout_order": list(DEFAULT_TEMPLATE["layout_order"]),
+            "block_settings": deepcopy(DEFAULT_TEMPLATE["block_settings"]),
+            "table_alignment": deepcopy(DEFAULT_TEMPLATE["table_alignment"]),
+            "elements": deepcopy(self._elements),
         }
+        return result
 
-    def update_preview(self, *_args):
-        if not hasattr(self, "preview"):
+    def _load_template(self, values):
+        values = dict(DEFAULT_TEMPLATE, **(values or {}))
+        self._loading = True
+        for control, key, fallback in (
+            (self.company_name, "company_name", "نام کسب‌وکار"),
+            (self.legal_id, "legal_id", ""),
+            (self.phone, "phone", ""),
+        ):
+            control.setText(str(values.get(key, fallback) or ""))
+        self.address.setPlainText(str(values.get("address", "") or ""))
+        self.footer.setPlainText(str(values.get("footer", "") or ""))
+        self.paper_size.setCurrentIndex(max(0, self.paper_size.findData(values.get("paper_size", "A4"))))
+        self.orientation.setCurrentIndex(max(0, self.orientation.findData(values.get("orientation", "portrait"))))
+        self.margin_mm.setValue(int(values.get("margin_mm", 12)))
+        self.show_border.setChecked(bool(values.get("show_border", True)))
+        self.accent_color_value = str(values.get("accent_color", "#3157A4"))
+        self.frame_border_color_value = str(values.get("frame_border_color", "#CBD5E1"))
+        self.font_family.setCurrentText(str(values.get("font_family", "Vazirmatn")))
+        self.global_font_size.setValue(int(values.get("font_size", 11)))
+        self.accent_swatch.setStyleSheet(
+            "background:{};border:1px solid #64748B;border-radius:4px;".format(self.accent_color_value)
+        )
+        self.border_swatch.setStyleSheet(
+            "background:{};border:1px solid #64748B;border-radius:4px;".format(self.frame_border_color_value)
+        )
+        raw_elements = values.get("elements")
+        self._elements = normalize_elements(raw_elements if raw_elements is not None else default_elements_for_paper(
+            values.get("paper_size", "A4"), values.get("orientation", "portrait"), values.get("margin_mm", 12)
+        ), values)
+        self._loading = False
+        self._last_page_size = page_dimensions(self._values())
+        self._rebuild_canvas()
+        self._refresh_element_list()
+        self._load_selected_properties(None)
+        self._update_page_info()
+        self._update_canvas_appearance()
+
+    def _rebuild_canvas(self):
+        self.scene.clear()
+        self._items_by_id.clear()
+        width, height = page_dimensions(self._values())
+        self.scene.setSceneRect(QRectF(0, 0, width, height))
+        page = QGraphicsRectItem(QRectF(0, 0, width, height))
+        page.setBrush(QBrush(QColor("#FFFFFF")))
+        page.setPen(QPen(QColor(self.frame_border_color_value), 0.6 if self.show_border.isChecked() else 0.25))
+        page.setZValue(-100)
+        page.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self.scene.addItem(page)
+        margin = float(self.margin_mm.value())
+        safe = QGraphicsRectItem(QRectF(margin, margin, max(1, width - 2 * margin), max(1, height - 2 * margin)))
+        safe.setPen(QPen(QColor("#CBD5E1"), 0.25, Qt.PenStyle.DashLine))
+        safe.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        safe.setZValue(-90)
+        safe.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self.scene.addItem(safe)
+        current_template = self._values()
+        for element in self._elements:
+            item = _DesignerElementItem(element, self, self.scene)
+            item.setPos(float(element["x_mm"]), float(element["y_mm"]))
+            self.scene.addItem(item)
+            self._items_by_id[element["id"]] = item
+        self.scene.update()
+        self._update_page_info()
+        self._fit_page()
+
+    def _fit_page(self):
+        if self.scene.sceneRect().isEmpty():
             return
-        sample = {
-            "id": "preview", "day_receipt_id": "۱۰۰۱", "created_at": "2026-10-28T12:00:00",
-            "payed": True, "total_price": 1285000,
-            "items": [
-                {"product_name": "نمونه کالا", "quantity": 2, "sell_price": 450000},
-                {"product_name": "کالای دوم", "quantity": 1, "sell_price": 385000},
-            ],
+        self.canvas.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit_page()
+
+    def _update_canvas_appearance(self, *_args):
+        self._update_page_info()
+        self.scene.update()
+        for item in self._items_by_id.values():
+            item.update()
+
+    def _update_page_info(self):
+        width, height = page_dimensions(self._values())
+        paper = self.paper_size.currentData() or "A4"
+        orientation = self.orientation.currentData() or "portrait"
+        orientation_text = "افقی" if orientation == "landscape" else "عمودی"
+        self.page_info.setText("{} · {} · {:.0f} × {:.0f} میلی‌متر".format(
+            paper, orientation_text, width, height
+        ))
+
+    def _page_style_changed(self, *_args):
+        if self._loading:
+            return
+        self._update_canvas_appearance()
+
+    def _page_dimensions_changed(self, *_args):
+        if self._loading:
+            return
+        old_width, old_height = self._last_page_size
+        new_width, new_height = page_dimensions(self._values())
+        scale_x = new_width / old_width if old_width else 1
+        scale_y = new_height / old_height if old_height else 1
+        self._loading = True
+        for element in self._elements:
+            element["x_mm"] = max(0, min(600, float(element["x_mm"]) * scale_x))
+            element["y_mm"] = max(0, min(600, float(element["y_mm"]) * scale_y))
+            element["w_mm"] = max(3, min(600, float(element["w_mm"]) * scale_x))
+            element["h_mm"] = max(3, min(600, float(element["h_mm"]) * scale_y))
+        self._loading = False
+        self._last_page_size = (new_width, new_height)
+        self._rebuild_canvas()
+        self._refresh_element_list()
+        self._load_selected_properties(self._selected_id)
+        self._update_canvas_appearance()
+
+    def _pick_color(self, target):
+        current = self.accent_color_value if target == "accent" else self.frame_border_color_value
+        chosen = QColorDialog.getColor(QColor(current), self, "انتخاب رنگ")
+        if not chosen.isValid():
+            return
+        if target == "accent":
+            self.accent_color_value = chosen.name().upper()
+            self.accent_swatch.setStyleSheet("background:{};border:1px solid #64748B;border-radius:4px;".format(self.accent_color_value))
+        else:
+            self.frame_border_color_value = chosen.name().upper()
+            self.border_swatch.setStyleSheet("background:{};border:1px solid #64748B;border-radius:4px;".format(self.frame_border_color_value))
+        self._update_canvas_appearance()
+
+    def _refresh_element_list(self):
+        chosen = self._selected_id
+        self.elements_list.blockSignals(True)
+        self.elements_list.clear()
+        for element in self._elements:
+            item = QListWidgetItem("{}  ·  {}".format(
+                ELEMENT_LABELS.get(element["type"], element["type"]),
+                element.get("label") or element["id"],
+            ))
+            item.setData(Qt.ItemDataRole.UserRole, element["id"])
+            self.elements_list.addItem(item)
+            if element["id"] == chosen:
+                self.elements_list.setCurrentItem(item)
+        self.elements_list.blockSignals(False)
+
+    def _element_by_id(self, element_id):
+        return next((item for item in self._elements if item["id"] == element_id), None)
+
+    def _list_selection_changed(self, row):
+        if self._loading or row < 0:
+            return
+        list_item = self.elements_list.item(row)
+        element_id = list_item.data(Qt.ItemDataRole.UserRole)
+        item = self._items_by_id.get(element_id)
+        if item is not None:
+            self.scene.blockSignals(True)
+            self.scene.clearSelection()
+            item.setSelected(True)
+            self.scene.blockSignals(False)
+            self._canvas_selection_changed()
+            self.canvas.centerOn(item)
+
+    def _canvas_selection_changed(self):
+        if self._loading:
+            return
+        selected = self.scene.selectedItems()
+        item = selected[0] if selected else None
+        element_id = item.element["id"] if isinstance(item, _DesignerElementItem) else None
+        self._load_selected_properties(element_id)
+        if element_id:
+            self.elements_list.blockSignals(True)
+            for row in range(self.elements_list.count()):
+                if self.elements_list.item(row).data(Qt.ItemDataRole.UserRole) == element_id:
+                    self.elements_list.setCurrentRow(row)
+                    break
+            self.elements_list.blockSignals(False)
+
+    def _load_selected_properties(self, element_id):
+        element = self._element_by_id(element_id) if element_id else None
+        self._loading = True
+        self._selected_id = element_id if element else None
+        self.selected_kind.setText(
+            ELEMENT_LABELS.get(element["type"], element["type"]) if element else
+            "برای ویرایش، یک المان روی برگه انتخاب کنید."
+        )
+        controls = (
+            self.element_label, self.x_mm, self.y_mm, self.w_mm, self.h_mm,
+            self.element_font_size, self.element_align, self.element_bold,
+            self.duplicate_button, self.delete_button,
+        )
+        for control in controls:
+            control.setEnabled(bool(element))
+        if element:
+            self.element_label.setText(element.get("text") if element["type"] == "text" else element.get("label", ""))
+            self.x_mm.setValue(round(element["x_mm"]))
+            self.y_mm.setValue(round(element["y_mm"]))
+            self.w_mm.setValue(round(element["w_mm"]))
+            self.h_mm.setValue(round(element["h_mm"]))
+            self.element_font_size.setValue(int(element.get("font_size", 9)))
+            idx = self.element_align.findData(element.get("align", "right"))
+            self.element_align.setCurrentIndex(max(0, idx))
+            self.element_bold.setChecked(bool(element.get("bold", False)))
+        else:
+            self.element_label.clear()
+        self._loading = False
+
+    def _selected_property_changed(self, *_args):
+        if self._loading or not self._selected_id:
+            return
+        element = self._element_by_id(self._selected_id)
+        item = self._items_by_id.get(self._selected_id)
+        if element is None or item is None:
+            return
+        if element["type"] == "text":
+            element["text"] = self.element_label.text()[:500]
+            element["label"] = element["text"][:80]
+        else:
+            element["label"] = self.element_label.text()[:80]
+        element["x_mm"] = float(self.x_mm.value())
+        element["y_mm"] = float(self.y_mm.value())
+        element["w_mm"] = float(self.w_mm.value())
+        element["h_mm"] = float(self.h_mm.value())
+        element["font_size"] = self.element_font_size.value()
+        element["align"] = self.element_align.currentData() or "right"
+        element["bold"] = self.element_bold.isChecked()
+        item.element = element
+        item.setRect(QRectF(0, 0, element["w_mm"], element["h_mm"]))
+        item.setPos(element["x_mm"], element["y_mm"])
+        item.update()
+        self._refresh_element_list()
+        self._update_canvas_appearance()
+
+    def _element_moved(self, item):
+        if self._loading or not isinstance(item, _DesignerElementItem):
+            return
+        element = self._element_by_id(item.element["id"])
+        if element is None:
+            return
+        element["x_mm"] = float(item.pos().x())
+        element["y_mm"] = float(item.pos().y())
+        item.element = element
+        if item.isSelected():
+            self._load_selected_properties(element["id"])
+        self._refresh_element_list()
+        self._update_page_info()
+
+    def _global_setting_changed(self, *_args):
+        if self._loading:
+            return
+        # Keep existing item objects so their drag positions and current selection do not jump.
+        config = self._values()
+        for item in self._items_by_id.values():
+            item.page = self
+            item.update()
+        self._update_page_info()
+
+    def add_element(self):
+        kind = self.new_kind.currentData() or "text"
+        used = {element["id"] for element in self._elements}
+        base = kind.replace("_", "-")
+        element_id = base
+        number = 2
+        while element_id in used:
+            element_id = "{}-{}".format(base, number)
+            number += 1
+        width, height = page_dimensions(self._values())
+        element = {
+            "id": element_id, "type": kind,
+            "label": ELEMENT_LABELS.get(kind, "متن جدید"),
+            "text": "متن جدید" if kind == "text" else "",
+            "x_mm": max(0, min(width - 20, width * 0.2)),
+            "y_mm": max(0, min(height - 12, height * 0.45)),
+            "w_mm": min(max(22, width * 0.6), width),
+            "h_mm": 12 if kind != "items_table" else min(70, height * 0.35),
+            "font_size": 9, "align": "right", "bold": kind in ("invoice_number", "totals"),
+            "visible": True,
         }
-        self.preview.setHtml(render_invoice_html(sample, self._values()))
+        element = normalize_elements([element], self._values())[0]
+        self._elements.append(element)
+        self._rebuild_canvas()
+        self._refresh_element_list()
+        item = self._items_by_id[element_id]
+        item.setSelected(True)
+        self._canvas_selection_changed()
+
+    def duplicate_element(self):
+        original = self._element_by_id(self._selected_id)
+        if original is None:
+            return
+        duplicate = deepcopy(original)
+        used = {element["id"] for element in self._elements}
+        index = 2
+        base = original["id"][:36]
+        duplicate["id"] = "{}-{}".format(base, index)
+        while duplicate["id"] in used:
+            index += 1
+            duplicate["id"] = "{}-{}".format(base, index)
+        duplicate["x_mm"] = min(page_dimensions(self._values())[0] - duplicate["w_mm"], duplicate["x_mm"] + 5)
+        duplicate["y_mm"] = min(page_dimensions(self._values())[1] - duplicate["h_mm"], duplicate["y_mm"] + 5)
+        self._elements.append(duplicate)
+        self._selected_id = duplicate["id"]
+        self._rebuild_canvas()
+        self._refresh_element_list()
+        self._load_selected_properties(duplicate["id"])
+        self._items_by_id[duplicate["id"]].setSelected(True)
+
+    def delete_element(self):
+        if not self._selected_id:
+            return
+        self._elements = [element for element in self._elements if element["id"] != self._selected_id]
+        self._selected_id = None
+        self._rebuild_canvas()
+        self._refresh_element_list()
+        self._load_selected_properties(None)
+
+    def reset_layout(self):
+        answer = QMessageBox.question(
+            self, "بازنشانی چیدمان",
+            "موقعیت و اندازهٔ المان‌ها به چیدمان پیش‌فرض همین کاغذ برگردد؟",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self._elements = normalize_elements(
+            default_elements_for_paper(
+                self.paper_size.currentData(), self.orientation.currentData(), self.margin_mm.value()
+            ),
+            self._values(),
+        )
+        self._selected_id = None
+        self._rebuild_canvas()
+        self._refresh_element_list()
+        self._load_selected_properties(None)
+
+    def apply_preset(self):
+        preset = self.preset.currentData()
+        values = deepcopy(DEFAULT_TEMPLATE)
+        if preset == "minimal":
+            values.update({"paper_size": "A4", "orientation": "portrait", "accent_color": "#475569", "show_border": False, "frame_border_color": "#CBD5E1"})
+        elif preset == "a5":
+            values.update({"paper_size": "A5", "orientation": "portrait", "accent_color": "#0F766E", "show_border": True})
+        elif preset == "thermal80":
+            values.update({"paper_size": "receipt80", "orientation": "portrait", "accent_color": "#111827", "show_border": True, "margin_mm": 4})
+        elif preset == "cafe":
+            values.update({"paper_size": "A5", "orientation": "portrait", "accent_color": "#7C3AED", "show_border": True})
+        else:
+            values.update({"paper_size": "A4", "orientation": "portrait", "accent_color": "#3157A4", "show_border": True})
+        values["elements"] = default_elements_for_paper(
+            values["paper_size"], values["orientation"], values["margin_mm"]
+        )
+        if preset == "cafe":
+            for element in values["elements"]:
+                if element["type"] == "seat_number":
+                    element["visible"] = True
+                    element["label"] = "شماره میز / صندلی"
+        self._load_template(values)
 
     def save_template(self):
         values = self._values()
@@ -460,10 +795,11 @@ class InvoiceTemplatesPage(QFrame):
         self.window.run_api(
             lambda: self.window.api.save_invoice_template(**values),
             self._saved,
+            failure=lambda error: self.window.show_error(error),
             busy=self.save_button,
         )
 
     def _saved(self, values):
         self._load_template(values)
-        self.window.set_status("قالب فاکتور روی سرور ذخیره شد.")
-        QMessageBox.information(self, "ذخیره شد", "چیدمان جدید در پیش‌نمایش، PDF و چاپ فروش استفاده می‌شود.")
+        self.window.set_status("قالب فاکتور و موقعیت المان‌ها روی سرور ذخیره شد.")
+        QMessageBox.information(self, "ذخیره شد", "چیدمان جدید در پیش‌نمایش، PDF و چاپ استفاده می‌شود.")
