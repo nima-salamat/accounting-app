@@ -482,6 +482,8 @@ class AccountingMainWindow(QMainWindow):
         self.run_api(api.logout,lambda _result:self.force_logout(),failure=lambda _err:self.force_logout())
 
     def force_logout(self):
+        if hasattr(self, "auth_page"):
+            self.auth_page.clear_remembered_session()
         if self.api is not None:self.api.clear_session()
         self.current_user=None
         if hasattr(self,"auth_page"):
