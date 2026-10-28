@@ -209,36 +209,43 @@ class ReportMaintenanceMixin:
             s = re.sub(r'/+', '/', s).strip('/')
             return s.replace('/', '-')
 
-        def query_func():
-            raw_from = normalize_jalali_date(dt_from_date.text())
-            raw_to   = normalize_jalali_date(dt_to_date.text())
+        def query_func(snapshot):
+            raw_from = normalize_jalali_date(snapshot["from_date"])
+            raw_to = normalize_jalali_date(snapshot["to_date"])
+            if not raw_from or not raw_to:
+                raise ValueError("تاریخ شروع و پایان را وارد کنید.")
 
-            year, month, day = map(int, raw_to.split('-'))
+            from_year, from_month, from_day = map(int, raw_from.split("-"))
+            to_year, to_month, to_day = map(int, raw_to.split("-"))
+            start_jalali = jdatetime.date(from_year, from_month, from_day)
+            end_jalali = jdatetime.date(to_year, to_month, to_day)
+            if start_jalali > end_jalali:
+                raise ValueError("تاریخ شروع نباید پس از تاریخ پایان باشد.")
 
-            j_date = jdatetime.date(year, month, day)
-            g_today = j_date.togregorian()
+            start = from_jalali("{} 00:00:00".format(raw_from), is_datetime=True)
+            end_gregorian = end_jalali.togregorian() + timedelta(days=1)
+            end_jalali_exclusive = jdatetime.date.fromgregorian(date=end_gregorian).strftime("%Y-%m-%d")
+            end = from_jalali("{} 00:00:00".format(end_jalali_exclusive), is_datetime=True)
 
-            g_tomorrow = g_today + timedelta(days=1)
-
-            j_tomorrow = jdatetime.date.fromgregorian(date=g_tomorrow).strftime('%Y-%m-%d')
-            start = from_jalali(f"{raw_from} 00:00:00", is_datetime=True)
-            end   = from_jalali(f"{j_tomorrow} 00:00:00", is_datetime=True)
-
-            Model = CheckIn if rb_in.isChecked() else CheckOut
-
+            Model = CheckIn if snapshot["incoming"] else CheckOut
             conds = []
-            if cb_payed.isChecked(): conds.append(Model.payed == True)
-            if cb_unpayed.isChecked(): conds.append(Model.payed == False)
-            condition = conds[0] if conds else SQL('1=1')
-            for c in conds[1:]: condition |= c
+            if snapshot["payed"]:
+                conds.append(Model.payed == True)
+            if snapshot["unpayed"]:
+                conds.append(Model.payed == False)
+            if not conds:
+                raise ValueError("حداقل یکی از وضعیت‌های چک را انتخاب کنید.")
+            condition = conds[0]
+            for extra_condition in conds[1:]:
+                condition |= extra_condition
 
             query = Model.select(Model.name, Model.check_id, Model.price, Model.date, Model.payed).where(condition)
 
             rows = []
             for r in query:
                 raw_date = normalize_jalali_date(r.date)
-                dt = from_jalali(f"{raw_date} 00:00:00", is_datetime=True)
-                if start <= dt <= end:
+                dt = from_jalali("{} 00:00:00".format(raw_date), is_datetime=True)
+                if start <= dt < end:
                     rows.append({
                         "name": r.name,
                         "check_id": r.check_id,
@@ -262,7 +269,14 @@ class ReportMaintenanceMixin:
             table.resizeColumnsToContents()
 
         def run():
-            self.worker = QueryWorker(query_func)
+            snapshot = {
+                "from_date": dt_from_date.text(),
+                "to_date": dt_to_date.text(),
+                "incoming": rb_in.isChecked(),
+                "payed": cb_payed.isChecked(),
+                "unpayed": cb_unpayed.isChecked(),
+            }
+            self.worker = QueryWorker(lambda: query_func(snapshot))
             self.worker.dataReady.connect(on_data_ready)
             self.worker.error.connect(
                 lambda message: QMessageBox.warning(self, "خطا در گزارش چک", message)
