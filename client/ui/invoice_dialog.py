@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout, QMessageBox, QPushButton, QVBoxLayout,
 )
 
-from client.ui.invoice_render import draw_invoice_page, page_dimensions
+from client.ui.invoice_render import draw_invoice_page, page_dimensions, prepare_invoice_pages
 from client.ui.device_settings import device_settings
 
 
@@ -24,10 +24,11 @@ def configure_invoice_printer(printer, template=None):
     if paper_key in standard:
         page_size = QPageSize(standard[paper_key])
     else:
-        width, height = (80, 220) if paper_key == "receipt80" else (58, 180)
+        width, height = page_dimensions(template)
         page_size = QPageSize(
             QSizeF(width, height), QPageSize.Unit.Millimeter,
-            "Receipt {} mm".format(width), QPageSize.SizeMatchPolicy.ExactMatch,
+            "Receipt {} x {} mm".format(round(width), round(height)),
+            QPageSize.SizeMatchPolicy.ExactMatch,
         )
     orientation = (
         QPageLayout.Orientation.Landscape
@@ -65,7 +66,11 @@ class InvoiceDialog(QDialog):
     def __init__(self, receipt, template=None, parent=None):
         super().__init__(parent)
         self.receipt = receipt or {}
-        self.template = dict(template or {})
+        self.pages = prepare_invoice_pages(self.receipt, template)
+        if not self.pages:
+            self.pages = [(self.receipt, dict(template or {}))]
+        self.current_page_index = 0
+        self.template = dict(self.pages[0][1])
         self.setWindowTitle("پیش‌نمایش فاکتور · چاپ و PDF")
         self.resize(1000, 820)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -74,7 +79,8 @@ class InvoiceDialog(QDialog):
         layout.setSpacing(10)
 
         self.scene = QGraphicsScene(self)
-        self.page_item = _InvoicePageItem(self.receipt, self.template)
+        page_receipt, page_template = self.pages[0]
+        self.page_item = _InvoicePageItem(page_receipt, page_template)
         self.scene.addItem(self.page_item)
         self.scene.setSceneRect(self.page_item.boundingRect())
         self.preview = QGraphicsView(self.scene, self)
@@ -89,24 +95,51 @@ class InvoiceDialog(QDialog):
         self.page_info.setEnabled(False)
         layout.addWidget(self.page_info)
         actions = QHBoxLayout()
+        self.previous_page_button = QPushButton("صفحهٔ قبل")
+        self.next_page_button = QPushButton("صفحهٔ بعد")
+        self.previous_page_button.clicked.connect(lambda: self._show_page(self.current_page_index - 1))
+        self.next_page_button.clicked.connect(lambda: self._show_page(self.current_page_index + 1))
         self.pdf_button = QPushButton("ذخیره به PDF")
         self.print_button = QPushButton("چاپ فاکتور")
         self.close_button = QPushButton("بستن")
         self.close_button.clicked.connect(self.accept)
         self.pdf_button.clicked.connect(self.save_pdf)
         self.print_button.clicked.connect(self.print_invoice)
+        actions.addWidget(self.previous_page_button)
+        actions.addWidget(self.next_page_button)
+        actions.addStretch(1)
         actions.addWidget(self.pdf_button)
         actions.addWidget(self.print_button)
-        actions.addStretch(1)
         actions.addWidget(self.close_button)
         layout.addLayout(actions)
-        self._fit_page()
+        self._show_page(0)
 
     def _page_info_text(self):
-        width, height = page_dimensions(self.template)
-        paper = self.template.get("paper_size", "A4")
-        orientation = "افقی" if self.template.get("orientation") == "landscape" else "عمودی"
-        return "{} · {} · {:.0f} × {:.0f} mm".format(paper, orientation, width, height)
+        page_template = self.pages[self.current_page_index][1]
+        width, height = page_dimensions(page_template)
+        paper = page_template.get("paper_size", "A4")
+        if paper in ("receipt", "receipt80", "receipt58"):
+            info = "رول پیوسته · {:.0f} × {:.0f} میلی‌متر".format(width, height)
+        else:
+            orientation = "افقی" if page_template.get("orientation") == "landscape" else "عمودی"
+            info = "{} · {} · {:.0f} × {:.0f} میلی‌متر".format(paper, orientation, width, height)
+        if len(self.pages) > 1:
+            info += " · صفحهٔ {} از {}".format(self.current_page_index + 1, len(self.pages))
+        return info
+
+    def _show_page(self, index):
+        self.current_page_index = max(0, min(len(self.pages) - 1, int(index)))
+        page_receipt, page_template = self.pages[self.current_page_index]
+        old_item = self.page_item
+        self.scene.removeItem(old_item)
+        self.page_item = _InvoicePageItem(page_receipt, page_template)
+        self.scene.addItem(self.page_item)
+        self.scene.setSceneRect(self.page_item.boundingRect())
+        self.template = dict(page_template)
+        self.page_info.setText(self._page_info_text())
+        self.previous_page_button.setEnabled(self.current_page_index > 0)
+        self.next_page_button.setEnabled(self.current_page_index < len(self.pages) - 1)
+        self._fit_page()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -117,15 +150,24 @@ class InvoiceDialog(QDialog):
             self.preview.fitInView(self.page_item, Qt.AspectRatioMode.KeepAspectRatio)
 
     def _paint_invoice(self, printer):
-        configure_invoice_printer(printer, self.template)
+        pages = prepare_invoice_pages(self.receipt, self.template)
+        if not pages:
+            pages = [(self.receipt, self.template)]
+        configure_invoice_printer(printer, pages[0][1])
         painter = QPainter()
         if not painter.begin(printer):
             raise RuntimeError("شروع چاپگر یا خروجی PDF ناموفق بود.")
         try:
             scale = float(printer.resolution()) / 25.4
             painter.scale(scale, scale)
-            width, height = page_dimensions(self.template)
-            draw_invoice_page(painter, QRectF(0, 0, width, height), self.receipt, self.template)
+            for page_index, (page_receipt, page_template) in enumerate(pages):
+                if page_index:
+                    if not printer.newPage():
+                        raise RuntimeError("ایجاد صفحهٔ بعدی در چاپگر یا PDF ناموفق بود.")
+                    painter.resetTransform()
+                    painter.scale(scale, scale)
+                width, height = page_dimensions(page_template)
+                draw_invoice_page(painter, QRectF(0, 0, width, height), page_receipt, page_template)
         finally:
             painter.end()
 
@@ -158,7 +200,7 @@ class InvoiceDialog(QDialog):
             if not printer.isValid():
                 QMessageBox.warning(self, "چاپگر در دسترس نیست", "چاپگر انتخاب‌شده در تنظیمات صندوق در دسترس نیست.")
                 return
-        configure_invoice_printer(printer, self.template)
+        configure_invoice_printer(printer, self.pages[0][1])
         dialog = QPrintDialog(printer, self)
         dialog.setWindowTitle("چاپ فاکتور")
         if dialog.exec() != QPrintDialog.DialogCode.Accepted:
@@ -181,15 +223,28 @@ def auto_print_invoice(receipt, template=None, parent=None):
         if not printer.isValid():
             QMessageBox.warning(parent, "چاپگر در دسترس نیست", "چاپ خودکار فعال است، اما چاپگر تنظیم‌شده پیدا نشد.")
             return False
-    configure_invoice_printer(printer, template)
+    pages = prepare_invoice_pages(receipt or {}, template)
+    if not pages:
+        pages = [(receipt or {}, dict(template or {}))]
+    configure_invoice_printer(printer, pages[0][1])
     painter = QPainter()
     if not painter.begin(printer):
         QMessageBox.warning(parent, "خطا در چاپ", "چاپگر قابل شروع نیست.")
         return False
     try:
-        painter.scale(float(printer.resolution()) / 25.4, float(printer.resolution()) / 25.4)
-        width, height = page_dimensions(template)
-        draw_invoice_page(painter, QRectF(0, 0, width, height), receipt, template)
+        scale = float(printer.resolution()) / 25.4
+        painter.scale(scale, scale)
+        for page_index, (page_receipt, page_template) in enumerate(pages):
+            if page_index:
+                if not printer.newPage():
+                    raise RuntimeError("ایجاد صفحهٔ بعدی در چاپگر ناموفق بود.")
+                painter.resetTransform()
+                painter.scale(scale, scale)
+            width, height = page_dimensions(page_template)
+            draw_invoice_page(painter, QRectF(0, 0, width, height), page_receipt, page_template)
+    except Exception as exc:
+        QMessageBox.warning(parent, "خطا در چاپ", str(exc))
+        return False
     finally:
         painter.end()
     return True
