@@ -120,10 +120,10 @@ class AccountingMainWindow(QMainWindow):
         self.sidebar.hide()
         main_area=QWidget()
         main_layout=QVBoxLayout(main_area);main_layout.setContentsMargins(0,0,0,0);main_layout.setSpacing(10)
+        self.topbar=self._build_topbar()
         self.workbar=self._build_workbar()
         main_layout.addWidget(self.workbar)
-        self.topbar=self._build_topbar()
-        main_layout.addWidget(self.topbar)
+        self.topbar.hide()
         self.page_stack=QStackedWidget()
         main_layout.addWidget(self.page_stack,1)
         self.status_bar_frame=QFrame();self.status_bar_frame.setObjectName("Card")
@@ -224,8 +224,8 @@ class AccountingMainWindow(QMainWindow):
         frame.setObjectName("Workbar")
         frame.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         root = QVBoxLayout(frame)
-        root.setContentsMargins(10, 7, 10, 7)
-        root.setSpacing(6)
+        root.setContentsMargins(8, 4, 8, 4)
+        root.setSpacing(3)
 
         primary_row = QFrame(frame)
         primary_row.setObjectName("WorkbarPrimaryRow")
@@ -248,13 +248,31 @@ class AccountingMainWindow(QMainWindow):
             button.setCheckable(True)
             button.setProperty("active", False)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setMinimumHeight(38)
+            button.setMinimumHeight(32)
             button.clicked.connect(
                 lambda _checked=False, target=group_id: self._toggle_workbar_group(target)
             )
             self._workbar_group_buttons[group_id] = button
             primary_layout.addWidget(button)
         primary_layout.addStretch(1)
+        # Merge global actions into the navigation row instead of drawing a second, bulky header.
+        topbar_layout = self.topbar.layout()
+        for widget in (self.connection_badge, self.theme_button, self.search_button, self.logout_button):
+            topbar_layout.removeWidget(widget)
+            widget.setParent(primary_row)
+            widget.setObjectName("CompactActionButton")
+            widget.setMinimumHeight(28)
+            widget.setMaximumHeight(34)
+            widget.setToolTip({
+                self.connection_badge: "وضعیت اتصال به API",
+                self.theme_button: "تغییر تم روشن / تاریک",
+                self.search_button: "جست‌وجوی سریع (Ctrl+K)",
+                self.logout_button: "خروج از حساب",
+            }[widget])
+            primary_layout.addWidget(widget)
+        self.theme_button.setText("☾" if self.mode == "light" else "☀")
+        self.search_button.setText("⌕")
+        self.connection_badge.setText("● API")
         root.addWidget(primary_row)
 
         self.workbar_submenu_frame = QFrame(frame)
@@ -616,7 +634,8 @@ class AccountingMainWindow(QMainWindow):
     def _apply_theme(self):
         self.setStyleSheet(stylesheet(self.mode))
         if hasattr(self,"theme_button"):
-            self.theme_button.setText("☀ تم روشن" if self.mode=="dark" else "☾ تم تاریک")
+            self.theme_button.setText("☀" if self.mode=="dark" else "☾")
+            self.theme_button.setToolTip("تغییر تم روشن / تاریک")
 
     def connect_to_api(self,url):
         try:
