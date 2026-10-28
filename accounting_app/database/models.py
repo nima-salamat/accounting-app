@@ -120,6 +120,7 @@ class Receipt(BaseModel):
     total_price = FloatField(null=False, default=0)
     user = ForeignKeyField(User, backref="receipts", on_delete="CASCADE")
     day_receipt_id = IntegerField(null=False)
+    seat_number = CharField(max_length=32, null=True)
 
     def __str__(self):
         return str(self.id)
