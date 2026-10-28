@@ -405,7 +405,10 @@ class PurchaseInvoicesTab(QFrame):
         self.total = 0
         self.setObjectName("Card")
         root = QVBoxLayout(self)
-        header = QHBoxLayout()
+        header = QVBoxLayout()
+        header.setSpacing(8)
+        filter_row = QHBoxLayout()
+        action_row = QHBoxLayout()
         self.search = QLineEdit()
         self.search.setPlaceholderText("شماره فاکتور یا نام تأمین‌کننده…")
         self.search.returnPressed.connect(self.refresh)
@@ -426,8 +429,14 @@ class PurchaseInvoicesTab(QFrame):
         self.print_button.clicked.connect(self.print_document)
         self.payment_button = QPushButton("ثبت پرداخت")
         self.payment_button.clicked.connect(self.record_payment)
-        for widget in (self.search, self.status_filter, self.refresh_button, self.create_button, self.detail_button, self.print_button, self.payment_button):
-            header.addWidget(widget)
+        filter_row.addWidget(self.search, 1)
+        filter_row.addWidget(self.status_filter)
+        filter_row.addWidget(self.refresh_button)
+        action_row.addStretch(1)
+        for widget in (self.create_button, self.detail_button, self.print_button, self.payment_button):
+            action_row.addWidget(widget)
+        header.addLayout(filter_row)
+        header.addLayout(action_row)
         root.addLayout(header)
         self.table = _table(self, ["شناسه", "شماره فاکتور", "تأمین‌کننده", "تاریخ", "جمع", "پرداخت‌شده", "مانده", "وضعیت"], True)
         root.addWidget(self.table, 1)
