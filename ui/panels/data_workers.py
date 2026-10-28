@@ -19,12 +19,14 @@ from accounting_app.services.file_safety import is_managed_image_path
 
 
 class DataLoader(QObject):
-    data_loaded = Signal(list, int)  # Emits data and total_rows
-    error = Signal(str)
+    data_loaded = Signal(list, int)  # Backwards-compatible result signal
+    error = Signal(str)  # Backwards-compatible error signal
+    result_ready = Signal(list, int, int, int)
+    failure = Signal(str, int)
     finished = Signal()
     page_changed = Signal(int)
 
-    def __init__(self, model, search_text, sort_fields, page_size, current_page, cb_enable_date, dt_from_date, dt_from_time, dt_to_date, dt_to_time, lbl2fld, searchable, parent=None):
+    def __init__(self, model, search_text, sort_fields, page_size, current_page, cb_enable_date, dt_from_date, dt_from_time, dt_to_date, dt_to_time, lbl2fld, searchable, parent=None, request_id=0):
         super().__init__(parent)
         self.model = model
         self.search_text = search_text
@@ -38,6 +40,7 @@ class DataLoader(QObject):
         self.dt_to_time = dt_to_time
         self.lbl2fld = lbl2fld
         self._searchable = searchable
+        self.request_id = request_id
 
     @Slot()
     def load_data(self):
@@ -97,8 +100,10 @@ class DataLoader(QObject):
                 current_page = min(current_page, max_page)
                 self.page_changed.emit(current_page)
                 data = list(qs.limit(page_size).offset((current_page - 1) * page_size))
+            self.result_ready.emit(data, total_rows, current_page, self.request_id)
             self.data_loaded.emit(data, total_rows)
         except Exception as exc:
+            self.failure.emit(str(exc), self.request_id)
             self.error.emit(str(exc))
         finally:
             self.finished.emit()
