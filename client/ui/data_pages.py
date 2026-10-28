@@ -11,7 +11,7 @@ from client.ui.invoice_dialog import InvoiceDialog
 
 
 def display_value(key, value):
-    if key in ("payed", "is_admin", "is_active", "requires_session_activation", "custom_product"):
+    if key in ("payed", "is_admin", "is_active", "requires_session_activation", "custom_product", "track_stock"):
         return ("فعال" if value else "غیرفعال") if key == "is_active" else ("بله" if value else "خیر")
     if key == "status":
         return {"pending": "در انتظار تأیید", "active": "فعال",
@@ -249,11 +249,14 @@ class ProductsPage(ApiTablePage):
             {"key": "sell_price", "label": "قیمت فروش", "kind": "number", "required": True},
             {"key": "category_id", "label": "شناسهٔ دسته‌بندی (اختیاری)", "nullable": True},
             {"key": "custom_product", "label": "محصول سفارشی", "kind": "bool"},
+            {"key": "track_stock", "label": "رهگیری موجودی", "kind": "bool"},
+            {"key": "reorder_level", "label": "حد سفارش", "kind": "number", "default": 0, "required": True},
             {"key": "image_path", "label": "مسیر تصویر در سرور", "nullable": True},
         ]
         super().__init__(window, "محصولات", "نام، قیمت‌ها و دسته‌بندی کالاها.",
             [("id","شناسه"),("name","نام محصول"),("buy_price","قیمت خرید"),
-             ("sell_price","قیمت فروش"),("category_id","دسته‌بندی")],
+             ("sell_price","قیمت فروش"),("track_stock","رهگیری"),("stock_quantity","موجودی"),
+             ("reorder_level","حد سفارش"),("category_id","دسته‌بندی")],
             lambda api,q: api.list_products(q=q or None,page_size=200), fields,
             lambda api,p: api.create_product(**p),
             lambda api,rid,p: api.update_product(rid,**p),
