@@ -1,8 +1,20 @@
 """Schema bootstrap kept separate from model declarations."""
 from accounting_app.database.connection import db
-from accounting_app.database.models import Category, CheckIn, CheckOut, Product, Receipt, ReceiptProduct, User, Warehouse
+from accounting_app.database.extension_models import (
+    AppSetting,
+    CustomFieldDefinition,
+    CustomFieldValue,
+    CustomModelDefinition,
+    CustomRecord,
+)
+from accounting_app.database.models import (
+    Category, CheckIn, CheckOut, Product, Receipt, ReceiptProduct, User, Warehouse,
+)
 
-TABLES = (User, Category, Product, Receipt, ReceiptProduct, Warehouse, CheckIn, CheckOut)
+TABLES = (
+    User, Category, Product, Receipt, ReceiptProduct, Warehouse, CheckIn, CheckOut,
+    AppSetting, CustomModelDefinition, CustomFieldDefinition, CustomFieldValue, CustomRecord,
+)
 
 
 def create_tables(database=None):
