@@ -12,14 +12,16 @@ class ManagedFilePathTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "images").mkdir()
-            (root / "images" / "owned.png").write_bytes(b"image")
+            (root / "images" / "123e4567-e89b-12d3-a456-426614174000.png").write_bytes(b"image")
+            (root / "images" / "personal.png").write_bytes(b"keep")
             (root / "important.txt").write_text("keep", encoding="utf-8")
             try:
                 os.chdir(root)
-                self.assertTrue(is_managed_image_path("images/owned.png"))
+                self.assertTrue(is_managed_image_path("images/123e4567-e89b-12d3-a456-426614174000.png"))
                 self.assertFalse(is_managed_image_path("important.txt"))
                 self.assertFalse(is_managed_image_path("../important.txt"))
                 self.assertFalse(is_managed_image_path("images"))
+                self.assertFalse(is_managed_image_path("images/personal.png"))
                 self.assertFalse(is_managed_image_path(""))
             finally:
                 os.chdir(original_cwd)
