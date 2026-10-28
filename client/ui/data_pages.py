@@ -27,9 +27,14 @@ def display_value(key, value):
 class ApiTablePage(QFrame):
     """Reusable record table. Data access always crosses AccountingApiClient."""
     def __init__(self, window, title, subtitle, columns, load_fn, fields=(),
-                 create_fn=None, update_fn=None, delete_fn=None, searchable=True):
+                 create_fn=None, update_fn=None, delete_fn=None, searchable=True,
+                 schema_entity=None):
         super().__init__()
-        self.window, self.title, self.columns = window, title, columns
+        self.window, self.title = window, title
+        self.base_columns = list(columns)
+        self.columns = list(columns)
+        self.schema_entity = schema_entity
+        self.custom_fields = []
         self.load_fn, self.fields = load_fn, list(fields)
         self.create_fn, self.update_fn, self.delete_fn = create_fn, update_fn, delete_fn
         self.searchable = searchable
@@ -114,10 +119,42 @@ class ApiTablePage(QFrame):
             return
         self.current_page = 1
         query = self.search_input.text().strip() if self.searchable else ""
-        self.window.run_api(lambda: self.load_fn(self.window.api, query), self.populate, busy=self.refresh_button)
+        self.window.run_api(
+            lambda: self._load_table_payload(self.window.api, query),
+            self.populate,
+            busy=self.refresh_button,
+        )
 
-    def populate(self, records):
-        self.records = list(records or [])
+    def _load_table_payload(self, api, query):
+        records = self.load_fn(api, query)
+        payload = {"records": list(records or []), "custom": {"fields": [], "values": {}}}
+        if self.schema_entity and payload["records"] and can_access(
+            self.window.current_user, "schemas", "read"
+        ):
+            extension = api.get_custom_table_data(
+                self.schema_entity, [record.get("id") for record in payload["records"]]
+            )
+            payload["custom"] = extension or payload["custom"]
+        return payload
+
+    def populate(self, payload):
+        if isinstance(payload, dict) and "records" in payload:
+            self.records = list(payload.get("records") or [])
+            custom = payload.get("custom") or {}
+        else:
+            self.records = list(payload or [])
+            custom = {}
+        self.custom_fields = list(custom.get("fields") or [])
+        values_by_id = custom.get("values") or {}
+        self.columns = list(self.base_columns) + [
+            ("custom:" + field["key"], field["label"])
+            for field in self.custom_fields
+        ]
+        for record in self.records:
+            record["custom_fields"] = dict(values_by_id.get(str(record.get("id")), {}))
+        self.table.setColumnCount(len(self.columns))
+        self.table.setHorizontalHeaderLabels([label for _key, label in self.columns])
+        self.table.setColumnHidden(0, True)
         self.current_page = 1
         self._render_page()
 
@@ -131,7 +168,11 @@ class ApiTablePage(QFrame):
         for row, record in enumerate(visible):
             self.table.insertRow(row)
             for col, (key, _label) in enumerate(self.columns):
-                item = QTableWidgetItem(display_value(key, record.get(key)))
+                if key.startswith("custom:"):
+                    value = (record.get("custom_fields") or {}).get(key.split(":", 1)[1])
+                else:
+                    value = record.get(key)
+                item = QTableWidgetItem(display_value(key, value))
                 if col == 0:
                     item.setData(Qt.ItemDataRole.UserRole, record)
                 self.table.setItem(row, col, item)
@@ -234,8 +275,16 @@ class ApiTablePage(QFrame):
             return
         try:
             with open(path, "w", newline="", encoding="utf-8-sig") as stream:
-                writer = csv.DictWriter(stream, fieldnames=[key for key, _ in self.columns], extrasaction="ignore")
-                writer.writeheader(); writer.writerows(self.records)
+                fieldnames = [key for key, _ in self.columns]
+                writer = csv.DictWriter(stream, fieldnames=fieldnames, extrasaction="ignore")
+                writer.writeheader()
+                for record in self.records:
+                    row = dict(record)
+                    custom_values = row.get("custom_fields") or {}
+                    for key, _label in self.columns:
+                        if key.startswith("custom:"):
+                            row[key] = custom_values.get(key.split(":", 1)[1])
+                    writer.writerow(row)
         except OSError as exc:
             self.window.show_error(exc); return
         self.window.set_status("خروجی ذخیره شد: " + path)
