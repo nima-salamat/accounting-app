@@ -337,6 +337,50 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(protected_delete.status_code, 409, protected_delete.text)
 
+    def test_custom_fields_are_returned_as_table_columns_in_batches(self):
+        admin_headers = self.setup_admin()
+        product_response = self.client.post(
+            "/api/v1/products",
+            headers=admin_headers,
+            json={"name": "کالای دارای بارکد", "buy_price": 20, "sell_price": 30},
+        )
+        self.assertEqual(product_response.status_code, 201, product_response.text)
+        product = product_response.json()
+
+        definition = self.client.post(
+            "/api/v1/schemas/fields",
+            headers=admin_headers,
+            json={
+                "rows": [{
+                    "model_key": "products",
+                    "model_label": "محصولات",
+                    "field_key": "barcode",
+                    "field_label": "بارکد",
+                    "field_type": "text",
+                    "is_required": False,
+                }]
+            },
+        )
+        self.assertEqual(definition.status_code, 200, definition.text)
+        stored = self.client.patch(
+            "/api/v1/schemas/values/products/{}".format(product["id"]),
+            headers=admin_headers,
+            json={"values": {"barcode": "ABC-123"}},
+        )
+        self.assertEqual(stored.status_code, 200, stored.text)
+
+        table = self.client.get(
+            "/api/v1/schemas/table/products",
+            params=[("record_ids", product["id"])],
+            headers=admin_headers,
+        )
+        self.assertEqual(table.status_code, 200, table.text)
+        self.assertEqual(
+            next(field["label"] for field in table.json()["fields"] if field["key"] == "barcode"),
+            "بارکد",
+        )
+        self.assertEqual(table.json()["values"][product["id"]]["barcode"], "ABC-123")
+
     def test_resource_permissions_are_enforced_per_operation(self):
         admin_headers = self.setup_admin()
         created = self.client.post(
