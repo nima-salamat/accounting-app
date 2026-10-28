@@ -387,6 +387,12 @@ class ReceiptsPage(QFrame):
         super().__init__()
         self.window, self.records = window, []
         self.current_page, self.page_size = 1, 25
+        self.base_columns = [
+            ("id", "شناسه"), ("day_receipt_id", "شماره روزانه"),
+            ("total_price", "مبلغ کل"), ("payed", "پرداخت"), ("created_at", "زمان"),
+        ]
+        self.columns = list(self.base_columns)
+        self.custom_fields = []
         self.setObjectName("Card")
         layout = QVBoxLayout(self); layout.setContentsMargins(18,18,18,18); layout.setSpacing(12)
         header = QHBoxLayout(); text = QVBoxLayout()
@@ -402,8 +408,8 @@ class ReceiptsPage(QFrame):
         self.export_button = QPushButton("خروجی CSV"); self.export_button.clicked.connect(self.export_csv)
         for button in (self.refresh_button,self.detail_button,self.invoice_button,self.delete_button,self.export_button): header.addWidget(button)
         layout.addLayout(header)
-        self.table = QTableWidget(0,5)
-        self.table.setHorizontalHeaderLabels(["شناسه","شماره روزانه","مبلغ کل","پرداخت","زمان"])
+        self.table = QTableWidget(0,len(self.columns))
+        self.table.setHorizontalHeaderLabels([label for _key, label in self.columns])
         self.table.setColumnHidden(0,True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -431,10 +437,36 @@ class ReceiptsPage(QFrame):
         layout.addLayout(pager)
 
     def refresh(self):
-        if self.window.api: self.window.run_api(lambda: self.window.api.list_receipts(page_size=100), self.populate)
+        if self.window.api:
+            self.window.run_api(self._load_receipts_payload, self.populate, busy=self.refresh_button)
 
-    def populate(self, records):
-        self.records = list(records or [])
+    def _load_receipts_payload(self):
+        records = self.window.api.list_receipts(page_size=200)
+        custom = {"fields": [], "values": {}}
+        if records and can_access(self.window.current_user, "schemas", "read"):
+            custom = self.window.api.get_custom_table_data(
+                "receipts", [record.get("id") for record in records]
+            )
+        return {"records": records, "custom": custom or custom}
+
+    def populate(self, payload):
+        if isinstance(payload, dict) and "records" in payload:
+            self.records = list(payload.get("records") or [])
+            custom = payload.get("custom") or {}
+        else:
+            self.records = list(payload or [])
+            custom = {}
+        self.custom_fields = list(custom.get("fields") or [])
+        values_by_id = custom.get("values") or {}
+        self.columns = list(self.base_columns) + [
+            ("custom:" + field["key"], field["label"])
+            for field in self.custom_fields
+        ]
+        for record in self.records:
+            record["custom_fields"] = dict(values_by_id.get(str(record.get("id")), {}))
+        self.table.setColumnCount(len(self.columns))
+        self.table.setHorizontalHeaderLabels([label for _key, label in self.columns])
+        self.table.setColumnHidden(0, True)
         self.current_page = 1
         self._render_page()
 
@@ -447,12 +479,19 @@ class ReceiptsPage(QFrame):
         self.table.setRowCount(0)
         for row, record in enumerate(visible):
             self.table.insertRow(row)
-            values=[record["id"],record["day_receipt_id"],display_value("total_price",record["total_price"]),
-                    "پرداخت‌شده" if record["payed"] else "پرداخت‌نشده",record["created_at"]]
-            for col,value in enumerate(values):
-                item=QTableWidgetItem(str(value))
-                if col==0:item.setData(Qt.ItemDataRole.UserRole,record)
-                self.table.setItem(row,col,item)
+            for col, (key, _label) in enumerate(self.columns):
+                if key.startswith("custom:"):
+                    value = (record.get("custom_fields") or {}).get(key.split(":", 1)[1])
+                elif key == "total_price":
+                    value = display_value(key, record.get(key))
+                elif key == "payed":
+                    value = "پرداخت‌شده" if record.get(key) else "پرداخت‌نشده"
+                else:
+                    value = record.get(key)
+                item = QTableWidgetItem(display_value(key, value))
+                if col == 0:
+                    item.setData(Qt.ItemDataRole.UserRole, record)
+                self.table.setItem(row, col, item)
         self.page_label.setText("صفحه {} از {} · {} رسید".format(self.current_page, pages, total))
         self.previous_page_button.setEnabled(self.current_page > 1)
         self.next_page_button.setEnabled(self.current_page < pages)
