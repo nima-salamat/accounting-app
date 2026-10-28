@@ -15,7 +15,7 @@ from accounting_app.services.schema_registry import (
 )
 from manager.db import DBManager
 from ui.panels.date_utils import parse_jalali_datetime, to_jalali
-from ui.panels.image_widgets import is_managed_image_path
+from accounting_app.services.file_safety import is_managed_image_path
 
 
 class DataLoader(QObject):
