@@ -24,6 +24,7 @@ def load_kiosk_settings():
     """Return defaults overlaid by persistent kiosk policy."""
     company = _json_setting(COMPANY_PROFILE_KEY)
     profile = str(company.get("business_profile") or "general")
+    setting = AppSetting.get_or_none(AppSetting.key == KIOSK_SETTINGS_KEY)
     stored = _json_setting(KIOSK_SETTINGS_KEY)
     product_ids = stored.get("allowed_product_ids")
     if not isinstance(product_ids, list):
@@ -33,6 +34,7 @@ def load_kiosk_settings():
     except (TypeError, ValueError):
         hours = 48
     return {
+        "initialized": setting is not None,
         "active": bool(stored.get("active", False)),
         "allowed_product_ids": [str(value) for value in product_ids if isinstance(value, (str, int))],
         "receipt_history_hours": hours,
