@@ -10,6 +10,7 @@ from accounting_app.database.models import Product, Receipt, ReceiptProduct, Sto
 from accounting_app.services.validation import validate_money, validate_quantity
 from accounting_app.services.audit import record_audit
 from accounting_app.services.accounting_controls import ensure_period_open
+from accounting_app.services.ledger_posting import post_sale_journal
 
 
 class InsufficientStockError(ValueError):
@@ -38,14 +39,18 @@ def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None):
             total += Decimal(str(sell_price)) * quantity
         except (InvalidOperation, ValueError) as exc:
             raise ValueError("محاسبه مبلغ فاکتور نامعتبر است.") from exc
-        normalized_items.append((product_id, buy_price, sell_price, quantity, str(getattr(product, "name", ""))))
+        normalized_items.append((
+            product_id, buy_price, sell_price, quantity,
+            str(getattr(product, "name", "")), bool(getattr(product, "track_stock", False)),
+        ))
 
     now = datetime.now()
     day_start = datetime.combine(now.date(), time.min)
     next_day = day_start + timedelta(days=1)
 
     with DBManager():
-        ensure_period_open(now.date(), actor=user, action="sale")
+        posting_date = receipt_to_edit.created_at.date() if edit_mode else now.date()
+        ensure_period_open(posting_date, actor=user, action="sale")
         if edit_mode:
             receipt = Receipt.get_by_id(receipt_to_edit.id)
             # Reverse only the inventory movements previously recorded for this receipt.
@@ -92,7 +97,7 @@ def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None):
             )
 
         # Conditional SQL update protects against two clients selling the same final units.
-        for product_id, _buy_price, _sell_price, quantity, _product_name in normalized_items:
+        for product_id, _buy_price, _sell_price, quantity, _product_name, _tracked_stock in normalized_items:
             product = Product.get_by_id(product_id)
             if not product.track_stock:
                 continue
@@ -134,8 +139,9 @@ def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None):
                 "sell_price": sell_price,
                 "quantity": quantity,
             }
-            for product_id, buy_price, sell_price, quantity, product_name in normalized_items
+            for product_id, buy_price, sell_price, quantity, product_name, _tracked_stock in normalized_items
         ]).execute()
+        post_sale_journal(receipt, user, normalized_items, total, bool(payed))
         record_audit(
             user,
             action="sale.updated" if edit_mode else "sale.created",
@@ -146,7 +152,7 @@ def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None):
                 "total_price": str(total),
                 "paid": bool(payed),
                 "line_count": len(normalized_items),
-                "tracked_quantity": sum(quantity for _pid, _buy, _sell, quantity, _name in normalized_items),
+                "tracked_quantity": sum(quantity for _pid, _buy, _sell, quantity, _name, _tracked in normalized_items),
             },
         )
     return receipt
