@@ -256,7 +256,7 @@ class KioskSetupPage(QFrame):
         # Seed a usable first-run policy once only. Later admin-selected products and
         # an intentional disabled state must never be overwritten by this launcher.
         kiosk_settings = api.get_kiosk_settings()
-        if not kiosk_settings.get("allowed_product_ids"):
+        if not kiosk_settings.get("initialized"):
             all_products = []
             page = 1
             while True:
@@ -356,9 +356,12 @@ class KioskConnectionPage(QFrame):
         device_row = QHBoxLayout()
         self.device_button = QPushButton("تنظیم کارت‌خوان / چاپگر")
         self.device_button.clicked.connect(lambda: DeviceSettingsDialog(self, kiosk=True).exec())
+        self.manager_button = QPushButton("تنظیمات مدیر")
+        self.manager_button.clicked.connect(self.window.open_protected_settings)
         self.exit_button = QPushButton("خروج از برنامه")
         self.exit_button.clicked.connect(self.window.close)
         device_row.addWidget(self.device_button)
+        device_row.addWidget(self.manager_button)
         device_row.addWidget(self.exit_button)
         card_layout.addLayout(device_row)
         self.connect_button = QPushButton("اتصال و شروع خرید  ←")
@@ -943,9 +946,6 @@ class KioskWindow(QMainWindow):
         self.showFullScreen()
 
     def open_protected_settings(self):
-        if self.api is None:
-            self.stack.setCurrentWidget(self.setup_page)
-            return
         dialog = ManagerUnlockDialog(self)
         if dialog.exec() != ManagerUnlockDialog.DialogCode.Accepted:
             return
