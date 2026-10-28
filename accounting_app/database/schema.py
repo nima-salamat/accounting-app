@@ -102,3 +102,7 @@ def _migrate_existing_receipt_table(database):
         database.execute_sql(
             'ALTER TABLE "{}" ADD COLUMN "payment_method" VARCHAR(24) NOT NULL DEFAULT \'cash\''.format(table)
         )
+    if "seat_number" not in columns:
+        database.execute_sql(
+            'ALTER TABLE "{}" ADD COLUMN "seat_number" VARCHAR(32)'.format(table)
+        )
