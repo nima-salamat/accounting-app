@@ -39,13 +39,16 @@ jobs:
         run: |
           python - <<'PY'
           from PySide6.QtWidgets import QApplication
+          from PySide6.QtWidgets import QWidget
           from ui.pages.auth_page import AuthPage
           from ui.pages.installer_wizard import InitialSetupWizard
           from ui.widgets.calculator_dialog import Calculator
           from ui.widgets.password_line_edit import PasswordLineEdit
 
           app = QApplication([])
-          widgets = [AuthPage(), InitialSetupWizard(), Calculator(), PasswordLineEdit()]
+          host = QWidget()
+          host.mode = "dark"
+          widgets = [AuthPage(host), InitialSetupWizard(), Calculator(), PasswordLineEdit()]
           for widget in widgets:
               widget.close()
           app.processEvents()
