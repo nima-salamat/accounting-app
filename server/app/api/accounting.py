@@ -195,18 +195,37 @@ def _create_fiscal_closing_journal(year, user):
     if debit_total != credit_total:
         raise HTTPException(status_code=409, detail="سند بستن سال مالی متوازن نشد.")
 
-    entry = JournalEntry.create(
-        entry_number="CLOSE-{}".format(str(year.id).replace("-", "")[:16].upper()),
-        entry_date=year.end_date,
-        description="سند بستن درآمد و هزینهٔ سال مالی {}".format(year.name),
-        reference="FISCAL-CLOSE:{}".format(year.id),
-        status="posted",
-        created_by=user.id,
-        created_by_name=user.username,
-        debit_total=debit_total,
-        credit_total=credit_total,
-        is_year_closing=True,
-    )
+    close_reference = "FISCAL-CLOSE:{}".format(year.id)
+    entry = JournalEntry.get_or_none(JournalEntry.reference == close_reference)
+    if entry is None:
+        entry = JournalEntry.create(
+            entry_number="CLOSE-{}".format(str(year.id).replace("-", "")[:16].upper()),
+            entry_date=year.end_date,
+            description="سند بستن درآمد و هزینهٔ سال مالی {}".format(year.name),
+            reference=close_reference,
+            status="posted",
+            created_by=user.id,
+            created_by_name=user.username,
+            debit_total=debit_total,
+            credit_total=credit_total,
+            is_year_closing=True,
+        )
+    else:
+        JournalLine.delete().where(JournalLine.entry == entry.id).execute()
+        entry.entry_date = year.end_date
+        entry.description = "سند بستن درآمد و هزینهٔ سال مالی {}".format(year.name)
+        entry.status = "posted"
+        entry.created_by = user.id
+        entry.created_by_name = user.username
+        entry.debit_total = debit_total
+        entry.credit_total = credit_total
+        entry.is_year_closing = True
+        entry.save(only=[
+            JournalEntry.entry_date, JournalEntry.description, JournalEntry.status,
+            JournalEntry.created_by, JournalEntry.created_by_name,
+            JournalEntry.debit_total, JournalEntry.credit_total,
+            JournalEntry.is_year_closing, JournalEntry.updated_at,
+        ])
     for line in closing_lines:
         JournalLine.create(
             entry=entry.id,
@@ -285,6 +304,15 @@ def reopen_fiscal_year(
         if year.status != "closed":
             raise HTTPException(status_code=409, detail="این سال مالی بسته نیست.")
         old_status = year.status
+        closing_entry = JournalEntry.get_or_none(
+            JournalEntry.reference == "FISCAL-CLOSE:{}".format(year.id)
+        )
+        if closing_entry is not None and closing_entry.status == "posted":
+            closing_entry.status = "reversed"
+            closing_entry.description = "معکوس‌شده — " + closing_entry.description
+            closing_entry.save(only=[
+                JournalEntry.status, JournalEntry.description, JournalEntry.updated_at,
+            ])
         year.status = "open"
         year.reopen_reason = payload.reason.strip()
         year.closed_by_name = None
@@ -295,7 +323,12 @@ def reopen_fiscal_year(
         ])
         record_audit(
             user, "fiscal_year.reopened", "fiscal_years", year.id,
-            {"name": year.name, "previous_status": old_status, "reason": payload.reason.strip()},
+            {
+                "name": year.name,
+                "previous_status": old_status,
+                "reason": payload.reason.strip(),
+                "reversed_closing_entry_id": str(closing_entry.id) if closing_entry else None,
+            },
         )
         return _fiscal_payload(year)
 
