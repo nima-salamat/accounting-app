@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 )
 
 from client.ui.auth_page import AuthPage
+from client.ui.device_settings import DeviceSettingsDialog
 from client.ui.permissions import can_access
 from client.ui.sales_page import SalesPage
 from client.ui.theme import stylesheet
@@ -56,6 +57,9 @@ class POSWindow(QMainWindow):
         top_layout.addWidget(title)
         top_layout.addStretch(1)
         top_layout.addWidget(self.status)
+        self.device_button = QPushButton("تنظیم دستگاه‌ها")
+        self.device_button.clicked.connect(self.configure_devices)
+        top_layout.addWidget(self.device_button)
         self.logout_button = QPushButton("خروج")
         self.logout_button.setObjectName("DangerButton")
         self.logout_button.clicked.connect(self.logout)
@@ -69,6 +73,10 @@ class POSWindow(QMainWindow):
 
     def _api_changed(self, api):
         self.api = api
+
+    def configure_devices(self):
+        dialog = DeviceSettingsDialog(self)
+        dialog.exec()
 
     def _authenticated(self, user):
         self.current_user = user
