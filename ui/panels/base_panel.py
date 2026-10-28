@@ -11,6 +11,7 @@ from ui.panels.date_utils import to_jalali, jalali_tomorrow_date, from_jalali, p
 from ui.panels.data_workers import DataLoader, RecordAdder, RecordEditor, RecordDeleter, Exporter
 from ui.panels.image_widgets import ImageLineEdit, PreviewDialog
 from ui.panels.record_dialog import RecordDialog
+from ui.thread import TrackingQThread as QThread
 from ui.panels.table_data_mixin import TableDataMixin
 from ui.panels.table_crud_mixin import TableCrudMixin
 
