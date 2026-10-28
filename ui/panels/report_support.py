@@ -126,6 +126,59 @@ class PurgeWorker(QThread):
             self.error.emit(str(exc))
 
 
+class PurgeFinalizeWorker(QThread):
+    completed = Signal(str, str, str, int, float, float)
+    error = Signal(str)
+
+    def __init__(self, receipts, items, receipt_path, count, total_sales, total_cost):
+        super().__init__()
+        self.finished.connect(self.deleteLater)
+        self.receipts = receipts
+        self.items = items
+        self.receipt_path = receipt_path
+        self.count = count
+        self.total_sales = total_sales
+        self.total_cost = total_cost
+
+    def run(self):
+        base = os.path.splitext(self.receipt_path)[0]
+        items_path = base + "_items.csv"
+        warehouse_path = base + "_warehouse_backup.csv"
+        try:
+            with DBManager():
+                warehouse_rows = [record.__data__.copy() for record in Warehouse.select()]
+
+            pd.DataFrame(self.receipts).to_csv(
+                self.receipt_path, index=False, encoding="utf-8-sig"
+            )
+            pd.DataFrame(self.items).to_csv(
+                items_path, index=False, encoding="utf-8-sig"
+            )
+            pd.DataFrame(warehouse_rows).to_csv(
+                warehouse_path, index=False, encoding="utf-8-sig"
+            )
+
+            receipt_ids = [record["id"] for record in self.receipts]
+            item_ids = [item["id"] for item in self.items]
+            from accounting_app.services.schema_registry import cleanup_builtin_extension_values
+            with DBManager():
+                for record_id in receipt_ids:
+                    cleanup_builtin_extension_values("receipts", record_id)
+                for item_id in item_ids:
+                    cleanup_builtin_extension_values("receipt_products", item_id)
+                if item_ids:
+                    ReceiptProduct.delete().where(ReceiptProduct.id.in_(item_ids)).execute()
+                if receipt_ids:
+                    Receipt.delete().where(Receipt.id.in_(receipt_ids)).execute()
+
+            self.completed.emit(
+                self.receipt_path, items_path, warehouse_path,
+                self.count, self.total_sales, self.total_cost,
+            )
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+
 class QueryWorker(QThread):
     dataReady = Signal(pd.DataFrame)
     error = Signal(str)
