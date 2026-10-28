@@ -1,7 +1,7 @@
 """Explicit request/response contracts exposed by the public API."""
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -268,6 +268,77 @@ class ReceiptOut(BaseModel):
 
 class ReceiptDetailOut(ReceiptOut):
     items: List[ReceiptProductOut]
+
+
+class SaleReturnItemCreate(StrictModel):
+    original_line_id: UUID
+    quantity: int = Field(gt=0, le=100000)
+
+
+class SaleReturnCreate(StrictModel):
+    receipt_id: UUID
+    items: List[SaleReturnItemCreate] = Field(min_length=1, max_length=200)
+    refund_method: Literal["cash", "card", "bank_transfer", "store_credit"] = "cash"
+    reason: str = Field(default="customer_return", min_length=1, max_length=64)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def unique_original_lines(self):
+        ids = [item.original_line_id for item in self.items]
+        if len(ids) != len(set(ids)):
+            raise ValueError("هر ردیف فاکتور فقط یک بار در سند مرجوعی وارد شود.")
+        return self
+
+
+class FiscalYearCreate(StrictModel):
+    name: str = Field(min_length=2, max_length=256)
+    start_date: date
+    end_date: date
+
+    @model_validator(mode="after")
+    def valid_period(self):
+        if self.start_date > self.end_date:
+            raise ValueError("تاریخ شروع سال مالی باید قبل از پایان آن باشد.")
+        return self
+
+
+class FiscalYearReopen(StrictModel):
+    reason: str = Field(min_length=10, max_length=1000)
+
+
+class LedgerAccountCreate(StrictModel):
+    code: str = Field(min_length=2, max_length=32, pattern=r"^[A-Za-z0-9._-]+$")
+    name: str = Field(min_length=2, max_length=256)
+    account_type: Literal["asset", "liability", "equity", "income", "expense"]
+    description: Optional[str] = Field(default=None, max_length=1000)
+
+
+class JournalLineCreate(StrictModel):
+    account_id: UUID
+    description: str = Field(default="", max_length=256)
+    debit: Decimal = Field(default=Decimal("0"), ge=0, max_digits=16, decimal_places=2)
+    credit: Decimal = Field(default=Decimal("0"), ge=0, max_digits=16, decimal_places=2)
+
+    @model_validator(mode="after")
+    def one_side_only(self):
+        if (self.debit > 0) == (self.credit > 0):
+            raise ValueError("هر ردیف باید دقیقاً یک مبلغ بدهکار یا بستانکار مثبت داشته باشد.")
+        return self
+
+
+class JournalEntryCreate(StrictModel):
+    entry_date: date
+    description: str = Field(min_length=3, max_length=2000)
+    reference: Optional[str] = Field(default=None, max_length=256)
+    lines: List[JournalLineCreate] = Field(min_length=2, max_length=200)
+
+    @model_validator(mode="after")
+    def balanced_totals(self):
+        debit = sum((line.debit for line in self.lines), Decimal("0"))
+        credit = sum((line.credit for line in self.lines), Decimal("0"))
+        if debit <= 0 or debit != credit:
+            raise ValueError("سند حسابداری باید دارای جمع بدهکار و بستانکار برابر و مثبت باشد.")
+        return self
 
 
 class ReportSummary(BaseModel):
