@@ -328,6 +328,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(default_invoice.status_code, 200, default_invoice.text)
         self.assertEqual(pos_default.status_code, 200, pos_default.text)
         self.assertEqual(kiosk_default.status_code, 200, kiosk_default.text)
+        original_invoice_name = default_invoice.json()["company_name"]
         self.assertEqual(default_invoice.json()["paper_size"], "A4")
         self.assertEqual(pos_default.json()["paper_size"], "receipt80")
         self.assertEqual(kiosk_default.json()["paper_size"], "receipt80")
@@ -341,7 +342,7 @@ class ApiTests(unittest.TestCase):
         fetched_pos = self.client.get("/api/v1/invoices/template?kind=pos_receipt", headers=headers)
         fetched_invoice = self.client.get("/api/v1/invoices/template", headers=headers)
         self.assertEqual(fetched_pos.json()["company_name"], "رسید صندوق مستقل")
-        self.assertEqual(fetched_invoice.json()["company_name"], "نام کسب‌وکار")
+        self.assertEqual(fetched_invoice.json()["company_name"], original_invoice_name)
 
     def test_inactive_accounts_cannot_login(self):
         admin_headers = self.setup_admin()
