@@ -205,8 +205,8 @@ class UserPanel(QWidget):
 
     def handle_add_user(self):
         username = self.inp_new_username.text().strip()
-        password = self.inp_new_password.text().strip()
-        confirm = self.inp_confirm_password.text().strip()
+        password = self.inp_new_password.text()
+        confirm = self.inp_confirm_password.text()
         is_admin = self.chk_is_admin.isChecked()
         self.lbl_add_error.setVisible(False)
 
@@ -222,9 +222,9 @@ class UserPanel(QWidget):
 
         try:
             with DBManager():
-                user = User.create(username=username, password=password, is_admin=is_admin)
+                user = User(username=username, password="", is_admin=is_admin)
                 user.set_password(password)
-                user.save()
+                user.save(force_insert=True)
             QMessageBox.information(self, "موفقیت", f"کاربر «{username}» اضافه شد.")
             self.inp_new_username.clear()
             self.inp_new_password.clear()
@@ -237,12 +237,15 @@ class UserPanel(QWidget):
 
     def handle_change_password(self):
         username = self.inp_existing_user.text().strip()
-        new_password = self.inp_new_pass.text().strip()
-        confirm_password = self.inp_confirm_new.text().strip()
+        new_password = self.inp_new_pass.text()
+        confirm_password = self.inp_confirm_new.text()
         self.lbl_change_error.setVisible(False)
 
         if not username or not new_password or not confirm_password:
             self.show_error(self.lbl_change_error, "لطفاً همهٔ فیلدها را پر کنید.")
+            return
+        if len(new_password) < 4:
+            self.show_error(self.lbl_change_error, "رمز عبور باید حداقل ۴ نویسه داشته باشد.")
             return
         if new_password != confirm_password:
             self.show_error(self.lbl_change_error, "رمزهای عبور مطابقت ندارند.")
