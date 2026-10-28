@@ -172,17 +172,11 @@ class PurchaseInvoiceDialog(QDialog):
 
     @staticmethod
     def _product_changed(combo, description):
-        product_id = combo.currentData()
-        if product_id is None:
-            description.setReadOnly(False)
-            if description.text() in ("", description.property("last_product_name")):
-                description.clear()
-            description.setProperty("last_product_name", "")
-            return
-        product = next((item for item_index in range(combo.count())
-                        if combo.itemData(item_index) == product_id
-                        for item in []), None)
-        # Keep the description editable for batch/pack details; product identity is separately stored.
+        # Product identity is sent separately; description stays available for package/batch notes.
+        if combo.currentData() is None:
+            description.setPlaceholderText("شرح قلم دستی (الزامی)")
+        else:
+            description.setPlaceholderText("شرح تکمیلی / بسته‌بندی (اختیاری)")
         description.setReadOnly(False)
 
     def _refresh_total(self):
