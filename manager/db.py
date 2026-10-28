@@ -26,10 +26,7 @@ def create_admin(username=None, password=None):
     with DBManager():
         existing = User.get_or_none(User.username == normalized_username)
         if existing is not None:
-            if not existing.is_admin:
-                existing.is_admin = True
-                existing.save(only=[User.is_admin, User.updated_at])
-            return existing
+            raise ValueError("این نام کاربری از قبل ثبت شده است.")
         user = User(username=normalized_username, password="", is_admin=True)
         user.set_password(validated_password)
         user.save(force_insert=True)
