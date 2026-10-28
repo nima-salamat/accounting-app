@@ -220,8 +220,8 @@ class InvoiceTemplatesPage(QFrame):
             control.currentIndexChanged.connect(self.update_preview) if isinstance(control, QComboBox) else control.valueChanged.connect(self.update_preview)
         self.show_border.toggled.connect(self.update_preview)
         self.layout_order_list.model().rowsMoved.connect(self.update_preview)
-        self.layout_order_list.currentRowChanged.connect(self._block_selection_changed)
-        self.block_picker.currentIndexChanged.connect(self._block_selection_changed)
+        self.layout_order_list.currentRowChanged.connect(self._layout_block_selected)
+        self.block_picker.currentIndexChanged.connect(self._block_picker_changed)
         self.block_column.currentIndexChanged.connect(self._block_setting_changed)
         self.block_align.currentIndexChanged.connect(self._block_setting_changed)
         self._load_template(dict(DEFAULT_TEMPLATE))
@@ -298,24 +298,13 @@ class InvoiceTemplatesPage(QFrame):
             combo.setCurrentIndex(max(0, combo.findData(self.table_alignment.get(key, "right"))))
         self.block_picker.setCurrentIndex(0)
         self._loading = False
-        self._block_selection_changed()
+        selected_key = self.block_picker.currentData() or "company"
+        self._load_block_settings(selected_key)
         self.update_preview()
 
-    def _current_block(self):
-        item = self.layout_order_list.currentItem()
-        if item:
-            return item.data(Qt.ItemDataRole.UserRole)
-        return self.block_picker.currentData() or "company"
-
-    def _block_selection_changed(self, *_args):
-        if self._loading:
+    def _load_block_settings(self, key):
+        if self._loading or key not in BLOCK_LABELS:
             return
-        key = self._current_block()
-        idx = self.block_picker.findData(key)
-        if idx >= 0 and self.block_picker.currentIndex() != idx:
-            self.block_picker.blockSignals(True)
-            self.block_picker.setCurrentIndex(idx)
-            self.block_picker.blockSignals(False)
         settings = self.block_settings.get(key, {"column": "full", "align": "right"})
         self.block_column.blockSignals(True)
         self.block_align.blockSignals(True)
@@ -323,6 +312,29 @@ class InvoiceTemplatesPage(QFrame):
         self.block_align.setCurrentIndex(max(0, self.block_align.findData(settings.get("align", "right"))))
         self.block_column.blockSignals(False)
         self.block_align.blockSignals(False)
+
+    def _layout_block_selected(self, row):
+        if self._loading or row < 0 or row >= self.layout_order_list.count():
+            return
+        key = self.layout_order_list.item(row).data(Qt.ItemDataRole.UserRole)
+        idx = self.block_picker.findData(key)
+        if idx >= 0 and self.block_picker.currentIndex() != idx:
+            self.block_picker.blockSignals(True)
+            self.block_picker.setCurrentIndex(idx)
+            self.block_picker.blockSignals(False)
+        self._load_block_settings(key)
+
+    def _block_picker_changed(self, *_args):
+        if self._loading:
+            return
+        key = self.block_picker.currentData()
+        for row in range(self.layout_order_list.count()):
+            if self.layout_order_list.item(row).data(Qt.ItemDataRole.UserRole) == key:
+                self.layout_order_list.blockSignals(True)
+                self.layout_order_list.setCurrentRow(row)
+                self.layout_order_list.blockSignals(False)
+                break
+        self._load_block_settings(key)
 
     def _block_setting_changed(self, *_args):
         if self._loading:
