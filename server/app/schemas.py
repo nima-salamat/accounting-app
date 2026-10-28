@@ -343,6 +343,22 @@ class JournalEntryCreate(StrictModel):
         return self
 
 
+class StocktakeCreate(StrictModel):
+    name: str = Field(min_length=2, max_length=256)
+    product_ids: List[UUID] = Field(min_length=1, max_length=500)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def unique_products(self):
+        if len(self.product_ids) != len(set(self.product_ids)):
+            raise ValueError("هر کالا فقط یک بار باید در شمارش موجودی باشد.")
+        return self
+
+
+class StocktakeCountInput(StrictModel):
+    counted_quantity: Decimal = Field(ge=0, max_digits=16, decimal_places=4)
+
+
 class ReportSummary(BaseModel):
     receipt_count: int
     sales_total: float
