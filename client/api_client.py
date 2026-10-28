@@ -575,6 +575,70 @@ class AccountingApiClient:
     def get_company_profile(self):
         return self._request("GET", "/api/v1/company-profile")
 
+    def list_partners_page(self, q=None, partner_type=None, page=1, page_size=25):
+        return self._request_page(
+            "GET", "/api/v1/partners", page=page, page_size=page_size,
+            params={"q": q, "partner_type": partner_type},
+        )
+
+    def create_partner(self, **values):
+        return self._request("POST", "/api/v1/partners", json_body=values)
+
+    def update_partner(self, partner_id, **values):
+        return self._request("PATCH", "/api/v1/partners/{}".format(partner_id), json_body=values)
+
+    def delete_partner(self, partner_id):
+        return self._request("DELETE", "/api/v1/partners/{}".format(partner_id))
+
+    def list_purchase_invoices_page(self, q=None, status_filter=None, page=1, page_size=25):
+        return self._request_page(
+            "GET", "/api/v1/purchase-invoices", page=page, page_size=page_size,
+            params={"q": q, "status_filter": status_filter},
+        )
+
+    def get_purchase_invoice(self, invoice_id):
+        return self._request("GET", "/api/v1/purchase-invoices/{}".format(invoice_id))
+
+    def create_purchase_invoice(self, supplier_id, invoice_number, invoice_date, items,
+                                due_date=None, notes=None):
+        return self._request(
+            "POST", "/api/v1/purchase-invoices",
+            json_body={
+                "supplier_id": str(supplier_id),
+                "invoice_number": invoice_number,
+                "invoice_date": invoice_date,
+                "due_date": due_date,
+                "items": [
+                    {
+                        "product_id": str(item["product_id"]) if item.get("product_id") else None,
+                        "description": item.get("description", ""),
+                        "quantity": str(item["quantity"]),
+                        "unit_cost": str(item["unit_cost"]),
+                    }
+                    for item in items
+                ],
+                "notes": notes,
+            },
+        )
+
+    def add_purchase_payment(self, invoice_id, amount, paid_on, payment_method="bank_transfer",
+                             reference=None, notes=None):
+        return self._request(
+            "POST", "/api/v1/purchase-invoices/{}/payments".format(invoice_id),
+            json_body={
+                "amount": str(amount), "paid_on": paid_on,
+                "payment_method": payment_method, "reference": reference, "notes": notes,
+            },
+        )
+
+    def list_expenses_page(self, q=None, page=1, page_size=25):
+        return self._request_page(
+            "GET", "/api/v1/expenses", page=page, page_size=page_size, params={"q": q},
+        )
+
+    def create_expense(self, **values):
+        return self._request("POST", "/api/v1/expenses", json_body=values)
+
     def get_invoice_template(self):
         return self._request("GET", "/api/v1/invoices/template")
 
