@@ -296,6 +296,16 @@ class AccountingApiClient:
     def list_schema_fields(self, entity_type):
         return self._request("GET", "/api/v1/schemas/fields/{}".format(entity_type))
 
+    def get_custom_table_data(self, entity_type, record_ids):
+        """Fetch custom-column definitions and values for a bounded batch of rows."""
+        ids = [str(record_id) for record_id in record_ids if record_id]
+        if not ids:
+            return {"fields": [], "values": {}}
+        return self._request(
+            "GET", "/api/v1/schemas/table/{}".format(entity_type),
+            params=[("record_ids", record_id) for record_id in ids],
+        )
+
     def register_schema_fields(self, rows):
         return self._request("POST", "/api/v1/schemas/fields", json_body={"rows": rows})
 
