@@ -68,34 +68,26 @@ class ReportInventoryMixin:
         lbl_totals.setAlignment(Qt.AlignCenter)
         lo.addWidget(lbl_totals)
 
-        def query_func():
-            try:
-                start_j = f"{dt_from_date.text()} {dt_from_time.text()}:00".replace("/", "-")
-                end_j = f"{dt_to_date.text()} {dt_to_time.text()}:00".replace("/", "-")
+        def query_func(snapshot):
+            start_j = "{} {}:00".format(snapshot["from_date"], snapshot["from_time"]).replace("/", "-")
+            end_j = "{} {}:00".format(snapshot["to_date"], snapshot["to_time"]).replace("/", "-")
+            start = from_jalali(start_j, is_datetime=True)
+            end = from_jalali(end_j, is_datetime=True)
+            if start > end:
+                raise ValueError("زمان شروع نباید از زمان پایان بزرگ‌تر باشد.")
 
-                start = from_jalali(start_j, is_datetime=True)
-                end = from_jalali(end_j, is_datetime=True)
-
-            except ValueError:
-                dlg = QDialog(self)
-                dlg.setWindowTitle("خطا")
-                lbl = QLabel("فرمت تاریخ یا زمان نادرست است.", dlg)
-                QVBoxLayout(dlg).addWidget(lbl)
-                dlg.exec_()
-                return
-            
-            q = (Warehouse.select(
-                Warehouse.name, Warehouse.price, Warehouse.amount,
-                Warehouse.unit, Warehouse.created_at
-            ).where(
-                    Warehouse.created_at >= start,
-    Warehouse.created_at <= end
-                 ).order_by(Warehouse.created_at))
-
-            return q
+            query = (
+                Warehouse.select(
+                    Warehouse.name, Warehouse.price, Warehouse.amount,
+                    Warehouse.unit, Warehouse.created_at
+                )
+                .where(Warehouse.created_at >= start, Warehouse.created_at <= end)
+                .order_by(Warehouse.created_at)
+            )
+            return list(query)
 
         def on_data_ready(query):
-            count = query.count()
+            count = len(query)
             if count == 0:
                 dlg = QDialog(self)
                 dlg.setWindowTitle("گزارش")
@@ -148,7 +140,13 @@ class ReportInventoryMixin:
 
         def load():
             btn_load.setEnabled(False)
-            self._inventory_worker = QueryWorker(query_func)
+            snapshot = {
+                "from_date": dt_from_date.text(),
+                "from_time": dt_from_time.text(),
+                "to_date": dt_to_date.text(),
+                "to_time": dt_to_time.text(),
+            }
+            self._inventory_worker = QueryWorker(lambda: query_func(snapshot))
             self._inventory_worker.dataReady.connect(lambda q: (on_data_ready(q), btn_load.setEnabled(True)))
             self._inventory_worker.error.connect(
                 lambda message: (QMessageBox.warning(self, "خطا در گزارش", message), btn_load.setEnabled(True))
@@ -188,9 +186,7 @@ class ReportInventoryMixin:
         lo.addWidget(canvas)
         self._add_export_chart_btn(lo, fig)
 
-        def query_func():
-            mode = mode_combo.currentIndex()
-
+        def query_func(mode):
             if mode == 0:
                 q = (
                     ReceiptProduct
@@ -242,7 +238,8 @@ class ReportInventoryMixin:
 
         def load():
             btn_report.setEnabled(False)
-            self._category_pie_worker = QueryWorker(query_func)
+            mode = mode_combo.currentIndex()
+            self._category_pie_worker = QueryWorker(lambda: query_func(mode))
             self._category_pie_worker.dataReady.connect(lambda df: (on_data_ready(df), btn_report.setEnabled(True)))
             self._category_pie_worker.error.connect(
                 lambda message: (QMessageBox.warning(self, "خطا در گزارش دسته‌ها", message), btn_report.setEnabled(True))
