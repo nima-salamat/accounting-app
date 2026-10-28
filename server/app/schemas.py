@@ -100,7 +100,7 @@ class CategoryOut(BaseModel):
 
 class ProductCreate(StrictModel):
     name: str = Field(min_length=1, max_length=256)
-    buy_price: Decimal = Field(ge=0, max_digits=16, decimal_places=4)
+    buy_price: Optional[Decimal] = Field(default=None, ge=0, max_digits=16, decimal_places=4)
     sell_price: Decimal = Field(ge=0, max_digits=16, decimal_places=4)
     image_path: Optional[str] = Field(default=None, max_length=256)
     custom_product: bool = False
