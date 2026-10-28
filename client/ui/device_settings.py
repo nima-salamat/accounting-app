@@ -6,6 +6,11 @@ TCP checks only establish socket reachability; payment authorization is vendor-s
 """
 import socket
 
+try:
+    import keyring
+except ImportError:  # The cashier UI remains usable without the optional credential-store backend.
+    keyring = None
+
 from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QTextDocument
 from PySide6.QtPrintSupport import QPrinter, QPrinterInfo
@@ -24,8 +29,25 @@ def device_settings():
         "terminal_mode": settings.value("devices/terminal_mode", "manual", type=str),
         "terminal_host": settings.value("devices/terminal_host", "127.0.0.1", type=str),
         "terminal_port": settings.value("devices/terminal_port", 0, type=int),
+        "terminal_secret": _get_terminal_secret(
+            settings.value("devices/terminal_host", "127.0.0.1", type=str),
+            settings.value("devices/terminal_port", 0, type=int),
+        ),
         "barcode_mode": settings.value("devices/barcode_mode", "keyboard", type=str),
     }
+
+
+def _terminal_key(host, port):
+    return "{}:{}".format(str(host or "").strip().lower(), int(port or 0))
+
+
+def _get_terminal_secret(host, port):
+    if keyring is None or not port:
+        return ""
+    try:
+        return keyring.get_password("Accounting App Payment Bridge", _terminal_key(host, port)) or ""
+    except Exception:
+        return ""
 
 
 class DeviceSettingsDialog(QDialog):
@@ -116,22 +138,26 @@ class DeviceSettingsDialog(QDialog):
         form.setVerticalSpacing(14)
         self.terminal_mode = QComboBox()
         self.terminal_mode.addItem("پرداخت دستی / بدون اتصال نرم‌افزاری", "manual")
-        self.terminal_mode.addItem("کارت‌خوان دارای درگاه TCP اختصاصی", "tcp")
+        self.terminal_mode.addItem("پل پرداخت اختصاصی Accounting App (TCP امضاشده)", "tcp")
         self.terminal_host = QLineEdit("127.0.0.1")
-        self.terminal_host.setPlaceholderText("IP یا نام میزبان دستگاه / واسط")
+        self.terminal_host.setPlaceholderText("IP یا نام میزبان پل پرداخت")
         self.terminal_port = QLineEdit()
         self.terminal_port.setPlaceholderText("مثلاً 9100")
-        self.test_terminal_button = QPushButton("آزمون اتصال")
+        self.terminal_secret = QLineEdit()
+        self.terminal_secret.setEchoMode(QLineEdit.EchoMode.Password)
+        self.terminal_secret.setPlaceholderText("رمز مشترک امضای پیام با پل پرداخت")
+        self.test_terminal_button = QPushButton("آزمون اتصال شبکه")
         self.test_terminal_button.clicked.connect(self.test_terminal)
         form.addRow("روش پرداخت", self.terminal_mode)
         form.addRow("میزبان", self.terminal_host)
         form.addRow("پورت", self.terminal_port)
+        form.addRow("کلید مشترک پل", self.terminal_secret)
         form.addRow("", self.test_terminal_button)
         warning = QLabel(
-            "نکتهٔ امنیتی: آزمون TCP فقط باز بودن مسیر شبکه را بررسی می‌کند؛ "
-            "به معنای تأیید یا دریافت وجه نیست. برای ارسال مبلغ و دریافت نتیجهٔ تراکنش، "
-            "آداپتور رسمی مدل کارت‌خوان و مشخصات شرکت پرداخت باید پیاده‌سازی و جداگانه آزمایش شود. "
-            "شماره کارت یا PIN در این برنامه ذخیره نمی‌شود."
+            "این گزینه فقط با یک پل محلی سازگار با پروتکل Accounting App کار می‌کند؛ "
+            "پل باید درخواست مبلغ و شماره مرجع را به SDK رسمی دستگاه بفرستد و پاسخ تأییدشده را با HMAC برگرداند. "
+            "یک کارت‌خوان عمومی TCP خودبه‌خود سازگار نیست. آزمون اتصال شبکه به معنای تأیید یا دریافت وجه نیست. "
+            "شماره کارت و PIN در این برنامه ذخیره نمی‌شوند."
         )
         warning.setObjectName("StatusPill")
         warning.setWordWrap(True)
@@ -184,6 +210,7 @@ class DeviceSettingsDialog(QDialog):
         self.terminal_host.setText(values["terminal_host"])
         port = values["terminal_port"]
         self.terminal_port.setText(str(port) if port else "")
+        self.terminal_secret.setText(values.get("terminal_secret", ""))
         index = self.barcode_mode.findData(values["barcode_mode"])
         self.barcode_mode.setCurrentIndex(index if index >= 0 else 0)
 
@@ -205,6 +232,14 @@ class DeviceSettingsDialog(QDialog):
                 self.status.setText("پورت باید عددی بین ۱ تا ۶۵۵۳۵ باشد.")
                 self.tabs.setCurrentIndex(1)
                 return
+            if len(self.terminal_secret.text()) < 24:
+                self.status.setText("پل پرداخت باید یک کلید مشترک با حداقل ۲۴ نویسه داشته باشد.")
+                self.tabs.setCurrentIndex(1)
+                return
+            if keyring is None:
+                self.status.setText("ذخیرهٔ امن کلید در سیستم‌عامل در دسترس نیست؛ keyring را نصب کنید.")
+                self.tabs.setCurrentIndex(1)
+                return
         settings = QSettings("AccountingApp", "PointOfSale")
         settings.setValue("devices/printer_name", self.printer.currentData() or "")
         settings.setValue("devices/auto_print", bool(self.auto_print_button.currentData()))
@@ -213,6 +248,16 @@ class DeviceSettingsDialog(QDialog):
         settings.setValue("devices/terminal_host", host or "127.0.0.1")
         settings.setValue("devices/terminal_port", port)
         settings.setValue("devices/barcode_mode", self.barcode_mode.currentData() or "keyboard")
+        if mode == "tcp":
+            try:
+                keyring.set_password(
+                    "Accounting App Payment Bridge",
+                    _terminal_key(host, port),
+                    self.terminal_secret.text(),
+                )
+            except Exception as exc:
+                self.status.setText("ذخیرهٔ امن کلید پل پرداخت ناموفق بود: {}".format(exc))
+                return
         settings.sync()
         if settings.status() != QSettings.Status.NoError:
             self.status.setText("ذخیره تنظیمات در سیستم‌عامل ناموفق بود.")
