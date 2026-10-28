@@ -4,14 +4,14 @@ LIGHT = {
     "text": "#172337", "muted": "#718096", "border": "#E0E6EF",
     "primary": "#2D5C91", "primary_hover": "#244B78", "accent": "#188779",
     "danger": "#C74455", "sidebar": "#17283E", "sidebar_text": "#E8EFF8",
-    "sidebar_muted": "#9BAEC4", "highlight": "#E8F0FA", "shadow": "rgba(24, 43, 70, 0.08)",
+    "sidebar_muted": "#9BAEC4", "highlight": "#E8F0FA", "selection": "#315C91", "selection_text": "#FFFFFF", "shadow": "rgba(24, 43, 70, 0.08)",
 }
 DARK = {
     "window": "#0C1420", "surface": "#141F2D", "surface_alt": "#1A2939",
     "text": "#E8EEF7", "muted": "#A4B3C6", "border": "#2B3B50",
     "primary": "#7CA8F1", "primary_hover": "#95BAFA", "accent": "#59C7AF",
     "danger": "#FF7E89", "sidebar": "#08111D", "sidebar_text": "#E3ECF7",
-    "sidebar_muted": "#8A9CB3", "highlight": "#22364D", "shadow": "rgba(0, 0, 0, 0.24)",
+    "sidebar_muted": "#8A9CB3", "highlight": "#22364D", "selection": "#365F95", "selection_text": "#FFFFFF", "shadow": "rgba(0, 0, 0, 0.24)",
 }
 
 
@@ -68,9 +68,13 @@ def stylesheet(mode="light"):
     QTableWidget {{
         background: {surface}; alternate-background-color: {surface_alt};
         border: 1px solid {border}; border-radius: 11px; gridline-color: transparent;
-        selection-background-color: {highlight}; selection-color: {text}; outline: 0;
+        selection-background-color: {selection}; selection-color: {selection_text}; outline: 0;
     }}
     QTableWidget::item {{ padding: 9px 8px; border-bottom: 1px solid {border}; }}
+    QTableWidget::item:selected {{ background: {selection}; color: {selection_text}; }}
+    QTableWidget::item:selected:!active {{ background: {selection}; color: {selection_text}; }}
+    QTableView::item:selected {{ background: {selection}; color: {selection_text}; }}
+    QListWidget::item:selected {{ background: {selection}; color: {selection_text}; }}
     QHeaderView::section {{
         background: {surface_alt}; color: {muted}; border: none;
         border-bottom: 1px solid {border}; padding: 12px 10px; font-weight: 800;
