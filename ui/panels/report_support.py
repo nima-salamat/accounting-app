@@ -63,14 +63,19 @@ def from_jalali(jalali_str, is_datetime=False):
 
 class ReportWorker(QThread):
     dataReady = Signal(pd.DataFrame)
+    error = Signal(str)
 
     def __init__(self, query_func):
         super().__init__()
         self.query_func = query_func
 
     def run(self):
-        df = self.query_func()
-        self.dataReady.emit(df)
+        try:
+            with DBManager():
+                result = self.query_func()
+            self.dataReady.emit(result)
+        except Exception as exc:
+            self.error.emit(str(exc))
 
 
 class PurgeWorker(QThread):
@@ -120,12 +125,19 @@ class PurgeWorker(QThread):
 
 class QueryWorker(QThread):
     dataReady = Signal(pd.DataFrame)
+    error = Signal(str)
+
     def __init__(self, query_func):
         super().__init__()
         self.query_func = query_func
+
     def run(self):
-        df = self.query_func()
-        self.dataReady.emit(df)
+        try:
+            with DBManager():
+                result = self.query_func()
+            self.dataReady.emit(result)
+        except Exception as exc:
+            self.error.emit(str(exc))
 
 
 class SearchLineEdit(QWidget):
@@ -154,35 +166,44 @@ class SearchLineEdit(QWidget):
     def update_suggestions(self, text: str):
         text = text.strip()
         if not text:
-            
             self.string_model.setStringList([])
             return
-        
-       
-        qs = Product.select(Product.name)\
-                    .where(Product.name.contains(text))\
+        try:
+            with DBManager():
+                query = (
+                    Product.select(Product.name)
+                    .where(Product.name.contains(text))
                     .limit(10)
-        results = [p.name for p in qs]
-        
-        
+                )
+                results = [product.name for product in query]
+        except Exception:
+            self.string_model.setStringList([])
+            return
         if results != self.string_model.stringList():
             self.string_model.setStringList(results)
-     
         if results:
-
             self.completer.complete()
         else:
             self.completer.popup().hide()
 
+
 # Worker thread for async data loading
 class DataLoader(QThread):
     dataLoaded = Signal(pd.DataFrame)
+    error = Signal(str)
+
     def __init__(self, query_func):
         super().__init__()
         self.query_func = query_func
+
     def run(self):
-        df = self.query_func()
-        self.dataLoaded.emit(df)
+        try:
+            with DBManager():
+                result = self.query_func()
+            self.dataLoaded.emit(result)
+        except Exception as exc:
+            self.error.emit(str(exc))
+
 
 # Cache setup
 cache = cachetools.TTLCache(maxsize=100, ttl=300)  # 5-minute cache
