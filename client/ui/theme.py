@@ -176,6 +176,7 @@ def stylesheet(mode="light", design=None):
     QPushButton:pressed {{ padding-top: {control_padding}px; padding-bottom: {control_padding}px; }}
     QPushButton:focus {{ border: 2px solid {primary}; }}
     QPushButton:disabled {{ color: {muted}; background: {surface_alt}; }}
+    QPushButton#CompactActionButton {{ min-height: 24px; padding: 3px 8px; border-radius: {corner_radius}px; }}
     QPushButton#PrimaryButton {{ background: {primary}; color: #FFFFFF; border: 1px solid {primary}; }}
     QPushButton#PrimaryButton:hover {{ background: {primary_hover}; }}
     QPushButton#DangerButton {{ color: {danger}; border-color: {danger}; }}
