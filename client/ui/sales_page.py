@@ -1,14 +1,16 @@
 """API-driven point-of-sale screen with search, quantity selection, and idempotent checkout."""
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QBrush
 import uuid
 
 from client.payment_terminal import authorize_payment, void_payment
 from client.ui.device_settings import device_settings
 from client.ui.invoice_dialog import InvoiceDialog, auto_print_invoice
 from client.ui.invoice_render import DEFAULT_TEMPLATE
+from client.ui.permissions import can_access
 
 from PySide6.QtWidgets import (
-    QCheckBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
+    QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
     QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout,
     QHeaderView,
 )
@@ -71,7 +73,9 @@ class SalesPage(QFrame):
         layout.addWidget(footer_card)
         self.table.cellWidget if False else None
         self._business_profile = {}
-        self.history_dialog = None
+
+    def set_permissions(self, user):
+        self.history_button.setVisible(can_access(user, "receipts", "read"))
 
     def set_business_profile(self, profile):
         self._business_profile = dict(profile or {})
