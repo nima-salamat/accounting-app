@@ -34,7 +34,7 @@ def _serialize(record):
 def _receipt_detail(receipt):
     result = _serialize(receipt)
     result["items"] = [
-        dict(_serialize(item), product_name=(item.product.name if item.product_id else "محصول حذف‌شده"))
+        dict(_serialize(item), product_name=(item.product_name or (item.product.name if item.product_id else "محصول حذف‌شده")))
         for item in ReceiptProduct.select().where(
             ReceiptProduct.receipt == receipt.id
         ).order_by(ReceiptProduct.created_at)
