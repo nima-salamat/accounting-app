@@ -82,6 +82,15 @@ def _clean_name(value):
     return value
 
 
+def _product_buy_price_required():
+    setting = AppSetting.get_or_none(AppSetting.key == "company_profile")
+    try:
+        profile = json.loads(setting.value) if setting and setting.value else {}
+    except (TypeError, ValueError):
+        profile = {}
+    return bool(profile.get("product_buy_price_required", True)) if isinstance(profile, dict) else True
+
+
 def _check_category(category_id):
     if category_id is not None and CategoryModel.get_or_none(CategoryModel.id == category_id) is None:
         raise HTTPException(status_code=422, detail="دسته‌بندی انتخاب‌شده وجود ندارد.")
@@ -179,10 +188,12 @@ def list_products(
 @router.post("/products", response_model=ProductOut, status_code=status.HTTP_201_CREATED)
 def create_product(payload: ProductCreate, user=Depends(require_permission("products", "create"))):
     with DBManager():
+        if payload.buy_price is None and _product_buy_price_required():
+            raise HTTPException(status_code=422, detail="قیمت خرید طبق تنظیمات کسب‌وکار الزامی است.")
         _check_category(payload.category_id)
         record = ProductModel.create(
             name=_clean_name(payload.name),
-            buy_price=float(payload.buy_price),
+            buy_price=float(payload.buy_price or 0),
             sell_price=float(payload.sell_price),
             image_path=payload.image_path,
             custom_product=payload.custom_product,
@@ -204,6 +215,10 @@ def update_product(product_id: UUID, payload: ProductUpdate, user=Depends(requir
         if record is None:
             _not_found("محصول")
         values = payload.model_dump(exclude_unset=True)
+        if "buy_price" in values and values["buy_price"] is None:
+            if _product_buy_price_required():
+                raise HTTPException(status_code=422, detail="قیمت خرید طبق تنظیمات کسب‌وکار الزامی است.")
+            values["buy_price"] = 0
         if "category_id" in values:
             _check_category(values["category_id"])
         updated = _save_patch(record, values)
