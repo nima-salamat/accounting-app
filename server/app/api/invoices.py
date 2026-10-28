@@ -194,6 +194,10 @@ def _default_template_for_kind(kind):
                     element["visible"] = False
             elif element["type"] == "invoice_number":
                 element["label"] = "شماره سند خرید"
+            elif element["type"] == "seat_number":
+                element["label"] = "تأمین‌کننده"
+            elif element["type"] == "payment_status":
+                element["label"] = "وضعیت تسویه"
     return InvoiceTemplateInput.model_validate(values).model_dump()
 
 
