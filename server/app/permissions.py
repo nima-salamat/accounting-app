@@ -23,6 +23,11 @@ _LEGACY_CASHIER = {
     "receipts": "r",
     "reports": "r",
     "invoices": "r",
+    "returns": "rc",
+    "journals": "",
+    "fiscal_years": "",
+    "audit": "",
+    "pos_devices": "",
 }
 
 RESOURCE_LABELS = {
@@ -37,6 +42,11 @@ RESOURCE_LABELS = {
     "reports": "گزارش‌ها",
     "schemas": "مدل‌ها و فیلدهای سفارشی",
     "invoices": "قالب فاکتور",
+    "returns": "مرجوعی و استرداد",
+    "journals": "اسناد و دفاتر حسابداری",
+    "fiscal_years": "سال مالی",
+    "audit": "سوابق فعالیت کارکنان",
+    "pos_devices": "دستگاه‌های صندوق",
 }
 
 
