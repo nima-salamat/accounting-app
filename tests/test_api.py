@@ -580,11 +580,11 @@ class ApiTests(unittest.TestCase):
         admin_headers = self.setup_admin()
         allowed_response = self.client.post(
             "/api/v1/products", headers=admin_headers,
-            json={"name": "محصول کیوسک مجاز", "sell_price": 25, "track_stock": False},
+            json={"name": "محصول کیوسک مجاز", "buy_price": 10, "sell_price": 25, "track_stock": False},
         )
         denied_response = self.client.post(
             "/api/v1/products", headers=admin_headers,
-            json={"name": "محصول غیرمجاز", "sell_price": 40, "track_stock": False},
+            json={"name": "محصول غیرمجاز", "buy_price": 15, "sell_price": 40, "track_stock": False},
         )
         self.assertEqual(allowed_response.status_code, 201, allowed_response.text)
         self.assertEqual(denied_response.status_code, 201, denied_response.text)
@@ -695,7 +695,7 @@ class ApiTests(unittest.TestCase):
         creator_headers = {"Authorization": "Bearer " + login.json()["access_token"]}
         product = self.client.post(
             "/api/v1/products", headers=creator_headers,
-            json={"name": "تصویر بدون مجوز ویرایش", "sell_price": 10},
+            json={"name": "تصویر بدون مجوز ویرایش", "buy_price": 5, "sell_price": 10},
         )
         self.assertEqual(product.status_code, 201, product.text)
         uploaded = self.client.post(
