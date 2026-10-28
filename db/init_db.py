@@ -1,12 +1,7 @@
-from .models import (
-    Category,
-    Product,
-    Receipt,
-    ReceiptProduct,
-    User,
-    Warehouse, 
-    CheckIn, 
-    CheckOut
-)
-def create(db):
-    db.create_tables([Category, Product, Receipt, ReceiptProduct, User, Warehouse, CheckOut, CheckIn])
+"""Compatibility wrapper for schema creation."""
+from accounting_app.database.connection import db
+from accounting_app.database.schema import create_tables
+
+
+def create(database=None):
+    return create_tables(database or db)

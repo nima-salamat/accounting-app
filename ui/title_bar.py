@@ -1,113 +1,33 @@
-from PySide2.QtWidgets import (
-    QWidget, QPushButton, QLabel, QHBoxLayout
-)
-from PySide2.QtCore import Qt, QTimer, QTime, QDateTime
-import jdatetime
+"""Backward-compatible import facade for the reorganized UI packages."""
+from importlib import import_module
+from pathlib import Path
 
+_MODULES = {
+    "auth_page": "ui.pages.auth_page",
+    "dashboard": "ui.pages.dashboard",
+    "main_window": "ui.pages.main_window",
+    "base_panel": "ui.panels.base_panel",
+    "category_panel": "ui.panels.category_panel",
+    "checks": "ui.panels.checks",
+    "home_panel": "ui.panels.home_panel",
+    "product_panel": "ui.panels.product_panel",
+    "receipt_panel": "ui.panels.receipt_panel",
+    "receipt_product_panel": "ui.panels.receipt_product_panel",
+    "report_panel": "ui.panels.report_panel",
+    "sell_panel": "ui.panels.sell_panel",
+    "user_panel": "ui.panels.user_panel",
+    "warehouse_panel": "ui.panels.warehouse_panel",
+    "dynamic_comparison": "ui.widgets.dynamic_comparison",
+    "float_bar": "ui.widgets.float_bar",
+    "menu_bar": "ui.widgets.menu_bar",
+    "screen_saver": "ui.widgets.screen_saver",
+    "thread": "ui.widgets.thread",
+    "title_bar": "ui.widgets.title_bar",
+    "utils": "ui.widgets.utils",
+}
 
-class TitleBar(QWidget):
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.parent = parent
-        self.setFixedHeight(36)
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setObjectName("TitleBar")
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 0, 8, 0)
-        layout.setSpacing(8)
-
-       
-        self.title_label = QLabel("برنامه حسابداری ", self)
-        layout.addWidget(self.title_label)
-
-       
-        self.clock_label = QLabel(self)
-        self.clock_label.setAlignment(Qt.AlignCenter)
-        layout.addStretch()
-        layout.addWidget(self.clock_label)
-        layout.addStretch()
-
-       
-        btn_min = QPushButton("➖", self)
-        btn_min.setProperty("class", "flat")
-        btn_min.clicked.connect(parent.showMinimized)
-        layout.addWidget(btn_min)
-
-      
-        btn_close = QPushButton("❌", self)
-        btn_close.setProperty("class", "flat")
-        btn_close.clicked.connect(parent.close)
-        layout.addWidget(btn_close)
-
-        
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_time)
-        self.timer.start(1000)
-        self.update_time()
-
-    def update_time(self):
-        now = jdatetime.datetime.now()
-        time_str = now.strftime("%Y/%m/%d - %H:%M:%S")
-        self.clock_label.setText(time_str)
-
-    def update(self, mode):
-        print(mode,"_")
-        if mode == "dark":
-            self.setStyleSheet("""
-#TitleBar {
-    background-color: #1E1E1E;
-}
-#TitleBar QLabel {
-    color: #DDD;
-    font-size: 14px;
-    font-weight: 600;
-}
-#TitleBar QPushButton[class="flat"] {
-        background-color: transparent;
-    color: #AAA;
-    border: none;
-    padding: 0px 0px;
-    font-size: 12px;
-    font-weight: 500;
-    padding: 4px;
-    margin: 0px;
-}
-#TitleBar QPushButton[class="flat"]:hover {
-    color: #80C0FF;
-    background-color: rgba(128,192,255,0.15);
-}
-#TitleBar QPushButton[class="flat"]:pressed {
-    color: #5A9BD8;
-    background-color: rgba(128,192,255,0.25);
-}
-""")
-        else:
-            self.setStyleSheet("""
-#TitleBar {
-    background-color: #F5F5F5;
-}
-#TitleBar QLabel {
-    color: #222;
-    font-size: 14px;
-    font-weight: 600;
-}
-#TitleBar QPushButton[class="flat"] {
-        background-color: transparent;
-    color: #AAA;
-    border: none;
-    padding: 0px 0px;
-    font-size: 12px;
-    font-weight: 500;
-    padding: 4px;
-    margin: 0px;
-}
-#TitleBar QPushButton[class="flat"]:hover {
-    color: #3F51B5;
-    background-color: rgba(63,81,181,0.15);
-}
-#TitleBar QPushButton[class="flat"]:pressed {
-    color: #2A4A8A;
-    background-color: rgba(63,81,181,0.25);
-}
-""")
+_target = import_module(_MODULES[Path(__file__).stem])
+__all__ = getattr(_target, "__all__", [
+    name for name in vars(_target) if not name.startswith("_")
+])
+globals().update({name: getattr(_target, name) for name in __all__})

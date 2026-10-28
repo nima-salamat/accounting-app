@@ -1,2 +1,25 @@
+# Python bytecode and test artifacts
 __pycache__/
-__pycache__/*
+*.py[cod]
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local application data and secrets
+.env
+.env.*
+*.db
+*.db-shm
+*.db-wal
+keys.json
+
+# Build and packaging output
+build/
+dist/
+*.spec

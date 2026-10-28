@@ -1,0 +1,8 @@
+# The current desktop UI is built on PySide2; Python 3.9 is recommended.
+PySide2==5.15.2.1
+peewee>=3.17,<4
+jdatetime>=4.1,<6
+pandas>=1.5,<2.1
+matplotlib>=3.7,<3.9
+openpyxl>=3.1,<4
+Pillow>=10,<12

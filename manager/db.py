@@ -1,54 +1,35 @@
-from peewee import DatabaseProxy, SqliteDatabase
-
-from db.database import DB, db
-from db.init_db import create
-
-_db_initialized = False
-
-def initialize_db():
-    global _db_initialized
-    if not _db_initialized:
-        db_path = DB.get_default_data_base()
-        real_db = SqliteDatabase(db_path, pragmas={"foreign_keys": 1})
-        db.initialize(real_db)
-        _db_initialized = True
-
-class DBManager:
-    def __enter__(self):
-        initialize_db()
-        if db.is_closed():
-            db.connect()
-        db.begin()
-        return db
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type:
-            db.rollback()
-        else:
-            db.commit()
-        if not db.is_closed():
-            db.close()
+"""Compatibility facade for database operations used by the existing UI."""
+from accounting_app.database.connection import DBManager, db, initialize_db
+from accounting_app.database.models import User
+from accounting_app.database.schema import create_tables
 
 
+def initialize_database(path=None):
+    """Initialize the database, optionally choosing an explicit SQLite path."""
+    return initialize_db(path)
 
 
 def create_db():
-    with DBManager():
-        create(db)
-    
+    initialize_database()
+    with DBManager() as database:
+        create_tables(database)
+
+
 def create_admin():
+    """Create the documented first-run admin only if it does not exist."""
     with DBManager():
-        
-        from db.models import User
-        from peewee import DoesNotExist
-        try:
-            user = User.get(username="admin")
-            user.is_admin = True
-            user.save()
-        except DoesNotExist: 
-            user = User.create(username="admin", password="admin")
-            user.is_admin = True
+        user = User.get_or_none(User.username == "admin")
+        if user is None:
+            user = User(username="admin", password="")
             user.set_password("admin")
-            user.save()
-        
-        
+            user.is_admin = True
+            user.save(force_insert=True)
+        elif not user.is_admin:
+            user.is_admin = True
+            user.save(only=[User.is_admin, User.updated_at])
+        return user
+
+
+__all__ = [
+    "DBManager", "db", "initialize_db", "initialize_database", "create_db", "create_admin",
+]

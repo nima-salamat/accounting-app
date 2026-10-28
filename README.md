@@ -1,76 +1,80 @@
 # برنامه حسابداری 🧮
 
-## توضیحات 🌠
+نرم‌افزار حسابداری دسکتاپ با رابط فارسی، نوشته‌شده با Python و PySide2. داده‌ها در SQLite نگهداری می‌شوند. ساختار کد، تنظیمات، لایهٔ دیتابیس، سرویس‌های دامنه و رابط کاربری را از هم جدا می‌کند.
 
-یک برنامه‌ی سبک حسابداری نوشته‌شده با پایتون و **PySide2** برای مدیریت تراکنش‌ها، حساب‌ها و گزارش‌های پایه. داده‌ها در قالب فایل **SQLite3** ذخیره می‌شوند.
+## قابلیت‌ها
 
----
+- مدیریت محصولات، دسته‌بندی‌ها، انبار، کاربران، رسیدهای فروش و چک‌ها
+- گزارش‌ها، نمودارها، مقایسهٔ بازه‌ها و خروجی CSV/Excel
+- رابط فارسی، پوستهٔ روشن و تاریک و محافظ صفحه
+- تراکنش‌های اتمیک برای ثبت و ویرایش رسیدها
+- پشتیبانی از رمزهای هش‌شدهٔ قدیمی و ارتقای آن‌ها پس از ورود موفق
 
-## پیش‌نیازها 📦
+## پیش‌نیازها
 
-* پایتون **3.6 – 3.9** (نسخهٔ 3.9 یا پایین‌تر)
-  [https://www.python.org/downloads/release/python-390/](https://www.python.org/downloads/release/python-390/)
-* فریمورک **PySide2**
+برای سازگاری با رابط فعلی مبتنی بر PySide2، Python 3.9 پیشنهاد می‌شود. وابستگی‌ها در `requirements.txt` فهرست شده‌اند.
 
-```bash
-path_to_python_3.9 -m pip install PySide2
-```
+## نصب و اجرا
 
-* کتابخانه **peewee**
-
-```bash
-path_to_python_3.9 -m pip install peewee
-```
-
-* **SQLite3** (در پایتون گنجانده شده؛ نیازی به نصب جدا نیست)
-
----
-
-## نصب و اجرا ▶️
-
-```bash
+~~~bash
 git clone https://github.com/nima-salamat/accounting-app.git
 cd accounting-app
+python -m venv .venv
 
-# نصب وابستگی‌ها
-path_to_python_3.9 -m pip install PySide2
-path_to_python_3.9 -m pip install peewee
+# Windows
+.venv/Scripts/activate
 
-# اجرا
-path_to_python_3.9 main.py
-```
+# Linux / macOS
+source .venv/bin/activate
 
----
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python main.py
+~~~
 
-## مسیر و نام دیتابیس 🗂️
+## ساختار پروژه
 
-```
-%LOCALAPPDATA%\accounting_app\app.db
-# مثال:
-C:\Users\<User>\AppData\Local\accounting_app\app.db
-```
+~~~text
+accounting-app/
+├── accounting_app/
+│   ├── config.py
+│   ├── database/                 # SQLite connection, transactions and models
+│   └── services/                 # Authentication, sales, validation and utilities
+├── ui/
+│   ├── pages/                    # Main window, authentication and dashboard
+│   ├── panels/                   # CRUD, sales and reports
+│   ├── widgets/                  # Reusable controls and utilities
+│   └── styles/
+├── manager/                      # Compatibility facades for older imports
+├── db/                           # Compatibility facades for older imports
+└── tests/                        # Unit and service tests
+~~~
 
----
+## محل ذخیرهٔ داده‌ها
 
-## فایل تنظیمات — `config.json` ⚙️
+- **Windows:** `%LOCALAPPDATA%/accounting_app/`
+- **Linux:** `$XDG_DATA_HOME/accounting_app/`؛ در نبود این متغیر: `~/.local/share/accounting_app/`
+- دیتابیس: `app.db`
+- تنظیمات رابط: `keys.json`
 
-فایل `config.json` برای ذخیره تنظیمات برنامه استفاده می‌شود (مثل حالت تم یا اسکرین‌سیور).
+برای انتخاب مسیر دلخواه از `ACCOUNTING_APP_DATA_DIR` استفاده کنید. مسیر مستقیم دیتابیس با `ACCOUNTING_APP_DB_PATH` قابل تعیین است. پوشه‌ها هنگام import شدن ماژول‌ها ساخته نمی‌شوند؛ برنامه هنگام اجرا پوشهٔ داده را ایجاد می‌کند.
 
-نمونه:
+## حساب اولیه و امنیت
 
-```json
-{
-  "theme": "dark",
-  "screensaver": "ball"
-}
-```
+در اجرای نخست، اگر حساب مدیر وجود نداشته باشد، حساب `admin` با رمز اولیهٔ `admin` ساخته می‌شود. پس از اولین ورود، رمز عبور پیش‌فرض را تغییر دهید. رمزها با PBKDF2-HMAC-SHA256 و salt تصادفی ذخیره می‌شوند.
 
----
+## اجرای تست‌ها
 
-## لاگین پیش‌فرض 🔐
+~~~bash
+python -m unittest discover -s tests -v
+python -m compileall -q accounting_app db manager ui main.py config.py
+~~~
 
-* **نام کاربری:** `admin`
-* **رمز عبور:** `admin`
+تست‌ها از دیتابیس موقت استفاده می‌کنند و برای اجرای آن‌ها به راه‌اندازی رابط Qt نیازی نیست.
+
+## پشتیبان‌گیری
+
+پیش از ارتقای نسخه، از فایل `app.db` نسخهٔ پشتیبان تهیه کنید. برای گرفتن نسخهٔ سازگار، برنامه را ببندید تا اتصال SQLite و فایل‌های WAL آزاد شوند.
 
 ---
 
