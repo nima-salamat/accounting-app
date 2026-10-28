@@ -573,6 +573,7 @@ def create_user(payload: UserCreate, _admin=Depends(require_admin)):
             buttons=payload.buttons,
             is_active=payload.is_active,
             requires_session_activation=payload.requires_session_activation,
+            max_active_sessions=payload.max_active_sessions,
         )
         record.set_password(payload.password)
         record.save(force_insert=True)
@@ -641,6 +642,11 @@ def update_user(user_id: UUID, payload: UserUpdate, current_admin=Depends(requir
             ).where(
                 (ApiSession.user == updated.id) & (ApiSession.status == "active")
             ).execute()
+        if "max_active_sessions" in values and values.get("is_active") is not False and not password_changed:
+            from server.app.api.auth import enforce_user_session_limit
+            enforce_user_session_limit(
+                updated.id, updated.max_active_sessions, reason="session_limit_changed"
+            )
         record_audit(
             current_admin, "user.updated", "users", updated.id,
             {
@@ -648,6 +654,7 @@ def update_user(user_id: UUID, payload: UserUpdate, current_admin=Depends(requir
                 "changed_fields": sorted(values.keys()) + (["password"] if password_changed else []),
                 "is_admin": updated.is_admin,
                 "is_active": updated.is_active,
+                "max_active_sessions": updated.max_active_sessions,
             },
         )
         return _serialize(updated, exclude=("password",))

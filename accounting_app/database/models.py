@@ -23,6 +23,7 @@ class User(BaseModel):
     buttons = CharField(max_length=FIELD_LENGTH, default="")
     is_active = BooleanField(default=True)
     requires_session_activation = BooleanField(default=False)
+    max_active_sessions = IntegerField(default=1)
 
     def set_password(self, password):
         """Store a versioned PBKDF2 hash instead of the raw password."""

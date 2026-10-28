@@ -250,6 +250,76 @@ class ApiTests(unittest.TestCase):
         denied = self.client.get("/api/v1/products", headers=cashier_headers)
         self.assertEqual(denied.status_code, 401)
 
+    def test_user_session_limit_defaults_to_one_and_admin_can_raise_it(self):
+        admin_headers = self.setup_admin()
+        created = self.client.post(
+            "/api/v1/users", headers=admin_headers,
+            json={"username": "single_user", "password": "single-user-password",
+                  "is_admin": False, "requires_session_activation": False},
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        self.assertEqual(created.json()["max_active_sessions"], 1)
+
+        first_login = self.client.post(
+            "/api/v1/auth/login",
+            json={"username": "single_user", "password": "single-user-password", "client_name": "PC 1"},
+        )
+        self.assertEqual(first_login.status_code, 200, first_login.text)
+        token_one = first_login.json()["access_token"]
+        self.assertEqual(self.client.get("/api/v1/auth/me", headers={"Authorization": "Bearer " + token_one}).status_code, 200)
+
+        second_login = self.client.post(
+            "/api/v1/auth/login",
+            json={"username": "single_user", "password": "single-user-password", "client_name": "PC 2"},
+        )
+        self.assertEqual(second_login.status_code, 200, second_login.text)
+        token_two = second_login.json()["access_token"]
+        self.assertEqual(self.client.get("/api/v1/auth/me", headers={"Authorization": "Bearer " + token_one}).status_code, 401)
+        self.assertEqual(self.client.get("/api/v1/auth/me", headers={"Authorization": "Bearer " + token_two}).status_code, 200)
+
+        updated = self.client.patch(
+            "/api/v1/users/{}".format(created.json()["id"]),
+            headers=admin_headers, json={"max_active_sessions": 2},
+        )
+        self.assertEqual(updated.status_code, 200, updated.text)
+        self.assertEqual(updated.json()["max_active_sessions"], 2)
+
+        third_login = self.client.post(
+            "/api/v1/auth/login",
+            json={"username": "single_user", "password": "single-user-password", "client_name": "PC 3"},
+        )
+        fourth_login = self.client.post(
+            "/api/v1/auth/login",
+            json={"username": "single_user", "password": "single-user-password", "client_name": "PC 4"},
+        )
+        self.assertEqual(third_login.status_code, 200, third_login.text)
+        self.assertEqual(fourth_login.status_code, 200, fourth_login.text)
+        token_three = third_login.json()["access_token"]
+        token_four = fourth_login.json()["access_token"]
+        self.assertEqual(self.client.get("/api/v1/auth/me", headers={"Authorization": "Bearer " + token_three}).status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/auth/me", headers={"Authorization": "Bearer " + token_four}).status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/auth/me", headers={"Authorization": "Bearer " + token_two}).status_code, 401)
+
+    def test_invoice_template_persists_dragged_element_positions(self):
+        headers = self.setup_admin()
+        element = {
+            "id": "invoice-date", "type": "invoice_date", "label": "تاریخ",
+            "x_mm": 13, "y_mm": 11, "w_mm": 61, "h_mm": 9,
+            "font_size": 10, "align": "left", "bold": False, "visible": True, "text": "",
+        }
+        saved = self.client.put(
+            "/api/v1/invoices/template", headers=headers,
+            json={"company_name": "فروشگاه آزمایشی", "paper_size": "A4",
+                  "orientation": "landscape", "show_border": True, "elements": [element]},
+        )
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json()["orientation"], "landscape")
+        self.assertEqual(saved.json()["elements"][0]["x_mm"], 13)
+        fetched = self.client.get("/api/v1/invoices/template", headers=headers)
+        self.assertEqual(fetched.status_code, 200, fetched.text)
+        self.assertEqual(fetched.json()["elements"], saved.json()["elements"])
+        self.assertTrue(fetched.json()["show_border"])
+
     def test_inactive_accounts_cannot_login(self):
         admin_headers = self.setup_admin()
         created = self.client.post(

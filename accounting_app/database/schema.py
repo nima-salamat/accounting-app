@@ -42,6 +42,7 @@ def _migrate_existing_user_table(database):
     for name, definition in (
         ("is_active", "INTEGER NOT NULL DEFAULT 1"),
         ("requires_session_activation", "INTEGER NOT NULL DEFAULT 0"),
+        ("max_active_sessions", "INTEGER NOT NULL DEFAULT 1"),
     ):
         if name not in columns:
             database.execute_sql(
