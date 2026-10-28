@@ -3,10 +3,13 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import unittest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtGui import QWheelEvent
+from PySide6.QtWidgets import QApplication, QSpinBox
 
 from client.ui.invoice_render import DEFAULT_TEMPLATE, default_elements_for_paper, normalize_elements, page_dimensions
 from client.ui.invoice_templates_page import InvoiceTemplatesPage
+from client.ui.theme import install_spinbox_wheel_guard
 
 
 class _WindowStub:
@@ -78,6 +81,21 @@ class InvoiceDesignerTests(unittest.TestCase):
         self.assertTrue(self.page.canvas._user_zoomed)
         self.page._fit_page(force=True)
         self.assertFalse(self.page.canvas._user_zoomed)
+
+    def test_mouse_wheel_does_not_change_any_spinbox_value(self):
+        install_spinbox_wheel_guard(self.app)
+        spin = QSpinBox()
+        spin.setRange(0, 100)
+        spin.setValue(17)
+        point = QPointF(5, 5)
+        wheel = QWheelEvent(
+            point, point, QPoint(0, 0), QPoint(0, 120),
+            Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+            Qt.ScrollPhase.ScrollUpdate, False,
+        )
+        self.app.sendEvent(spin, wheel)
+        self.assertEqual(spin.value(), 17)
+        spin.close()
 
     def test_document_profiles_select_different_default_paper_sizes(self):
         self.page.document_kind.setCurrentIndex(self.page.document_kind.findData("pos_receipt"))
