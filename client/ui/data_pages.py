@@ -17,6 +17,8 @@ def display_value(key, value):
     if key == "status":
         return {"pending": "در انتظار تأیید", "active": "فعال",
                 "revoked": "لغوشده", "expired": "منقضی"}.get(value, value or "—")
+    if key == "image_path":
+        return "دارد" if value else "ندارد"
     if key in ("buy_price", "sell_price", "price", "amount", "total_price", "revenue"):
         try:
             return "{:,.2f}".format(float(value or 0)).rstrip("0").rstrip(".")
@@ -409,9 +411,9 @@ class ProductsPage(ApiTablePage):
             {"key": "image_file", "label": "عکس محصول (اختیاری)", "kind": "image"},
         ]
         super().__init__(window, "محصولات", "نام، قیمت‌ها و دسته‌بندی کالاها.",
-            [("id","شناسه"),("name","نام محصول"),("buy_price","قیمت خرید"),
-             ("sell_price","قیمت فروش"),("track_stock","رهگیری"),("stock_quantity","موجودی"),
-             ("reorder_level","حد سفارش"),("category_id","دسته‌بندی")],
+            [("id","شناسه"),("name","نام محصول"),("image_path","تصویر"),
+             ("buy_price","قیمت خرید"),("sell_price","قیمت فروش"),("track_stock","رهگیری"),
+             ("stock_quantity","موجودی"),("reorder_level","حد سفارش"),("category_id","دسته‌بندی")],
             lambda api,q,page,page_size: api.list_products_page(q=q or None,page=page,page_size=page_size), fields,
             lambda api,p: self._create_product(api, p),
             lambda api,rid,p: self._update_product(api, rid, p),
