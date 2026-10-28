@@ -148,12 +148,15 @@ class SetupWizard(QDialog):
         self.business_profile_help = QLabel()
         self.business_profile_help.setObjectName("PageSubtitle")
         self.business_profile_help.setWordWrap(True)
+        self.buy_price_required_check = QCheckBox("قیمت خرید در ثبت کالا الزامی باشد")
+        self.buy_price_required_check.setChecked(True)
         for profile in profile_options():
             self.business_profile_combo.addItem(profile["label"], profile["key"])
         self.business_profile_combo.currentIndexChanged.connect(self._profile_changed)
         company_form.addRow("نام کسب‌وکار", self.company_name_edit)
         company_form.addRow("بستهٔ آماده", self.business_profile_combo)
         company_form.addRow("محتوای بسته", self.business_profile_help)
+        company_form.addRow("تنظیم قیمت", self.buy_price_required_check)
         layout.addWidget(company_card)
         self._profile_changed()
         return page
@@ -163,6 +166,7 @@ class SetupWizard(QDialog):
         selected = next((item for item in profile_options() if item["key"] == key), None)
         if selected and hasattr(self, "business_profile_help"):
             self.business_profile_help.setText(selected["description"])
+            self.buy_price_required_check.setChecked(key != "cafe")
 
     def _admin_page(self):
         page, layout = self._card(
@@ -291,6 +295,7 @@ class SetupWizard(QDialog):
                 username, password, confirmation, schema_rows=schema_rows,
                 setup_token=setup_token, company_name=company_name,
                 business_profile=profile_key,
+                product_buy_price_required=self.buy_price_required_check.isChecked(),
             ),
             parent=self,
         )
