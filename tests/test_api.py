@@ -471,8 +471,8 @@ class ApiTests(unittest.TestCase):
         journals = self.client.get("/api/v1/journals?page=1&page_size=25", headers=headers)
         self.assertEqual(journals.status_code, 200, journals.text)
         entries = journals.json()
-        self.assertGreaterEqual(entries["total"], 2)
-        self.assertTrue(all(float(item["debit_total"]) == float(item["credit_total"]) for item in entries["items"]))
+        self.assertGreaterEqual(int(journals.headers.get("X-Total-Count", len(entries))), 2)
+        self.assertTrue(all(float(item["debit_total"]) == float(item["credit_total"]) for item in entries))
 
     def test_custom_fields_are_returned_as_table_columns_in_batches(self):
         admin_headers = self.setup_admin()
