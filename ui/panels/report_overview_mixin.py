@@ -37,7 +37,7 @@ from bidi.algorithm import get_display
 
 from ui.panels.report_support import (
     farsi, to_jalali, from_jalali, ReportWorker, PurgeWorker, QueryWorker,
-    SearchLineEdit, DataLoader, cache, wrap_scrollable,
+    SearchLineEdit, DataLoader, cache, cache_lock, wrap_scrollable,
 )
 
 
@@ -134,8 +134,10 @@ class ReportOverviewMixin:
             fmt = fmt_map[snapshot["granularity"]]
 
             cache_key = f"sales_time_{fmt}_{start}_{end}"
-            if cache_key in cache:
-                return cache[cache_key]
+            with cache_lock:
+                cached_result = cache.get(cache_key)
+            if cached_result is not None:
+                return cached_result
             qs = (Receipt
                 .select(fn.strftime(fmt, Receipt.created_at).alias('t'),
                         fn.COUNT(Receipt.id).alias('cnt'))
@@ -144,7 +146,8 @@ class ReportOverviewMixin:
                 .group_by(SQL('t')).order_by(SQL('t')))
             
             df = pd.DataFrame([{"زمان":to_jalali(r.t), "تعداد":r.cnt} for r in qs])
-            cache[cache_key] = df
+            with cache_lock:
+                cache[cache_key] = df
             return df
 
         def on_data_ready(df):
