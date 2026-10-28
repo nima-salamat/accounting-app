@@ -9,7 +9,8 @@ from peewee import fn
 
 from accounting_app.database.connection import DBManager
 from accounting_app.database.models import (
-    Product, Receipt, ReceiptProduct, SaleReturn, SaleReturnLine, StockMovement,
+    JournalEntry, JournalLine, LedgerAccount, Product, Receipt, ReceiptProduct,
+    SaleReturn, SaleReturnLine, StockMovement,
 )
 from accounting_app.services.accounting_controls import FiscalPeriodClosedError, ensure_period_open
 from accounting_app.services.audit import record_audit
@@ -42,6 +43,7 @@ def _return_payload(item, include_lines=True):
                 "product_name": line.product_name,
                 "quantity": line.quantity,
                 "unit_price": str(line.unit_price),
+                "unit_cost": str(line.unit_cost),
                 "line_total": str(line.line_total),
             }
             for line in SaleReturnLine.select().where(
@@ -132,7 +134,10 @@ def create_return(
                 total_amount=total,
                 notes=payload.notes,
             )
+            cost_total = Decimal("0")
             for line, quantity, unit_price, amount in normalized:
+                product = Product.get_or_none(Product.id == line.product_id) if line.product_id else None
+                unit_cost = Decimal(str(line.buy_price or 0)).quantize(Decimal("0.01"))
                 SaleReturnLine.create(
                     sale_return=return_record.id,
                     original_line=line.id,
@@ -140,10 +145,11 @@ def create_return(
                     product_name=line.product_name or (line.product.name if line.product_id else "محصول حذف‌شده"),
                     quantity=quantity,
                     unit_price=unit_price,
+                    unit_cost=unit_cost,
                     line_total=amount,
                 )
-                product = Product.get_or_none(Product.id == line.product_id) if line.product_id else None
                 if product is not None and product.track_stock:
+                    cost_total += unit_cost * quantity
                     before = float(product.stock_quantity or 0)
                     Product.update(
                         stock_quantity=Product.stock_quantity + quantity
@@ -160,6 +166,77 @@ def create_return(
                         reference_id=str(return_record.id),
                         notes="بازگشت موجودی ناشی از مرجوعی فروش",
                     )
+            def ensure_account(code, name, account_type, description):
+                account, _created = LedgerAccount.get_or_create(
+                    code=code,
+                    defaults={
+                        "name": name,
+                        "account_type": account_type,
+                        "description": description,
+                        "is_active": True,
+                    },
+                )
+                return account
+
+            returned_sales = ensure_account(
+                "4100", "برگشت از فروش", "income", "حساب کاهندهٔ درآمد فروش"
+            )
+            if payload.refund_method == "cash":
+                refund_account = ensure_account("1000", "صندوق نقدی", "asset", "وجوه نقد و تسویه پرداخت")
+            elif payload.refund_method == "store_credit":
+                refund_account = ensure_account(
+                    "2200", "اعتبار فروشگاه", "liability", "اعتبار قابل استفاده توسط مشتریان"
+                )
+            else:
+                refund_account = ensure_account("1010", "بانک", "asset", "حساب‌های بانکی و برگشت وجه")
+            inventory_account = ensure_account(
+                "1200", "موجودی کالا", "asset", "حساب کنترل موجودی رهگیری‌شده"
+            )
+            cogs_account = ensure_account(
+                "5000", "بهای تمام‌شده کالای فروش‌رفته", "expense", "بهای کالای فروخته‌شده"
+            )
+            journal_total = (total + cost_total).quantize(Decimal("0.01"))
+            journal = JournalEntry.create(
+                entry_number="RET-{}".format(str(return_record.id).replace("-", "")[:28].upper()),
+                entry_date=return_record.created_at.date(),
+                description="مرجوعی از فاکتور روزانهٔ {}".format(receipt.day_receipt_id),
+                reference="RETURN:{}".format(return_record.id),
+                status="posted",
+                created_by=user.id,
+                created_by_name=user.username,
+                debit_total=journal_total,
+                credit_total=journal_total,
+            )
+            JournalLine.create(
+                entry=journal.id,
+                account=returned_sales.id,
+                description="برگشت از فروش",
+                debit=total,
+                credit=Decimal("0"),
+            )
+            JournalLine.create(
+                entry=journal.id,
+                account=refund_account.id,
+                description="روش استرداد: {}".format(payload.refund_method),
+                debit=Decimal("0"),
+                credit=total,
+            )
+            if cost_total > 0:
+                JournalLine.create(
+                    entry=journal.id,
+                    account=inventory_account.id,
+                    description="بازگشت موجودی به انبار",
+                    debit=cost_total,
+                    credit=Decimal("0"),
+                )
+                JournalLine.create(
+                    entry=journal.id,
+                    account=cogs_account.id,
+                    description="برگشت بهای تمام‌شدهٔ کالای مرجوعی",
+                    debit=Decimal("0"),
+                    credit=cost_total,
+                )
+
             record_audit(
                 user, "return.created", "returns", return_record.id,
                 {
@@ -168,6 +245,8 @@ def create_return(
                     "total_amount": str(total),
                     "refund_method": payload.refund_method,
                     "reason": payload.reason,
+                    "journal_entry_id": str(journal.id),
+                    "journal_entry_number": journal.entry_number,
                     "line_count": len(normalized),
                     "quantities": [
                         {"original_line_id": str(line.id), "quantity": quantity}
