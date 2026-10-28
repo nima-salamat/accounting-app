@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 )
 from client.ui.forms import RecordDialog
 from client.ui.permissions import can_access
+from client.ui.invoice_dialog import InvoiceDialog
 
 
 def display_value(key, value):
@@ -332,6 +333,7 @@ class ReceiptsPage(QFrame):
     def __init__(self, window):
         super().__init__()
         self.window, self.records = window, []
+        self.current_page, self.page_size = 1, 25
         self.setObjectName("Card")
         layout = QVBoxLayout(self); layout.setContentsMargins(18,18,18,18); layout.setSpacing(12)
         header = QHBoxLayout(); text = QVBoxLayout()
@@ -341,10 +343,11 @@ class ReceiptsPage(QFrame):
         text.addWidget(h); text.addWidget(sub); header.addLayout(text,1)
         self.refresh_button = QPushButton("↻ بازخوانی"); self.refresh_button.clicked.connect(self.refresh)
         self.detail_button = QPushButton("جزئیات"); self.detail_button.clicked.connect(self.details)
+        self.invoice_button = QPushButton("نمایش فاکتور"); self.invoice_button.clicked.connect(self.show_invoice)
         self.delete_button = QPushButton("حذف رسید"); self.delete_button.setObjectName("DangerButton")
         self.delete_button.clicked.connect(self.delete_receipt)
         self.export_button = QPushButton("خروجی CSV"); self.export_button.clicked.connect(self.export_csv)
-        for button in (self.refresh_button,self.detail_button,self.delete_button,self.export_button): header.addWidget(button)
+        for button in (self.refresh_button,self.detail_button,self.invoice_button,self.delete_button,self.export_button): header.addWidget(button)
         layout.addLayout(header)
         self.table = QTableWidget(0,5)
         self.table.setHorizontalHeaderLabels(["شناسه","شماره روزانه","مبلغ کل","پرداخت","زمان"])
@@ -355,13 +358,41 @@ class ReceiptsPage(QFrame):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.itemDoubleClicked.connect(lambda _item:self.details())
         layout.addWidget(self.table,1)
+        pager = QHBoxLayout()
+        pager.addWidget(QLabel("تعداد در صفحه"))
+        self.page_size_combo = QComboBox()
+        for size in (25, 50, 100):
+            self.page_size_combo.addItem(str(size), size)
+        self.page_size_combo.currentIndexChanged.connect(self._page_size_changed)
+        pager.addWidget(self.page_size_combo)
+        self.page_label = QLabel("صفحه ۱ از ۱")
+        self.page_label.setObjectName("PageSubtitle")
+        pager.addWidget(self.page_label)
+        pager.addStretch(1)
+        self.previous_page_button = QPushButton("صفحهٔ قبل")
+        self.next_page_button = QPushButton("صفحهٔ بعد")
+        self.previous_page_button.clicked.connect(self.previous_page)
+        self.next_page_button.clicked.connect(self.next_page)
+        pager.addWidget(self.previous_page_button)
+        pager.addWidget(self.next_page_button)
+        layout.addLayout(pager)
 
     def refresh(self):
-        if self.window.api: self.window.run_api(self.window.api.list_receipts,self.populate)
+        if self.window.api: self.window.run_api(lambda: self.window.api.list_receipts(page_size=100), self.populate)
 
     def populate(self, records):
-        self.records = records or []; self.table.setRowCount(0)
-        for row, record in enumerate(self.records):
+        self.records = list(records or [])
+        self.current_page = 1
+        self._render_page()
+
+    def _render_page(self):
+        total = len(self.records)
+        pages = max(1, (total + self.page_size - 1) // self.page_size)
+        self.current_page = min(max(1, self.current_page), pages)
+        start = (self.current_page - 1) * self.page_size
+        visible = self.records[start:start + self.page_size]
+        self.table.setRowCount(0)
+        for row, record in enumerate(visible):
             self.table.insertRow(row)
             values=[record["id"],record["day_receipt_id"],display_value("total_price",record["total_price"]),
                     "پرداخت‌شده" if record["payed"] else "پرداخت‌نشده",record["created_at"]]
@@ -369,7 +400,28 @@ class ReceiptsPage(QFrame):
                 item=QTableWidgetItem(str(value))
                 if col==0:item.setData(Qt.ItemDataRole.UserRole,record)
                 self.table.setItem(row,col,item)
-        self.delete_button.setVisible(bool(self.window.current_user and self.window.current_user.get("is_admin")))
+        self.page_label.setText("صفحه {} از {} · {} رسید".format(self.current_page, pages, total))
+        self.previous_page_button.setEnabled(self.current_page > 1)
+        self.next_page_button.setEnabled(self.current_page < pages)
+        user = self.window.current_user
+        self.delete_button.setVisible(can_access(user, "receipts", "delete"))
+        self.invoice_button.setVisible(can_access(user, "invoices", "read"))
+
+    def _page_size_changed(self, *_args):
+        self.page_size = int(self.page_size_combo.currentData() or 25)
+        self.current_page = 1
+        self._render_page()
+
+    def previous_page(self):
+        if self.current_page > 1:
+            self.current_page -= 1
+            self._render_page()
+
+    def next_page(self):
+        pages = max(1, (len(self.records) + self.page_size - 1) // self.page_size)
+        if self.current_page < pages:
+            self.current_page += 1
+            self._render_page()
 
     def selected(self):
         row=self.table.currentRow()
@@ -385,9 +437,25 @@ class ReceiptsPage(QFrame):
         lines=["شماره روزانه: {}".format(receipt["day_receipt_id"]),
                "مبلغ کل: {}".format(receipt["total_price"]),
                "پرداخت: {}".format("بله" if receipt["payed"] else "خیر"),"","اقلام:"]
-        lines += ["{} × {} | خرید {} | فروش {}".format(item.get("product_id") or "محصول حذف‌شده",
+        lines += ["{} × {} | خرید {} | فروش {}".format(item.get("product_name") or "محصول حذف‌شده",
                   item["quantity"],item["buy_price"],item["sell_price"]) for item in receipt.get("items",[])]
         QMessageBox.information(self,"جزئیات رسید","\n".join(lines))
+
+    def show_invoice(self):
+        record = self.selected()
+        if not record:
+            self.window.show_error("ابتدا یک رسید را انتخاب کنید.")
+            return
+        self.window.run_api(
+            lambda: self.window.api.get_receipt(record["id"]),
+            self._load_invoice_template,
+        )
+
+    def _load_invoice_template(self, receipt):
+        self.window.run_api(
+            self.window.api.get_invoice_template,
+            lambda template: InvoiceDialog(receipt, template, self).exec(),
+        )
 
     def delete_receipt(self):
         record=self.selected()
