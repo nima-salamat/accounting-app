@@ -39,6 +39,9 @@ class SalesServiceTests(unittest.TestCase):
             lines = list(ReceiptProduct.select().where(ReceiptProduct.receipt == receipt.id))
             self.assertEqual(len(lines), 1)
             self.assertEqual(lines[0].quantity, 2)
+            self.assertIsNotNone(lines[0].id)
+            self.assertIsNotNone(lines[0].created_at)
+            self.assertIsNotNone(lines[0].updated_at)
             self.assertTrue(Receipt.get_by_id(receipt.id).payed)
 
     def test_invalid_quantity_does_not_create_a_receipt(self):

@@ -1,6 +1,7 @@
 """Transactional sales operations shared by checkout workers and tests."""
 from datetime import datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
+import uuid
 
 from peewee import fn
 
@@ -61,6 +62,10 @@ def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None):
 
         ReceiptProduct.insert_many([
             {
+                # Bulk inserts bypass the per-model defaults, so provide all BaseModel fields.
+                "id": uuid.uuid4(),
+                "created_at": now,
+                "updated_at": now,
                 "receipt": receipt.id,
                 "product": product_id,
                 "buy_price": buy_price,
