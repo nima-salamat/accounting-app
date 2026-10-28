@@ -68,6 +68,26 @@ class ApiTests(unittest.TestCase):
             409,
         )
 
+    def test_appearance_settings_are_shared_and_admin_only_writable(self):
+        initial = self.client.get("/api/v1/appearance-settings")
+        self.assertEqual(initial.status_code, 200, initial.text)
+        self.assertEqual(initial.json()["font_family"], "Vazirmatn")
+        self.assertEqual(
+            self.client.put("/api/v1/appearance-settings", json={"font_family": "Tahoma"}).status_code,
+            401,
+        )
+        headers = self.setup_admin()
+        payload = {
+            "font_family": "Noto Sans Arabic", "font_size": 15,
+            "heading_scale": 1.2, "density": "spacious", "corner_radius": 12,
+            "control_height": 40, "control_padding": 9,
+            "horizontal_padding": 14, "section_spacing": 16,
+        }
+        saved = self.client.put("/api/v1/appearance-settings", headers=headers, json=payload)
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json(), payload)
+        self.assertEqual(self.client.get("/api/v1/appearance-settings").json(), payload)
+
     def test_products_are_authorized_validated_and_serialized(self):
         headers = self.setup_admin()
         self.assertEqual(self.client.get("/api/v1/products").status_code, 401)

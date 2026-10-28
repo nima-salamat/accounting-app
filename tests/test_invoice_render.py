@@ -26,6 +26,26 @@ class InvoiceRenderTests(unittest.TestCase):
         self.assertIn("&lt;b&gt;Shop&lt;/b&gt;", html)
         self.assertIn("&lt;img src=x onerror=alert(1)&gt;", html)
 
+    def test_custom_persian_font_and_typography_are_applied(self):
+        html = render_invoice_html(
+            {"id": "receipt-font", "total_price": 100, "items": []},
+            dict(DEFAULT_TEMPLATE, font_family="Noto Naskh Arabic", font_size=14,
+                 header_font_size=28, line_height=2.0, text_direction="rtl"),
+        )
+        self.assertIn('dir="rtl"', html)
+        self.assertIn('font-family:"Noto Naskh Arabic"', html)
+        self.assertIn("font-size:14px", html)
+        self.assertIn("font-size:28px", html)
+        self.assertIn("line-height:2.0", html)
+
+    def test_untrusted_font_family_cannot_inject_css(self):
+        html = render_invoice_html(
+            {"id": "receipt-font-safe", "total_price": 0, "items": []},
+            dict(DEFAULT_TEMPLATE, font_family='"; } body { color:red; /*'),
+        )
+        self.assertNotIn('font-family:""; } body', html)
+        self.assertIn('font-family:"Vazirmatn"', html)
+
     def test_invoice_contains_line_totals_and_supported_layout(self):
         html = render_invoice_html(
             {
