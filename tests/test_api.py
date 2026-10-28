@@ -474,6 +474,108 @@ class ApiTests(unittest.TestCase):
         self.assertGreaterEqual(int(journals.headers.get("X-Total-Count", len(entries))), 2)
         self.assertTrue(all(float(item["debit_total"]) == float(item["credit_total"]) for item in entries))
 
+    def test_optional_product_image_is_stored_and_served_from_private_server_storage(self):
+        headers = self.setup_admin()
+        created = self.client.post(
+            "/api/v1/products",
+            headers=headers,
+            json={"name": "کالای تصویری", "buy_price": 5, "sell_price": 12,
+                  "track_stock": False, "reorder_level": 0},
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        product_id = created.json()["id"]
+        png_signature = b"\\x89PNG\\r\\n\\x1a\\n"
+        uploaded = self.client.post(
+            "/api/v1/products/{}/image".format(product_id),
+            headers=headers,
+            files={"file": ("item.png", png_signature, "image/png")},
+        )
+        self.assertEqual(uploaded.status_code, 200, uploaded.text)
+        image_name = uploaded.json()["image_path"]
+        self.assertTrue(image_name.endswith(".png"))
+        fetched = self.client.get(
+            "/api/v1/products/{}/image".format(product_id), headers=headers
+        )
+        self.assertEqual(fetched.status_code, 200, fetched.text)
+        self.assertEqual(fetched.headers.get("content-type"), "image/png")
+        self.assertEqual(fetched.content, png_signature)
+        oversized = self.client.post(
+            "/api/v1/products/{}/image".format(product_id),
+            headers=headers,
+            files={"file": ("bad.png", b"not a png", "image/png")},
+        )
+        self.assertEqual(oversized.status_code, 415, oversized.text)
+
+    def test_purchase_invoice_weighted_average_supplier_payment_and_expense_journals(self):
+        headers = self.setup_admin()
+        created = self.client.post(
+            "/api/v1/products",
+            headers=headers,
+            json={"name": "قهوه", "buy_price": 10, "sell_price": 30,
+                  "track_stock": True, "reorder_level": 1},
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        product = created.json()
+        adjust = self.client.post(
+            "/api/v1/inventory/adjustments", headers=headers,
+            json={"product_id": product["id"], "quantity_change": 10, "reason": "opening"},
+        )
+        self.assertEqual(adjust.status_code, 201, adjust.text)
+
+        supplier_response = self.client.post(
+            "/api/v1/partners", headers=headers,
+            json={"partner_type": "supplier", "name": "تأمین‌کننده تست"},
+        )
+        self.assertEqual(supplier_response.status_code, 201, supplier_response.text)
+        supplier = supplier_response.json()
+
+        invoice_response = self.client.post(
+            "/api/v1/purchase-invoices", headers=headers,
+            json={
+                "supplier_id": supplier["id"],
+                "invoice_number": "SUP-INV-001",
+                "invoice_date": "2026-10-29",
+                "due_date": "2026-11-10",
+                "items": [{
+                    "product_id": product["id"], "description": "",
+                    "quantity": 5, "unit_cost": 20,
+                }],
+            },
+        )
+        self.assertEqual(invoice_response.status_code, 201, invoice_response.text)
+        invoice = invoice_response.json()
+        self.assertEqual(float(invoice["total_amount"]), 100)
+        inventory = self.client.get("/api/v1/products?q=قهوه", headers=headers).json()
+        self.assertEqual(float(inventory[0]["stock_quantity"]), 15)
+        self.assertAlmostEqual(float(inventory[0]["buy_price"]), 13.3333, places=3)
+
+        payment_response = self.client.post(
+            "/api/v1/purchase-invoices/{}/payments".format(invoice["id"]),
+            headers=headers,
+            json={"amount": 50, "paid_on": "2026-10-29", "payment_method": "bank_transfer"},
+        )
+        self.assertEqual(payment_response.status_code, 201, payment_response.text)
+        self.assertEqual(payment_response.json()["status"], "partial")
+        self.assertEqual(float(payment_response.json()["outstanding_amount"]), 50)
+
+        expense_response = self.client.post(
+            "/api/v1/expenses", headers=headers,
+            json={
+                "description": "هزینه برق", "category": "utilities",
+                "expense_date": "2026-10-29", "amount": 15,
+                "payment_method": "cash",
+            },
+        )
+        self.assertEqual(expense_response.status_code, 201, expense_response.text)
+        self.assertEqual(float(expense_response.json()["amount"]), 15)
+        journals = self.client.get("/api/v1/journals?page=1&page_size=100", headers=headers)
+        self.assertEqual(journals.status_code, 200, journals.text)
+        self.assertGreaterEqual(int(journals.headers.get("X-Total-Count", "0")), 3)
+        self.assertTrue(all(
+            float(item["debit_total"]) == float(item["credit_total"])
+            for item in journals.json()
+        ))
+
     def test_custom_fields_are_returned_as_table_columns_in_batches(self):
         admin_headers = self.setup_admin()
         product_response = self.client.post(
