@@ -49,99 +49,106 @@ class ReportProductMixin:
     def _product_search(self):
         product_name = self.line.line.text().strip()
         if not product_name:
-            return  
-        
-        try:
-            start_j = f"{self.dt_from_date.text()} {self.dt_from_time.text()}:00".replace("/", "-")
-            end_j = f"{self.dt_to_date.text()} {self.dt_to_time.text()}:00".replace("/", "-")
+            QMessageBox.information(self, "گزارش محصول", "ابتدا نام محصول را وارد کنید.")
+            return
 
+        try:
+            start_j = "{} {}:00".format(
+                self.dt_from_date.text(), self.dt_from_time.text()
+            ).replace("/", "-")
+            end_j = "{} {}:00".format(
+                self.dt_to_date.text(), self.dt_to_time.text()
+            ).replace("/", "-")
             start = from_jalali(start_j, is_datetime=True)
             end = from_jalali(end_j, is_datetime=True)
-
-        except ValueError:
-            dlg = QDialog(self)
-            dlg.setWindowTitle("خطا")
-            lbl = QLabel("فرمت تاریخ یا زمان نادرست است.", dlg)
-            QVBoxLayout(dlg).addWidget(lbl)
-            dlg.exec_()
+            if start > end:
+                raise ValueError("زمان شروع نباید از زمان پایان بزرگ‌تر باشد.")
+        except ValueError as exc:
+            QMessageBox.warning(self, "بازهٔ نامعتبر", str(exc))
             return
 
+        snapshot = {"product_name": product_name, "start": start, "end": end}
 
-        
-        try:
-            product = Product.get(Product.name == product_name)
-        except Product.DoesNotExist:
-            dlg = QDialog(self)
-            dlg.setWindowTitle("گزارش")
-            lbl = QLabel("محصول یافت نشد.", dlg)
-            QVBoxLayout(dlg).addWidget(lbl)
-            dlg.exec_()
-            return
+        def query_func(filters):
+            product = Product.get_or_none(Product.name == filters["product_name"])
+            if product is None:
+                raise ValueError("محصول موردنظر پیدا نشد.")
 
-        query = (ReceiptProduct
-            .select(Receipt.created_at,
+            query = (
+                ReceiptProduct
+                .select(
+                    Receipt.created_at,
                     ReceiptProduct.quantity,
                     ReceiptProduct.sell_price,
-                    ReceiptProduct.buy_price)
-            .join(Receipt)
-            .where(
-                (ReceiptProduct.product == product) &
-                (Receipt.created_at >= start) &
-                (Receipt.created_at <= end)
+                    ReceiptProduct.buy_price,
+                )
+                .join(Receipt)
+                .where(
+                    (ReceiptProduct.product == product)
+                    & (Receipt.created_at >= filters["start"])
+                    & (Receipt.created_at <= filters["end"])
+                )
+                .order_by(Receipt.created_at)
             )
-            .order_by(Receipt.created_at))
 
-
-        count = query.count()
-        if count == 0:
-            dlg = QDialog(self)
-            dlg.setWindowTitle("گزارش")
-            lbl = QLabel("هیچ فروشی در این بازه یافت نشد.", dlg)
-            QVBoxLayout(dlg).addWidget(lbl)
-            dlg.exec_()
-            return
-
-    
-        self.table.clear()
-        self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels([
-            "تاریخ فاکتور", "تعداد", "مبلغ فروش", "مبلغ خرید", "سود"
-        ])
-        self.table.setRowCount(count + 1)
-
-        total_sales = 0.0
-        total_profit = 0.0
-
-        for row, item in enumerate(query):
-            date_str = to_jalali(item.receipt.created_at)
-            qty = item.quantity
-            sale = item.sell_price * qty
-            cost = item.buy_price * qty
-            profit = sale - cost
-
-            total_sales += sale
-            total_profit += profit
-
-            self.table.setItem(row, 0, QTableWidgetItem(date_str))
-            self.table.setItem(row, 1, QTableWidgetItem(str(qty)))
-            self.table.setItem(row, 2, QTableWidgetItem(f"{sale:.2f}"))
-            self.table.setItem(row, 3, QTableWidgetItem(f"{cost:.2f}"))
-            self.table.setItem(row, 4, QTableWidgetItem(f"{profit:.2f}"))
-
-
-        footer = ["جمع کل:", "", f"{total_sales:.2f}", "", f"{total_profit:.2f}"]
-        for col, text in enumerate(footer):
-            item = QTableWidgetItem(text)
-            item.setFlags(Qt.ItemIsEnabled)
-            self.table.setItem(count, col, item)
-
-        self.table.resizeColumnsToContents()
-        self.lbl_totals.setText(
-            f"مجموع فروش: {total_sales:.2f}    سود خالص: {total_profit:.2f}"
+            rows = []
+            for item in query:
+                quantity = item.quantity
+                sales = item.sell_price * quantity
+                cost = item.buy_price * quantity
+                rows.append({
+                    "date": to_jalali(item.receipt.created_at),
+                    "quantity": quantity,
+                    "sales": sales,
+                    "cost": cost,
+                    "profit": sales - cost,
+                })
+            return pd.DataFrame(
+                rows, columns=["date", "quantity", "sales", "cost", "profit"]
             )
-        
-        
 
+        def on_data_ready(data):
+            if data.empty:
+                self.table.setRowCount(0)
+                self.lbl_totals.setText("")
+                QMessageBox.information(self, "گزارش محصول", "در این بازه فروشی برای این محصول یافت نشد.")
+                return
+
+            self.table.clear()
+            self.table.setColumnCount(5)
+            self.table.setHorizontalHeaderLabels([
+                "تاریخ فاکتور", "تعداد", "مبلغ فروش", "مبلغ خرید", "سود"
+            ])
+            self.table.setRowCount(len(data) + 1)
+
+            total_sales = float(data["sales"].sum())
+            total_profit = float(data["profit"].sum())
+            for row_index, record in data.iterrows():
+                values = (
+                    record["date"], record["quantity"], record["sales"],
+                    record["cost"], record["profit"],
+                )
+                for column, value in enumerate(values):
+                    text = "{:.2f}".format(value) if column >= 2 else str(value)
+                    self.table.setItem(row_index, column, QTableWidgetItem(text))
+
+            footer = ["جمع کل:", "", "{:.2f}".format(total_sales), "", "{:.2f}".format(total_profit)]
+            for column, value in enumerate(footer):
+                item = QTableWidgetItem(value)
+                item.setFlags(Qt.ItemIsEnabled)
+                self.table.setItem(len(data), column, item)
+
+            self.table.resizeColumnsToContents()
+            self.lbl_totals.setText(
+                "مجموع فروش: {:.2f}    سود خالص: {:.2f}".format(total_sales, total_profit)
+            )
+
+        self._product_search_worker = QueryWorker(lambda: query_func(snapshot))
+        self._product_search_worker.dataReady.connect(on_data_ready)
+        self._product_search_worker.error.connect(
+            lambda message: QMessageBox.warning(self, "خطا در گزارش محصول", message)
+        )
+        self._product_search_worker.start()
 
     def _product_tab(self):
         widget = QWidget()
