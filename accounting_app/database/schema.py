@@ -27,6 +27,7 @@ def create_tables(database=None):
     target = database or db
     target.create_tables(TABLES, safe=True)
     _migrate_existing_user_table(target)
+    _migrate_existing_receipt_table(target)
     _migrate_existing_product_table(target)
     _migrate_existing_receipt_product_table(target)
     _migrate_existing_sale_return_line_table(target)
@@ -88,4 +89,14 @@ def _migrate_existing_sale_return_line_table(database):
     if "unit_cost" not in columns:
         database.execute_sql(
             'ALTER TABLE "{}" ADD COLUMN "unit_cost" DECIMAL(16, 2) NOT NULL DEFAULT 0'.format(table)
+        )
+
+
+def _migrate_existing_receipt_table(database):
+    """Add explicit tender-method snapshots to existing receipts without data loss."""
+    table = Receipt._meta.table_name
+    columns = {column.name for column in database.get_columns(table)}
+    if "payment_method" not in columns:
+        database.execute_sql(
+            'ALTER TABLE "{}" ADD COLUMN "payment_method" VARCHAR(24) NOT NULL DEFAULT \'cash\''.format(table)
         )
