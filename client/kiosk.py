@@ -3,7 +3,7 @@ import os
 import uuid
 
 from PySide6.QtCore import Qt, Slot, QSettings, QTimer, QEvent, QObject
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QKeySequence, QShortcut, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QBoxLayout, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFrame,
     QFormLayout, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
@@ -448,6 +448,9 @@ class KioskShopPage(QFrame):
         self.categories = []
         self.cart = {}
         self.runtime_config = {}
+        self.catalog_page = 1
+        self.catalog_page_size = 24
+        self.catalog_total = 0
         self.setObjectName("AppRoot")
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         root = QHBoxLayout(self)
@@ -485,7 +488,7 @@ class KioskShopPage(QFrame):
         self.category = QComboBox()
         self.category.setMinimumHeight(48)
         self.category.setMinimumWidth(180)
-        self.category.currentIndexChanged.connect(self.refresh_catalog)
+        self.category.currentIndexChanged.connect(self._category_changed)
         category_label = QLabel("دسته‌بندی")
         category_label.setObjectName("PageSubtitle")
         filters.addWidget(category_label)
@@ -500,6 +503,18 @@ class KioskShopPage(QFrame):
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.product_host)
         catalog.addWidget(scroll, 1)
+        catalog_pager = QHBoxLayout()
+        self.catalog_previous = QPushButton("صفحه قبل")
+        self.catalog_previous.clicked.connect(lambda: self._change_catalog_page(-1))
+        self.catalog_page_label = QLabel("صفحه ۱")
+        self.catalog_page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.catalog_page_label.setObjectName("PageSubtitle")
+        self.catalog_next = QPushButton("صفحه بعد")
+        self.catalog_next.clicked.connect(lambda: self._change_catalog_page(1))
+        catalog_pager.addWidget(self.catalog_previous)
+        catalog_pager.addWidget(self.catalog_page_label, 1)
+        catalog_pager.addWidget(self.catalog_next)
+        catalog.addLayout(catalog_pager)
         root.addWidget(catalog_card, 3)
 
         cart_card = QFrame()
@@ -576,35 +591,49 @@ class KioskShopPage(QFrame):
             return
         self.refresh_button.setEnabled(False)
         category_id = self.category.currentData()
+        page = self.catalog_page
         self.window.run_api(
-            lambda: self._load_catalog(category_id),
+            lambda: self._load_catalog(category_id, page),
             self._catalog_loaded,
             busy=self.refresh_button,
         )
 
-    def _load_catalog(self, category_id):
+    def _category_changed(self, *_args):
+        self.catalog_page = 1
+        self.refresh_catalog()
+
+    def _change_catalog_page(self, delta):
+        page_count = max(1, (self.catalog_total + self.catalog_page_size - 1) // self.catalog_page_size)
+        requested = self.catalog_page + delta
+        if 1 <= requested <= page_count:
+            self.catalog_page = requested
+            self.refresh_catalog()
+
+    def _load_catalog(self, category_id, page):
         config = self.api.get_kiosk_config()
         if not config.get("active"):
-            raise RuntimeError("کیوسک در پنل مدیر غیرفعال است. از پنل حسابداری، مدیریت کیوسک را فعال کنید.")
+            raise RuntimeError("کیوسک در پنل مدیر غیرفعال است. از برنامه حسابداری > مدیریت کیوسک آن را فعال کنید.")
         if not config.get("allowed_product_ids"):
             raise RuntimeError("هنوز محصولی برای کیوسک انتخاب نشده است. در پنل مدیر، محصولات کیوسک را مشخص کنید.")
-        products, page = [], 1
-        total = None
-        while True:
-            data = self.api.list_products_page(
-                category_id=category_id, page=page, page_size=100
-            )
-            batch = list(data.get("items") or [])
-            total = int(data.get("total", len(batch)))
-            products.extend(batch)
-            if not batch or len(products) >= total:
-                break
-            page += 1
+        data = self.api.list_products_page(
+            category_id=category_id, page=page, page_size=self.catalog_page_size
+        )
+        products = list(data.get("items") or [])
+        # Image downloads happen on the API worker. QPixmap creation happens later on the GUI thread.
+        for product in products:
+            if product.get("image_path"):
+                try:
+                    product["_image_bytes"] = self.api.get_product_image_bytes(product["id"])
+                except Exception:
+                    product["_image_bytes"] = None
         categories_data = self.api.list_categories_page(page=1, page_size=200)
         return {
             "products": products,
             "categories": categories_data.get("items") or [],
             "config": config,
+            "page": int(data.get("page", page)),
+            "page_size": int(data.get("page_size", self.catalog_page_size)),
+            "total": int(data.get("total", len(products))),
         }
 
     def _catalog_loaded(self, data):
@@ -613,6 +642,9 @@ class KioskShopPage(QFrame):
         self.runtime_config = dict(data.get("config") or self.runtime_config)
         self.allow_unpaid = bool(self.runtime_config.get("allow_unpaid_orders", False))
         self.seat_row.setVisible(bool(self.runtime_config.get("cafe_seat_selection")))
+        self.catalog_page = int(data.get("page", self.catalog_page))
+        self.catalog_page_size = int(data.get("page_size", self.catalog_page_size))
+        self.catalog_total = int(data.get("total", len(self.products)))
         current_category = self.category.currentData()
         self.category.blockSignals(True)
         self.category.clear()
@@ -622,35 +654,79 @@ class KioskShopPage(QFrame):
         index = self.category.findData(current_category)
         self.category.setCurrentIndex(index if index >= 0 else 0)
         self.category.blockSignals(False)
+        page_count = max(1, (self.catalog_total + self.catalog_page_size - 1) // self.catalog_page_size)
+        self.catalog_page_label.setText("صفحه {} از {} · {} محصول".format(
+            self.catalog_page, page_count, self.catalog_total
+        ))
+        self.catalog_previous.setEnabled(self.catalog_page > 1)
+        self.catalog_next.setEnabled(self.catalog_page < page_count)
         self._render_products()
 
     def _render_products(self):
         _clear_layout(self.product_grid)
         columns = 2 if self.height() > self.width() else (3 if self.width() < 1300 else 4)
         for index, product in enumerate(self.products):
-            title = product.get("name", "کالا")
-            price = float(product.get("sell_price") or 0)
+            card = QFrame()
+            card.setObjectName("KioskProductCard")
+            card.setFrameShape(QFrame.Shape.NoFrame)
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(12, 12, 12, 12)
+            card_layout.setSpacing(8)
+
+            image = QLabel()
+            image.setObjectName("KioskProductImage")
+            image.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            image.setMinimumHeight(64)
+            image.setMaximumHeight(92)
+            pixmap = QPixmap()
+            image_bytes = product.get("_image_bytes")
+            if image_bytes and pixmap.loadFromData(image_bytes):
+                image.setPixmap(pixmap.scaled(
+                    120, 82, Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                ))
+            else:
+                image.setText("▦")
+            card_layout.addWidget(image)
+
+            title = QLabel(str(product.get("name") or "کالا"))
+            title.setObjectName("KioskProductTitle")
+            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            title.setWordWrap(True)
+            title.setMinimumHeight(42)
+            card_layout.addWidget(title)
+
+            price = QLabel("{:,.2f}".format(float(product.get("sell_price") or 0)))
+            price.setObjectName("KioskProductPrice")
+            price.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            card_layout.addWidget(price)
+
             tracked = bool(product.get("track_stock"))
             stock = float(product.get("stock_quantity") or 0)
-            text = "{}\n{:,.2f}".format(title, price)
-            if tracked:
-                text += "\nموجودی: {:g}".format(stock)
-            button = QPushButton(text)
-            button.setObjectName("Card")
-            button.setMinimumHeight(112)
-            button.setMinimumWidth(150)
-            button.setWordWrap(True) if hasattr(button, "setWordWrap") else None
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            enabled = not (tracked and stock <= 0)
-            button.setEnabled(enabled)
-            if not enabled:
-                button.setToolTip("موجودی کالا تمام شده است.")
-            button.clicked.connect(lambda _checked=False, item=product: self.add_to_cart(item))
-            self.product_grid.addWidget(button, index // columns, index % columns)
+            badge = QLabel(
+                "ناموجود" if tracked and stock <= 0
+                else ("موجودی: {:g}".format(stock) if tracked else "آماده فروش")
+            )
+            badge.setObjectName("KioskStockBadge")
+            badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            if tracked and stock <= 0:
+                badge.setProperty("outOfStock", True)
+            card_layout.addWidget(badge)
+
+            add = QPushButton("افزودن به سبد  +")
+            add.setObjectName("KioskAddButton")
+            add.setMinimumHeight(44)
+            available = not (tracked and stock <= 0)
+            add.setEnabled(available)
+            card.setProperty("outOfStock", bool(not available))
+            add.clicked.connect(lambda _checked=False, item=product: self.add_to_cart(item))
+            card_layout.addWidget(add)
+            self.product_grid.addWidget(card, index // columns, index % columns)
         self.product_grid.setRowStretch((len(self.products) // columns) + 1, 1)
         if not self.products:
-            empty = QLabel("هنوز کالای مجازی برای کیوسک موجود نیست.")
+            empty = QLabel("در این دسته محصول مجازی برای کیوسک موجود نیست.")
             empty.setObjectName("PageSubtitle")
+            empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.product_grid.addWidget(empty, 0, 0, 1, columns)
 
     def add_to_cart(self, product):
@@ -833,7 +909,18 @@ class KioskWindow(QMainWindow):
         self.setMinimumSize(480, 480)
         self.resize(1280, 800)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        self.setStyleSheet(stylesheet("light"))
+        self.setStyleSheet(stylesheet("light") + """
+            QFrame#KioskProductCard { background:#FFFFFF; border:1px solid #DDE5F0; border-radius:16px; }
+            QLabel#KioskProductImage { background:#F1F5FB; color:#5D79A3; border-radius:12px; font-size:44px; font-weight:800; }
+            QLabel#KioskProductTitle { color:#1F2937; font-size:15px; font-weight:750; }
+            QLabel#KioskProductPrice { color:#244EAA; font-size:20px; font-weight:900; }
+            QLabel#KioskStockBadge { color:#18715D; background:#E7F6F0; border-radius:9px; padding:4px; font-size:11px; }
+            QLabel#KioskStockBadge[outOfStock="true"] { color:#9B1C1C; background:#FCE8E6; }
+            QFrame#KioskProductCard[outOfStock="true"] { border-color:#E8C5C2; }
+            QPushButton#KioskAddButton { color:white; background:#3157A4; border:0; border-radius:10px; font-size:13px; font-weight:800; }
+            QPushButton#KioskAddButton:hover { background:#25498D; }
+            QPushButton#KioskAddButton:disabled { background:#E5E7EB; color:#9CA3AF; }
+        """)
         self.local_settings = QSettings("AccountingApp", "SelfServiceKiosk")
         self.api = None
         self.current_user = None
