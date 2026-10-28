@@ -1,5 +1,6 @@
 """Authenticated CRUD endpoints for the primary accounting records."""
 from typing import List, Optional
+import json
 from uuid import UUID, uuid4
 from pathlib import Path
 import mimetypes
@@ -9,6 +10,7 @@ from fastapi.responses import FileResponse
 from peewee import ForeignKeyField, IntegrityError
 
 from accounting_app.database.connection import DBManager
+from accounting_app.database.extension_models import AppSetting
 from accounting_app.database.models import (
     Category as CategoryModel,
     CheckIn as CheckInModel,
@@ -32,6 +34,25 @@ from server.app.schemas import (
 )
 
 router = APIRouter(tags=["resources"])
+
+
+@router.get("/company-profile")
+def get_company_profile(_user=Depends(require_permission("products", "read"))):
+    with DBManager():
+        setting = AppSetting.get_or_none(AppSetting.key == "company_profile")
+        try:
+            profile = json.loads(setting.value) if setting and setting.value else {}
+        except (TypeError, ValueError):
+            profile = {}
+        if not isinstance(profile, dict):
+            profile = {}
+        return {
+            "company_name": str(profile.get("company_name") or "کسب‌وکار من")[:256],
+            "business_profile": str(profile.get("business_profile") or "general")[:32],
+            "business_profile_label": str(profile.get("business_profile_label") or "کسب‌وکار عمومی")[:128],
+            "product_buy_price_required": bool(profile.get("product_buy_price_required", True)),
+        }
+
 
 
 def _serialize(record, *, exclude=()):
