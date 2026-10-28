@@ -487,6 +487,29 @@ class AccountingApiClient:
             params={"start_date": start_date, "end_date": end_date},
         )
 
+    def list_stocktakes_page(self, page=1, page_size=25):
+        return self._request_page(
+            "GET", "/api/v1/stocktakes", page=page, page_size=page_size
+        )
+
+    def get_stocktake(self, stocktake_id):
+        return self._request("GET", "/api/v1/stocktakes/{}".format(stocktake_id))
+
+    def create_stocktake(self, name, product_ids, notes=None):
+        return self._request(
+            "POST", "/api/v1/stocktakes",
+            json_body={"name": name, "product_ids": [str(item) for item in product_ids], "notes": notes},
+        )
+
+    def update_stocktake_count(self, stocktake_id, line_id, counted_quantity):
+        return self._request(
+            "PATCH", "/api/v1/stocktakes/{}/lines/{}".format(stocktake_id, line_id),
+            json_body={"counted_quantity": str(counted_quantity)},
+        )
+
+    def apply_stocktake(self, stocktake_id):
+        return self._request("POST", "/api/v1/stocktakes/{}/apply".format(stocktake_id))
+
     def list_audit_events_page(self, q=None, resource=None, page=1, page_size=50):
         return self._request_page(
             "GET", "/api/v1/audit", page=page, page_size=page_size,
