@@ -119,7 +119,7 @@ class SalesPage(QFrame):
         payment = authorize_payment(amount, reference, settings)
         try:
             receipt = self.window.api.create_sale(
-                items, paid=True, idempotency_key=reference
+                items, paid=True, idempotency_key=reference, payment_method="card"
             )
         except Exception as first_error:
             try:
