@@ -400,6 +400,93 @@ class AccountingApiClient:
             },
         )
 
+    def create_return(self, receipt_id, items, refund_method="cash", reason="customer_return", notes=None):
+        return self._request(
+            "POST", "/api/v1/returns",
+            json_body={
+                "receipt_id": str(receipt_id),
+                "items": [
+                    {"original_line_id": str(item["original_line_id"]), "quantity": int(item["quantity"])}
+                    for item in items
+                ],
+                "refund_method": refund_method,
+                "reason": reason,
+                "notes": notes,
+            },
+        )
+
+    def list_returns_page(self, page=1, page_size=25):
+        return self._request_page("GET", "/api/v1/returns", page=page, page_size=page_size)
+
+    def get_return(self, return_id):
+        return self._request("GET", "/api/v1/returns/{}".format(return_id))
+
+    def list_fiscal_years(self):
+        return self._request("GET", "/api/v1/fiscal-years")
+
+    def create_fiscal_year(self, name, start_date, end_date):
+        return self._request(
+            "POST", "/api/v1/fiscal-years",
+            json_body={"name": name, "start_date": start_date, "end_date": end_date},
+        )
+
+    def close_fiscal_year(self, year_id):
+        return self._request("POST", "/api/v1/fiscal-years/{}/close".format(year_id))
+
+    def reopen_fiscal_year(self, year_id, reason):
+        return self._request(
+            "POST", "/api/v1/fiscal-years/{}/reopen".format(year_id),
+            json_body={"reason": reason},
+        )
+
+    def list_accounts(self):
+        return self._request("GET", "/api/v1/accounts")
+
+    def create_account(self, code, name, account_type, description=None):
+        return self._request(
+            "POST", "/api/v1/accounts",
+            json_body={"code": code, "name": name, "account_type": account_type, "description": description},
+        )
+
+    def list_journals_page(self, q=None, page=1, page_size=25):
+        return self._request_page(
+            "GET", "/api/v1/journals", page=page, page_size=page_size, params={"q": q}
+        )
+
+    def get_journal(self, entry_id):
+        return self._request("GET", "/api/v1/journals/{}".format(entry_id))
+
+    def create_journal(self, entry_date, description, lines, reference=None):
+        return self._request(
+            "POST", "/api/v1/journals",
+            json_body={
+                "entry_date": entry_date,
+                "description": description,
+                "reference": reference,
+                "lines": [
+                    {
+                        "account_id": str(line["account_id"]),
+                        "description": line.get("description", ""),
+                        "debit": str(line.get("debit", 0)),
+                        "credit": str(line.get("credit", 0)),
+                    }
+                    for line in lines
+                ],
+            },
+        )
+
+    def accounting_summary(self, start_date=None, end_date=None):
+        return self._request(
+            "GET", "/api/v1/reports/accounting-summary",
+            params={"start_date": start_date, "end_date": end_date},
+        )
+
+    def list_audit_events_page(self, q=None, resource=None, page=1, page_size=50):
+        return self._request_page(
+            "GET", "/api/v1/audit", page=page, page_size=page_size,
+            params={"q": q, "resource": resource},
+        )
+
     def get_invoice_template(self):
         return self._request("GET", "/api/v1/invoices/template")
 
