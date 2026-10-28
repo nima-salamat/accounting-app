@@ -88,17 +88,17 @@ def _normalize_schema_rows(rows):
 
 def register_schema_rows(rows, *, allow_existing=False):
     """Register a batch of field definitions atomically."""
-    normalized = _normalize_schema_rows(rows)
-    custom_labels = {}
-    for row in normalized:
-        key = row["model_key"]
-        if key not in BUILTIN_ENTITIES:
-            previous = custom_labels.get(key)
-            if previous and previous != row["model_label"]:
-                raise ValueError("برای مدل {} چند عنوان متفاوت وارد شده است.".format(key))
-            custom_labels[key] = row["model_label"]
-
     with DBManager():
+        normalized = _normalize_schema_rows(rows)
+        custom_labels = {}
+        for row in normalized:
+            key = row["model_key"]
+            if key not in BUILTIN_ENTITIES:
+                previous = custom_labels.get(key)
+                if previous and previous != row["model_label"]:
+                    raise ValueError("برای مدل {} چند عنوان متفاوت وارد شده است.".format(key))
+                custom_labels[key] = row["model_label"]
+
         for model_key, label in custom_labels.items():
             model = CustomModelDefinition.get_or_none(
                 CustomModelDefinition.model_key == model_key
@@ -136,9 +136,7 @@ def register_schema_rows(rows, *, allow_existing=False):
                 is_required=row["is_required"],
             )
             created += 1
-    return created
-
-
+        return created
 def register_field(entity_type, field_key, label, field_type="text",
                    is_required=False, model_label=None):
     """Add a single field to a built-in model or a custom entity."""
