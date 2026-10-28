@@ -783,8 +783,10 @@ class KioskWindow(QMainWindow):
         self.loading = QLabel("در حال اتصال امن به سرور…")
         self.loading.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.loading.setObjectName("PageTitle")
+        self.connection_page = KioskConnectionPage(self)
         self.stack.addWidget(self.loading)
         self.stack.addWidget(self.setup_page)
+        self.stack.addWidget(self.connection_page)
         self.stack.addWidget(self.shop_page)
         self.setCentralWidget(self.stack)
 
@@ -797,26 +799,43 @@ class KioskWindow(QMainWindow):
 
     def _boot(self):
         configured = self.local_settings.value("configured", False, type=bool)
-        server_url = self.local_settings.value("server_url", "http://127.0.0.1:8000", type=str)
-        kiosk_username = self.local_settings.value("kiosk_username", "", type=str)
-        password = None
-        if configured and keyring is not None and kiosk_username:
-            try:
-                password = keyring.get_password(KIOSK_KEYRING_SERVICE, kiosk_username)
-            except Exception:
-                password = None
-        if configured and password:
-            self.stack.setCurrentWidget(self.loading)
-            self.showFullScreen()
-            self.run_api(
-                lambda: self._automatic_login(server_url, kiosk_username, password),
-                self._auto_login_complete,
-                failure=self._auto_login_failed,
-            )
+        if configured:
+            # Connection settings are deliberately presented on every launch.
+            self.connection_page.prefill()
+            self.stack.setCurrentWidget(self.connection_page)
+            self.showNormal()
         else:
             self.setup_page.prefill()
             self.stack.setCurrentWidget(self.setup_page)
-            self.show()
+            self.showNormal()
+
+    def _connect_existing_kiosk(self, server_url, username, password):
+        api = AccountingApiClient(server_url)
+        payload = api.login(username, password, client_name="Self-service kiosk")
+        if payload.get("status") != "active" or not payload.get("access_token"):
+            raise RuntimeError("ورود حساب کیوسک فعال نیست؛ مدیر باید درخواست ورود را تأیید کند.")
+        user = payload.get("user") or {}
+        if not (can_access(user, "sales", "create") and can_access(user, "products", "read")):
+            raise RuntimeError("مجوزهای حساب کیوسک ناقص است. preset نقش kiosk را در پنل دسترسی‌ها بررسی کنید.")
+        config = api.get_kiosk_config()
+        if not config.get("active"):
+            raise RuntimeError("کیوسک در پنل مدیر غیرفعال است. از برنامه حسابداری > مدیریت کیوسک آن را فعال کنید.")
+        if not config.get("allowed_product_ids"):
+            raise RuntimeError("هیچ محصولی برای کیوسک انتخاب نشده است. در صفحه مدیریت کیوسک محصولات را انتخاب کنید.")
+        return {"api": api, "user": user, "config": config, "server_url": server_url, "username": username}
+
+    def _connection_complete(self, result):
+        self.api, self.current_user = result["api"], result["user"]
+        self.local_settings.setValue("server_url", result["server_url"])
+        self.local_settings.setValue("kiosk_username", result["username"])
+        self.local_settings.setValue("configured", True)
+        self.local_settings.sync()
+        if keyring is not None and self.connection_page.password.text():
+            try:
+                keyring.set_password(KIOSK_KEYRING_SERVICE, result["username"], self.connection_page.password.text())
+            except Exception:
+                pass
+        self._enter_shop(result["config"])
 
     def _automatic_login(self, server_url, username, password):
         api = AccountingApiClient(server_url)
