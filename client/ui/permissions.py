@@ -65,7 +65,17 @@ def parse_grants(raw):
             continue
         resource, actions = token.split(":", 1)
         resource = resource.strip().lower()
-        actions = "".join(ch for ch in actions.strip().lower() if ch in "rcud")
+        raw_actions = actions.strip().lower()
+        if raw_actions in {"read", "create", "update", "delete"}:
+            actions = {"read": "r", "create": "c", "update": "u", "delete": "d"}[raw_actions]
+        elif any(separator in raw_actions for separator in (" ", "|", "+")):
+            parts = raw_actions.replace("|", " ").replace("+", " ").split()
+            actions = "".join(
+                {"read": "r", "create": "c", "update": "u", "delete": "d"}.get(part, "")
+                for part in parts
+            )
+        else:
+            actions = "".join(ch for ch in raw_actions if ch in "rcud")
         if resource in RESOURCE_LABELS and actions:
             grants[resource] = "".join(ch for ch in "rcud" if ch in actions)
     return grants, role
