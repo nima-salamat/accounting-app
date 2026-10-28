@@ -173,7 +173,7 @@ class SellCheckoutMixin:
         payed = True
         receipt_to_delete = self.current_receipt if self.edit_mode else None
         self.checkout_worker = CheckoutWorker(self.cart, user, payed, edit_mode=self.edit_mode, receipt_to_delete=receipt_to_delete)
-        self.checkout_worker.finished.connect(self.on_checkout_finished)
+        self.checkout_worker.checkout_done.connect(self.on_checkout_finished)
         self.checkout_worker.start()
 
     def on_checkout_finished(self, success: bool, message: str):
