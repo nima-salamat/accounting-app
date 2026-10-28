@@ -897,7 +897,7 @@ class KioskShopPage(QFrame):
 
     def _safe_invoice_template(self):
         try:
-            return self.api.get_invoice_template()
+            return self.api.get_invoice_template(kind="kiosk_receipt")
         except Exception:
             return dict(DEFAULT_TEMPLATE)
 
