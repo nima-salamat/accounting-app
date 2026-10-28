@@ -7,7 +7,7 @@ from decimal import Decimal
 from peewee import BooleanField, DateField, DateTimeField, DecimalField, FloatField, ForeignKeyField, Model
 from PySide2.QtWidgets import (
     QLineEdit, QVBoxLayout, QHBoxLayout, QDialog, QLabel, QCheckBox,
-    QFileDialog, QComboBox, QPushButton, QMessageBox,
+    QFileDialog, QComboBox, QPushButton, QMessageBox, QWidget,
 )
 from PySide2.QtGui import QImage, QPixmap, QDoubleValidator
 from PySide2.QtCore import Qt
@@ -160,7 +160,12 @@ class RecordDialog(QDialog):
                     self.data[name] = from_jalali(jalali_str, is_datetime=True) if jalali_str else None
                 elif isinstance(field, (DecimalField, FloatField)):
                     txt = w.text().strip()
-                    self.data[name] = Decimal(txt) if isinstance(field, DecimalField) else float(txt) if txt else None
+                    if not txt:
+                        self.data[name] = None
+                    elif isinstance(field, DecimalField):
+                        self.data[name] = Decimal(txt)
+                    else:
+                        self.data[name] = float(txt)
                 elif name in self.image_fields:
                     container = w
                     le = container.layout().itemAt(0).widget()
@@ -204,7 +209,8 @@ class RecordDialog(QDialog):
                         else:
                             self.data[name] = None
                 else:
-                    self.data[name] = w.text().strip()
+                    raw_text = w.text()
+                    self.data[name] = raw_text if name == "password" else raw_text.strip()
             except Exception as e:
                 QMessageBox.critical(self, "ورودی نامعتبر", f"خطا در '{name}': {e}")
                 return
