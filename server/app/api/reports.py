@@ -8,6 +8,7 @@ from peewee import fn
 from accounting_app.database.connection import DBManager
 from accounting_app.database.models import Receipt, ReceiptProduct
 from server.app.dependencies import get_current_user
+from server.app.permissions import require_permission
 from server.app.schemas import ReportSummary
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 def sales_summary(
     start_at: Optional[datetime] = Query(default=None),
     end_at: Optional[datetime] = Query(default=None),
-    user=Depends(get_current_user),
+    user=Depends(require_permission("reports", "read")),
 ):
     if start_at is not None and end_at is not None and start_at > end_at:
         raise HTTPException(status_code=422, detail="بازه تاریخ نامعتبر است.")
@@ -57,7 +58,7 @@ def sales_summary(
 @router.get("/sales-trend")
 def sales_trend(
     days: int = Query(30, ge=1, le=365),
-    user=Depends(get_current_user),
+    user=Depends(require_permission("reports", "read")),
 ):
     """Daily sales aggregates for trend charts without exposing raw receipt rows."""
     from datetime import timedelta
@@ -92,7 +93,7 @@ def sales_trend(
 @router.get("/product-performance")
 def product_performance(
     limit: int = Query(20, ge=1, le=100),
-    user=Depends(get_current_user),
+    user=Depends(require_permission("reports", "read")),
 ):
     """Aggregate sold quantities and revenue for the top products."""
     from peewee import JOIN
