@@ -27,7 +27,11 @@ class SalesPage(QFrame):
         title_box.addWidget(title);title_box.addWidget(sub);header.addLayout(title_box,1)
         self.refresh_button=QPushButton("↻ کالاها")
         self.refresh_button.clicked.connect(self.refresh_products)
-        header.addWidget(self.refresh_button);layout.addLayout(header)
+        header.addWidget(self.refresh_button)
+        self.history_button=QPushButton("فاکتورهای اخیر")
+        self.history_button.clicked.connect(self.show_recent_receipts)
+        header.addWidget(self.history_button)
+        layout.addLayout(header)
         filter_row=QHBoxLayout()
         self.search=QLineEdit();self.search.setPlaceholderText("جست‌وجوی کالا...")
         self.search.returnPressed.connect(self.refresh_products)
@@ -41,6 +45,20 @@ class SalesPage(QFrame):
         self.table.setAlternatingRowColors(True);self.table.verticalHeader().setVisible(False)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.table,1)
+        self.seat_row=QFrame()
+        self.seat_row.setObjectName("Card")
+        seat_layout=QHBoxLayout(self.seat_row)
+        seat_layout.setContentsMargins(12,8,12,8)
+        self.seat_label=QLabel("شماره صندلی / میز")
+        self.seat_label.setObjectName("PageSubtitle")
+        self.seat_number=QComboBox()
+        self.seat_number.addItem("انتخاب صندلی…",None)
+        for seat in range(1,31):
+            self.seat_number.addItem("صندلی {}".format(seat),str(seat))
+        seat_layout.addWidget(self.seat_label)
+        seat_layout.addWidget(self.seat_number,1)
+        self.seat_row.hide()
+        layout.addWidget(self.seat_row)
         footer_card=QFrame();footer_card.setObjectName("Card")
         footer=QHBoxLayout(footer_card);footer.setContentsMargins(14,12,14,12)
         self.paid=QCheckBox("فاکتور پرداخت شده است")
@@ -52,6 +70,15 @@ class SalesPage(QFrame):
         footer.addWidget(self.paid);footer.addStretch(1);footer.addWidget(self.total_label);footer.addWidget(self.submit_button)
         layout.addWidget(footer_card)
         self.table.cellWidget if False else None
+        self._business_profile = {}
+        self.history_dialog = None
+
+    def set_business_profile(self, profile):
+        self._business_profile = dict(profile or {})
+        self.seat_row.setVisible(
+            self._business_profile.get("business_profile") == "cafe"
+            or bool(self._business_profile.get("cafe_seat_selection"))
+        )
 
     def refresh_products(self):
         if not self.window.api:return
@@ -98,6 +125,11 @@ class SalesPage(QFrame):
             QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.Yes)
         if answer!=QMessageBox.StandardButton.Yes:return
         paid = self.paid.isChecked()
+        seat_number = self.seat_number.currentData() if self.seat_row.isVisible() else None
+        if self.seat_row.isVisible() and not seat_number:
+            self.window.show_error("برای فروش کافه، شماره صندلی یا میز را انتخاب کنید.")
+            self.seat_number.setFocus()
+            return
         settings = device_settings()
         if paid and settings.get("terminal_mode") == "tcp":
             self.window.run_api(
@@ -107,24 +139,26 @@ class SalesPage(QFrame):
             )
         else:
             self.window.run_api(
-                lambda: self.window.api.create_sale(items, paid=paid),
+                lambda: self.window.api.create_sale(items, paid=paid, seat_number=seat_number),
                 self._sale_created,
                 busy=self.submit_button,
             )
 
-    def _checkout_via_terminal(self, items, settings):
-        quote = self.window.api.quote_sale(items, paid=True)
+    def _checkout_via_terminal(self, items, settings, seat_number=None):
+        quote = self.window.api.quote_sale(items, paid=True, payment_method="card", seat_number=seat_number)
         amount = str(quote.get("total") or "0")
         reference = uuid.uuid4().hex
         payment = authorize_payment(amount, reference, settings)
         try:
             receipt = self.window.api.create_sale(
-                items, paid=True, idempotency_key=reference, payment_method="card"
+                items, paid=True, idempotency_key=reference, payment_method="card",
+                seat_number=seat_number,
             )
         except Exception as first_error:
             try:
                 receipt = self.window.api.create_sale(
-                    items, paid=True, idempotency_key=reference
+                    items, paid=True, idempotency_key=reference, payment_method="card",
+                    seat_number=seat_number,
                 )
             except Exception as retry_error:
                 try:
@@ -150,6 +184,7 @@ class SalesPage(QFrame):
 
     def _sale_created(self,receipt):
         self.paid.setChecked(False)
+        self.seat_number.setCurrentIndex(0)
         for row in range(self.table.rowCount()):
             widget = self.table.cellWidget(row,3)
             if widget:
@@ -178,3 +213,99 @@ class SalesPage(QFrame):
     def _present_invoice(self, receipt, template):
         auto_print_invoice(receipt, template, self.window)
         InvoiceDialog(receipt, template, self.window).exec()
+
+    def show_recent_receipts(self):
+        if not self.window.api:
+            return
+        hours = int((getattr(self.window, "company_profile", None) or {}).get("receipt_history_hours", 48))
+        from PySide6.QtWidgets import QDialog, QTableWidget, QTableWidgetItem, QVBoxLayout, QHeaderView
+        dialog = QDialog(self)
+        dialog.setWindowTitle("فاکتورهای اخیر")
+        dialog.resize(980, 580)
+        dialog.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        root = QVBoxLayout(dialog)
+        title = QLabel("فاکتورهای {} ساعت اخیر".format(hours))
+        title.setObjectName("PageTitle")
+        hint = QLabel("فاکتورهای پرداخت‌نشده با رنگ قرمز علامت‌گذاری شده‌اند. این فهرست بر اساس بازه تنظیم‌شده در پنل مدیریت محدود است.")
+        hint.setObjectName("PageSubtitle")
+        hint.setWordWrap(True)
+        root.addWidget(title)
+        root.addWidget(hint)
+        table = QTableWidget(0, 6)
+        table.setHorizontalHeaderLabels(["شناسه", "وضعیت پرداخت", "تاریخ", "صندلی / میز", "مبلغ", "روش پرداخت"])
+        table.setColumnHidden(0, True)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.setAlternatingRowColors(True)
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        root.addWidget(table, 1)
+        footer = QHBoxLayout()
+        status = QLabel("")
+        status.setObjectName("PageSubtitle")
+        open_button = QPushButton("نمایش و چاپ فاکتور")
+        open_button.setObjectName("PrimaryButton")
+        close_button = QPushButton("بستن")
+        footer.addWidget(status, 1)
+        footer.addWidget(open_button)
+        footer.addWidget(close_button)
+        root.addLayout(footer)
+        close_button.clicked.connect(dialog.reject)
+
+        def populate(payload):
+            records = list(payload.get("items") or [])
+            table.setRowCount(0)
+            for row, item in enumerate(records):
+                table.insertRow(row)
+                paid = bool(item.get("payed"))
+                created_at = str(item.get("created_at") or "—").replace("T", " ")[:19]
+                values = [
+                    str(item.get("id") or ""),
+                    "پرداخت‌شده" if paid else "پرداخت‌نشده",
+                    created_at,
+                    str(item.get("seat_number") or "—"),
+                    "{:,.2f}".format(float(item.get("total_price") or 0)),
+                    str(item.get("payment_method") or "—"),
+                ]
+                for col, value in enumerate(values):
+                    cell = QTableWidgetItem(value)
+                    if col == 0:
+                        cell.setData(Qt.ItemDataRole.UserRole, item)
+                    if not paid:
+                        cell.setBackground(QBrush(QColor("#FCE8E6")))
+                        cell.setForeground(QBrush(QColor("#9B1C1C")))
+                    table.setItem(row, col, cell)
+            status.setText("{} فاکتور · {} مورد پرداخت‌نشده".format(
+                len(records), sum(not bool(item.get("payed")) for item in records)
+            ))
+
+        def open_selected():
+            row = table.currentRow()
+            cell = table.item(row, 0) if row >= 0 else None
+            record = cell.data(Qt.ItemDataRole.UserRole) if cell else None
+            if not record:
+                QMessageBox.information(dialog, "انتخاب فاکتور", "ابتدا یک فاکتور را انتخاب کنید.")
+                return
+            self.window.run_api(
+                lambda: self._load_recent_invoice(record["id"]),
+                lambda result: self._show_recent_invoice(result, dialog),
+            )
+
+        open_button.clicked.connect(open_selected)
+        table.cellDoubleClicked.connect(lambda _row, _column: open_selected())
+        dialog.setMinimumSize(760, 460)
+        self.window.run_api(
+            self.window.api.list_recent_receipts_page,
+            populate,
+            failure=lambda error: QMessageBox.warning(dialog, "خطای دریافت فاکتورها", str(error)),
+        )
+        dialog.exec()
+
+    def _load_recent_invoice(self, receipt_id):
+        receipt = self.window.api.get_receipt(receipt_id)
+        template = self.window.api.get_invoice_template()
+        return {"receipt": receipt, "template": template}
+
+    def _show_recent_invoice(self, payload, dialog):
+        InvoiceDialog(payload["receipt"], payload.get("template") or DEFAULT_TEMPLATE, self.window).exec()
