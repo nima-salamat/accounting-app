@@ -306,6 +306,9 @@ class AccountingMainWindow(QMainWindow):
 
     def _company_profile_loaded(self, profile):
         self.company_profile = dict(profile or {})
+        if hasattr(self, "sales_page"):
+            self.sales_page.set_business_profile(self.company_profile)
+            self.sales_page.set_permissions(self.current_user)
         self.set_status("تنظیمات کسب‌وکار بارگذاری شد.")
 
     def _show_auth(self):
@@ -370,6 +373,7 @@ class AccountingMainWindow(QMainWindow):
         self.inventory_page.set_permissions(user)
         self.stocktakes_page.set_permissions(user)
         self.purchasing_page.set_permissions(user)
+        self.sales_page.set_permissions(user)
         self.kiosk_settings_page.set_permissions(user)
         self.schemas_page.set_permissions(user)
         self.returns_page.set_permissions(user)
