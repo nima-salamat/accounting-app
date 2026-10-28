@@ -44,7 +44,11 @@ class SellCheckoutMixin:
     def refresh_receipts(self):
         self.receipt_fetcher = ReceiptFetcher()
         self.receipt_fetcher.receipts_fetched.connect(self.on_receipts_fetched)
+        self.receipt_fetcher.error.connect(self._on_receipt_fetch_error)
         self.receipt_fetcher.start()
+
+    def _on_receipt_fetch_error(self, message):
+        QMessageBox.warning(self, "خطا در دریافت رسیدها", message)
 
     def on_receipts_fetched(self, receipts: list):
         self.receipts_table.setRowCount(0)
@@ -157,7 +161,7 @@ class SellCheckoutMixin:
         payed = self.payed_checkbox.isChecked()
         receipt_to_delete = self.current_receipt if self.edit_mode else None
         self.checkout_worker = CheckoutWorker(self.cart, user, payed, edit_mode=self.edit_mode, receipt_to_delete=receipt_to_delete)
-        self.checkout_worker.finished.connect(self.on_checkout_finished)
+        self.checkout_worker.checkout_done.connect(self.on_checkout_finished)
         self.checkout_worker.start()
     
     
