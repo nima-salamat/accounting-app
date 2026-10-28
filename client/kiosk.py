@@ -394,9 +394,11 @@ class KioskShopPage(QFrame):
         self.products = []
         self.categories = []
         self.cart = {}
+        self.runtime_config = {}
         self.setObjectName("AppRoot")
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         root = QHBoxLayout(self)
+        self.main_layout = root
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(12)
 
@@ -414,26 +416,26 @@ class KioskShopPage(QFrame):
         title_box.addWidget(self.shop_title)
         title_box.addWidget(subtitle)
         heading.addLayout(title_box, 1)
-        self.refresh_button = QPushButton("بازخوانی")
+        self.refresh_button = QPushButton("بازخوانی کالاها")
         self.refresh_button.clicked.connect(self.refresh_catalog)
+        self.manager_settings_button = QPushButton("تنظیمات مدیر")
+        self.manager_settings_button.clicked.connect(self.window.open_protected_settings)
+        self.exit_button = QPushButton("خروج")
+        self.exit_button.setObjectName("DangerButton")
+        self.exit_button.clicked.connect(self.window.request_exit)
         heading.addWidget(self.refresh_button)
+        heading.addWidget(self.manager_settings_button)
+        heading.addWidget(self.exit_button)
         catalog.addLayout(heading)
 
         filters = QHBoxLayout()
-        self.search = QLineEdit()
-        self.search.setPlaceholderText("نام کالا یا بارکد را اسکن کنید…")
-        self.search.setMinimumHeight(44)
-        self.search.returnPressed.connect(self.refresh_catalog)
-        self.keyboard_button = QPushButton("⌨")
-        self.keyboard_button.setToolTip("صفحه‌کلید لمسی")
-        self.keyboard_button.setMinimumWidth(54)
-        self.keyboard_button.setMinimumHeight(44)
-        self.keyboard_button.clicked.connect(lambda: TouchKeyboardDialog(self.search, self).exec())
         self.category = QComboBox()
-        self.category.setMinimumHeight(44)
+        self.category.setMinimumHeight(48)
+        self.category.setMinimumWidth(180)
         self.category.currentIndexChanged.connect(self.refresh_catalog)
-        filters.addWidget(self.search, 2)
-        filters.addWidget(self.keyboard_button)
+        category_label = QLabel("دسته‌بندی")
+        category_label.setObjectName("PageSubtitle")
+        filters.addWidget(category_label)
         filters.addWidget(self.category, 1)
         catalog.addLayout(filters)
 
@@ -461,6 +463,21 @@ class KioskShopPage(QFrame):
         cart_header.addStretch(1)
         cart_header.addWidget(self.cart_count)
         cart_layout.addLayout(cart_header)
+
+        self.seat_row = QWidget()
+        seat_layout = QHBoxLayout(self.seat_row)
+        seat_layout.setContentsMargins(0, 0, 0, 0)
+        seat_label = QLabel("شماره صندلی / میز")
+        seat_label.setObjectName("PageSubtitle")
+        self.seat_number = QComboBox()
+        self.seat_number.setMinimumHeight(44)
+        self.seat_number.addItem("انتخاب صندلی…", None)
+        for seat in range(1, 31):
+            self.seat_number.addItem("صندلی {}".format(seat), str(seat))
+        seat_layout.addWidget(seat_label)
+        seat_layout.addWidget(self.seat_number, 1)
+        self.seat_row.hide()
+        cart_layout.addWidget(self.seat_row)
         self.cart_host = QWidget()
         self.cart_layout = QVBoxLayout(self.cart_host)
         self.cart_layout.setContentsMargins(0, 0, 0, 0)
@@ -492,31 +509,37 @@ class KioskShopPage(QFrame):
         root.addWidget(cart_card, 2)
         self._render_cart()
 
-    def bind_session(self, api, user, company_name, allow_unpaid=False):
+    def bind_session(self, api, user, company_name, kiosk_config=None):
         self.api = api
         self.user = user
-        self.allow_unpaid = bool(allow_unpaid)
+        self.runtime_config = dict(kiosk_config or {})
+        self.allow_unpaid = bool(self.runtime_config.get("allow_unpaid_orders", False))
         self.shop_title.setText(company_name or "انتخاب محصولات")
+        self.seat_row.setVisible(bool(self.runtime_config.get("cafe_seat_selection")))
         self.refresh_catalog()
 
     def refresh_catalog(self, *_args):
         if not self.api:
             return
         self.refresh_button.setEnabled(False)
-        query = self.search.text().strip() or None
         category_id = self.category.currentData()
         self.window.run_api(
-            lambda: self._load_catalog(query, category_id),
+            lambda: self._load_catalog(category_id),
             self._catalog_loaded,
             busy=self.refresh_button,
         )
 
-    def _load_catalog(self, query, category_id):
+    def _load_catalog(self, category_id):
+        config = self.api.get_kiosk_config()
+        if not config.get("active"):
+            raise RuntimeError("کیوسک در پنل مدیر غیرفعال است. از پنل حسابداری، مدیریت کیوسک را فعال کنید.")
+        if not config.get("allowed_product_ids"):
+            raise RuntimeError("هنوز محصولی برای کیوسک انتخاب نشده است. در پنل مدیر، محصولات کیوسک را مشخص کنید.")
         products, page = [], 1
         total = None
         while True:
             data = self.api.list_products_page(
-                q=query, category_id=category_id, page=page, page_size=100
+                category_id=category_id, page=page, page_size=100
             )
             batch = list(data.get("items") or [])
             total = int(data.get("total", len(batch)))
@@ -525,11 +548,18 @@ class KioskShopPage(QFrame):
                 break
             page += 1
         categories_data = self.api.list_categories_page(page=1, page_size=200)
-        return {"products": products, "categories": categories_data.get("items") or []}
+        return {
+            "products": products,
+            "categories": categories_data.get("items") or [],
+            "config": config,
+        }
 
     def _catalog_loaded(self, data):
         self.products = list(data.get("products") or [])
         self.categories = list(data.get("categories") or [])
+        self.runtime_config = dict(data.get("config") or self.runtime_config)
+        self.allow_unpaid = bool(self.runtime_config.get("allow_unpaid_orders", False))
+        self.seat_row.setVisible(bool(self.runtime_config.get("cafe_seat_selection")))
         current_category = self.category.currentData()
         self.category.blockSignals(True)
         self.category.clear()
@@ -543,7 +573,7 @@ class KioskShopPage(QFrame):
 
     def _render_products(self):
         _clear_layout(self.product_grid)
-        columns = 3
+        columns = 2 if self.height() > self.width() else (3 if self.width() < 1300 else 4)
         for index, product in enumerate(self.products):
             title = product.get("name", "کالا")
             price = float(product.get("sell_price") or 0)
@@ -566,7 +596,7 @@ class KioskShopPage(QFrame):
             self.product_grid.addWidget(button, index // columns, index % columns)
         self.product_grid.setRowStretch((len(self.products) // columns) + 1, 1)
         if not self.products:
-            empty = QLabel("کالایی برای این جست‌وجو پیدا نشد.")
+            empty = QLabel("هنوز کالای مجازی برای کیوسک موجود نیست.")
             empty.setObjectName("PageSubtitle")
             self.product_grid.addWidget(empty, 0, 0, 1, columns)
 
@@ -638,6 +668,11 @@ class KioskShopPage(QFrame):
         ]
         if not items:
             return
+        seat_number = self.seat_number.currentData() if self.seat_row.isVisible() else None
+        if self.seat_row.isVisible() and not seat_number:
+            QMessageBox.information(self, "شماره صندلی", "برای ثبت سفارش کافه، ابتدا شماره صندلی یا میز را انتخاب کنید.")
+            self.seat_number.setFocus()
+            return
         settings = device_settings()
         mode = settings.get("terminal_mode")
         if mode != "tcp" and not self.allow_unpaid:
@@ -658,14 +693,16 @@ class KioskShopPage(QFrame):
             if answer != QMessageBox.StandardButton.Yes:
                 return
         self.window.run_api(
-            lambda: self._checkout_operation(items, settings, mode),
+            lambda: self._checkout_operation(items, settings, mode, seat_number),
             self._checkout_completed,
             busy=self.checkout_button,
         )
 
-    def _checkout_operation(self, items, settings, mode):
+    def _checkout_operation(self, items, settings, mode, seat_number=None):
         if mode != "tcp":
-            receipt = self.api.create_sale(items, paid=False, payment_method="unpaid")
+            receipt = self.api.create_sale(
+                items, paid=False, payment_method="unpaid", seat_number=seat_number
+            )
             return {
                 "receipt": receipt,
                 "template": self._safe_invoice_template(),
@@ -673,18 +710,18 @@ class KioskShopPage(QFrame):
                 "transaction_id": None,
             }
 
-        quote = self.api.quote_sale(items, paid=True)
+        quote = self.api.quote_sale(items, paid=True, payment_method="card", seat_number=seat_number)
         amount = str(quote.get("total") or "0")
         reference = uuid.uuid4().hex
         payment = authorize_payment(amount, reference, settings)
         try:
-            receipt = self.api.create_sale(items, paid=True, idempotency_key=reference, payment_method="card")
+            receipt = self.api.create_sale(items, paid=True, idempotency_key=reference, payment_method="card", seat_number=seat_number)
         except Exception as first_sale_error:
             # A socket timeout can happen after the API committed the receipt. Retry the
             # exact same idempotency key once before voiding a payment that may already
             # have a valid, paid receipt on the server.
             try:
-                receipt = self.api.create_sale(items, paid=True, idempotency_key=reference, payment_method="card")
+                receipt = self.api.create_sale(items, paid=True, idempotency_key=reference, payment_method="card", seat_number=seat_number)
             except Exception as retry_error:
                 try:
                     void_payment(amount, reference, payment["transaction_id"], settings)
@@ -835,7 +872,6 @@ class KioskWindow(QMainWindow):
         self.stack.setCurrentWidget(self.shop_page)
         self.setCursor(Qt.CursorShape.ArrowCursor)
         self.showFullScreen()
-        self.shop_page.search.setFocus()
 
     def open_protected_settings(self):
         if self.api is None:
@@ -946,7 +982,7 @@ class KioskWindow(QMainWindow):
             page.deleteLater()
         if self.stack.count() > 2:
             self.stack.setCurrentWidget(self.shop_page)
-        self.shop_page.search.setFocus()
+        self.shop_page.setFocus()
 
     def run_api(self, operation, on_success, *, failure=None, busy=None):
         ticket = uuid.uuid4().hex
