@@ -233,9 +233,9 @@ def _product_image_directory():
 
 
 def _identify_image(data):
-    if data.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
         return ".png", "image/png"
-    if data.startswith(b"\\xff\\xd8\\xff"):
+    if data.startswith(b"\xff\xd8\xff"):
         return ".jpg", "image/jpeg"
     if data.startswith((b"GIF87a", b"GIF89a")):
         return ".gif", "image/gif"
