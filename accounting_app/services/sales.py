@@ -17,7 +17,7 @@ class InsufficientStockError(ValueError):
     """Raised when a tracked item does not have enough available stock."""
 
 
-def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None):
+def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None, payment_method="cash"):
     """Atomically create or update a receipt and all of its line items."""
     if not cart:
         raise ValueError("سبد خرید خالی است.")
@@ -25,6 +25,12 @@ def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None):
         raise ValueError("برای ثبت فروش باید کاربر واردشده معتبر باشد.")
     if edit_mode and receipt_to_edit is None:
         raise ValueError("رسید موردنظر برای ویرایش مشخص نشده است.")
+    allowed_methods = {"cash", "card", "bank_transfer", "store_credit", "unpaid"}
+    payment_method = str(payment_method or "cash").strip().lower()
+    if not payed:
+        payment_method = "unpaid"
+    elif payment_method not in allowed_methods - {"unpaid"}:
+        raise ValueError("روش دریافت وجه معتبر نیست.")
 
     normalized_items = []
     total = Decimal("0")
@@ -79,6 +85,7 @@ def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None):
                 )
             receipt.user = user
             receipt.payed = bool(payed)
+            receipt.payment_method = payment_method
             receipt.total_price = float(total)
             receipt.save()
             ReceiptProduct.delete().where(ReceiptProduct.receipt == receipt).execute()
@@ -92,6 +99,7 @@ def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None):
             receipt = Receipt.create(
                 user=user,
                 payed=bool(payed),
+                payment_method=payment_method,
                 total_price=float(total),
                 day_receipt_id=int(highest_daily_id) + 1,
             )
@@ -141,7 +149,7 @@ def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None):
             }
             for product_id, buy_price, sell_price, quantity, product_name, _tracked_stock in normalized_items
         ]).execute()
-        post_sale_journal(receipt, user, normalized_items, total, bool(payed))
+        post_sale_journal(receipt, user, normalized_items, total, bool(payed), payment_method=payment_method)
         record_audit(
             user,
             action="sale.updated" if edit_mode else "sale.created",
