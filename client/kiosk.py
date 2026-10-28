@@ -16,7 +16,7 @@ try:
 except ImportError:
     keyring = None
 
-from client.api_client import AccountingApiClient
+from client.api_client import AccountingApiClient, ApiError
 from client.payment_terminal import (
     PaymentTerminalError, authorize_payment, void_payment,
 )
@@ -433,9 +433,18 @@ class KioskConnectionPage(QFrame):
         self.window.run_api(
             lambda: self.window._connect_existing_kiosk(server_url, username, password),
             self.window._connection_complete,
-            failure=lambda error: self.status.setText(str(error)),
+            failure=self._connect_failed,
             busy=self.connect_button,
         )
+
+    def _connect_failed(self, error):
+        if getattr(error, "status_code", None) == 403:
+            self.status.setText(
+                "مجوز حساب کیوسک قدیمی است؛ برای به‌روزرسانی دسترسی‌ها، مدیر سیستم باید وارد شود."
+            )
+            self.window.open_protected_settings()
+            return
+        self.status.setText(str(error))
 
 
 class KioskShopPage(QFrame):
@@ -966,8 +975,15 @@ class KioskWindow(QMainWindow):
         if payload.get("status") != "active" or not payload.get("access_token"):
             raise RuntimeError("ورود حساب کیوسک فعال نیست؛ مدیر باید درخواست ورود را تأیید کند.")
         user = payload.get("user") or {}
-        if not (can_access(user, "sales", "create") and can_access(user, "products", "read")):
-            raise RuntimeError("مجوزهای حساب کیوسک ناقص است. preset نقش kiosk را در پنل دسترسی‌ها بررسی کنید.")
+        required_permissions = (
+            ("sales", "create"), ("products", "read"), ("categories", "read"),
+            ("receipts", "read"), ("invoices", "read"), ("kiosk", "read"),
+        )
+        if not all(can_access(user, resource, action) for resource, action in required_permissions):
+            raise ApiError(
+                403,
+                "حساب کیوسک به مجوزهای جدید نیاز دارد؛ ورود مدیر برای به‌روزرسانی آن لازم است.",
+            )
         config = api.get_kiosk_config()
         if not config.get("active"):
             raise RuntimeError("کیوسک در پنل مدیر غیرفعال است. از برنامه حسابداری > مدیریت کیوسک آن را فعال کنید.")
