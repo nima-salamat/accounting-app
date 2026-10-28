@@ -193,7 +193,7 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(pending.status_code, 200, pending.text)
         self.assertEqual(pending.json()["status"], "pending_activation")
-        self.assertNotIn("access_token", pending.json())
+        self.assertIsNone(pending.json().get("access_token"))
         ticket = pending.json()["session_ticket"]
         check = self.client.post("/api/v1/auth/session-status", json={"ticket": ticket})
         self.assertEqual(check.status_code, 200, check.text)

@@ -72,6 +72,8 @@ def list_sessions(
 @router.post("/sessions/{session_id}/activate")
 def activate_session(session_id: UUID, admin=Depends(require_admin)):
     now = datetime.now()
+    expired = False
+    result = None
     with DBManager():
         session = ApiSession.get_or_none(ApiSession.id == session_id)
         if session is None:
@@ -83,15 +85,19 @@ def activate_session(session_id: UUID, admin=Depends(require_admin)):
             session.revoked_at = now
             session.revocation_reason = "activation_expired"
             session.save()
-            raise HTTPException(status_code=409, detail="مهلت این درخواست ورود به پایان رسیده است.")
-        user = User.get_or_none(User.id == session.user_id)
-        if user is None or not user.is_active:
-            raise HTTPException(status_code=409, detail="حساب کاربری غیرفعال است.")
-        session.status = "active"
-        session.activated_at = now
-        session.last_seen_at = now
-        session.save()
-        return _session_payload(session, user)
+            expired = True
+        else:
+            user = User.get_or_none(User.id == session.user_id)
+            if user is None or not user.is_active:
+                raise HTTPException(status_code=409, detail="حساب کاربری غیرفعال است.")
+            session.status = "active"
+            session.activated_at = now
+            session.last_seen_at = now
+            session.save()
+            result = _session_payload(session, user)
+    if expired:
+        raise HTTPException(status_code=409, detail="مهلت این درخواست ورود به پایان رسیده است.")
+    return result
 
 
 @router.post("/sessions/{session_id}/revoke", status_code=status.HTTP_200_OK)
