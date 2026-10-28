@@ -331,6 +331,11 @@ class ApiTests(unittest.TestCase):
             len(self.client.get("/api/v1/receipts", headers=admin_headers).json()),
             1,
         )
+        protected_delete = self.client.delete(
+            "/api/v1/products/{}".format(product["id"]),
+            headers=admin_headers,
+        )
+        self.assertEqual(protected_delete.status_code, 409, protected_delete.text)
 
     def test_resource_permissions_are_enforced_per_operation(self):
         admin_headers = self.setup_admin()
