@@ -53,6 +53,7 @@ RESOURCE_LABELS = {
     "partners": "مشتریان و تأمین‌کنندگان",
     "purchase_invoices": "فاکتورهای خرید",
     "expenses": "هزینه‌ها و پرداخت‌ها",
+    "kiosk": "مدیریت کیوسک",
 }
 
 
