@@ -115,7 +115,7 @@ class TableCrudMixin:
             self.deleter.deleted.connect(self.thread.quit)
             self.deleter.error.connect(self.thread.quit)
             self.thread.finished.connect(self.deleter.deleteLater)
-        self.thread.finished.connect(self.thread.deleteLater)
+            self.thread.finished.connect(self.thread.deleteLater)
 
             self.thread.start()
             self.data_table.setEnabled(False)
