@@ -24,7 +24,7 @@ def is_setup_required():
             return False
         return True
 
-def complete_initial_setup(username, password, password_confirmation, schema_rows=None, company_name="کسب‌وکار من", business_profile="general"):
+def complete_initial_setup(username, password, password_confirmation, schema_rows=None, company_name="کسب‌وکار من", business_profile="general", product_buy_price_required=None):
     """Create the first admin and schema metadata as one atomic operation."""
     normalized_username = validate_username(username)
     if len(normalized_username) < USERNAME_MIN_LENGTH:
@@ -46,7 +46,7 @@ def complete_initial_setup(username, password, password_confirmation, schema_row
         user.set_password(validated_password)
         user.save(force_insert=True)
         register_schema_rows(schema_rows or [], allow_existing=True)
-        profile = profile_metadata(business_profile, company_name)
+        profile = profile_metadata(business_profile, company_name, product_buy_price_required)
         company_setting = AppSetting.get_or_none(AppSetting.key == "company_profile")
         serialized_profile = __import__("json").dumps(profile, ensure_ascii=False, separators=(",", ":"))
         if company_setting is None:
