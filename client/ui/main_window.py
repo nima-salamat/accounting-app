@@ -355,7 +355,10 @@ class AccountingMainWindow(QMainWindow):
                         ("expenses", "read"), ("expenses", "create"),
                     ))
                 if key == "kiosk":
-                    allowed = can_access(user, "kiosk", "read") or can_access(user, "kiosk", "update")
+                    allowed = (
+                        can_access(user, "products", "read")
+                        and (can_access(user, "kiosk", "read") or can_access(user, "kiosk", "update"))
+                    )
                 if key == "sales":
                     allowed = allowed and can_access(user, "products", "read")
                 button.setVisible(allowed)
