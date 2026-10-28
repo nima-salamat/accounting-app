@@ -93,6 +93,27 @@ class Product(BaseModel):
         return self.name
 
 
+class BusinessPartner(BaseModel):
+    """Customer or supplier directory entry used by financial documents."""
+    partner_type = CharField(max_length=16)
+    name = CharField(max_length=FIELD_LENGTH)
+    phone = CharField(max_length=80, null=True)
+    email = CharField(max_length=FIELD_LENGTH, null=True)
+    tax_id = CharField(max_length=80, null=True)
+    address = TextField(null=True)
+    payment_terms = CharField(max_length=128, null=True)
+    credit_limit = DecimalField(max_digits=16, decimal_places=2, auto_round=True, default=0)
+    is_active = BooleanField(default=True)
+    notes = TextField(null=True)
+
+    class Meta:
+        table_name = "business_partners"
+        indexes = (
+            (("partner_type", "name"), False),
+            (("tax_id",), False),
+        )
+
+
 class Receipt(BaseModel):
     payed = BooleanField(default=False)
     payment_method = CharField(max_length=24, default="cash")
@@ -206,6 +227,55 @@ class LedgerAccount(BaseModel):
         table_name = "ledger_accounts"
 
 
+class PurchaseInvoice(BaseModel):
+    """Supplier invoice; posted invoices have a balanced journal and stock movements."""
+    supplier = ForeignKeyField(BusinessPartner, backref="purchase_invoices", on_delete="RESTRICT")
+    invoice_number = CharField(max_length=64)
+    invoice_date = DateField()
+    due_date = DateField(null=True)
+    status = CharField(max_length=16, default="posted")
+    total_amount = DecimalField(max_digits=16, decimal_places=2, auto_round=True, default=0)
+    paid_amount = DecimalField(max_digits=16, decimal_places=2, auto_round=True, default=0)
+    notes = TextField(null=True)
+    created_by = ForeignKeyField(User, backref="purchase_invoices", null=True, on_delete="SET NULL")
+    created_by_name = CharField(max_length=FIELD_LENGTH, default="Unknown")
+
+    class Meta:
+        table_name = "purchase_invoices"
+        indexes = (
+            (("supplier", "invoice_number"), True),
+            (("invoice_date", "status"), False),
+        )
+
+
+class PurchaseInvoiceLine(BaseModel):
+    invoice = ForeignKeyField(PurchaseInvoice, backref="items", on_delete="CASCADE")
+    product = ForeignKeyField(Product, backref="purchase_lines", null=True, on_delete="SET NULL")
+    product_name = CharField(max_length=FIELD_LENGTH)
+    description = CharField(max_length=FIELD_LENGTH, default="")
+    quantity = FloatField()
+    unit_cost = DecimalField(max_digits=16, decimal_places=2, auto_round=True, default=0)
+    line_total = DecimalField(max_digits=16, decimal_places=2, auto_round=True, default=0)
+    stock_tracked = BooleanField(default=False)
+
+    class Meta:
+        table_name = "purchase_invoice_lines"
+
+
+class PurchasePayment(BaseModel):
+    invoice = ForeignKeyField(PurchaseInvoice, backref="payments", on_delete="RESTRICT")
+    amount = DecimalField(max_digits=16, decimal_places=2, auto_round=True)
+    paid_on = DateField()
+    payment_method = CharField(max_length=24, default="cash")
+    reference = CharField(max_length=FIELD_LENGTH, null=True)
+    notes = TextField(null=True)
+    user = ForeignKeyField(User, backref="purchase_payments", null=True, on_delete="SET NULL")
+    operator_name = CharField(max_length=FIELD_LENGTH, default="Unknown")
+
+    class Meta:
+        table_name = "purchase_payments"
+
+
 class JournalEntry(BaseModel):
     entry_number = CharField(max_length=48, unique=True)
     entry_date = DateField()
@@ -232,6 +302,28 @@ class JournalLine(BaseModel):
 
     class Meta:
         table_name = "journal_lines"
+
+
+class ExpenseRecord(BaseModel):
+    """Posted operating expense with a matching journal entry."""
+    description = TextField()
+    category = CharField(max_length=FIELD_LENGTH, default="general")
+    expense_date = DateField()
+    amount = DecimalField(max_digits=16, decimal_places=2, auto_round=True)
+    payment_method = CharField(max_length=24, default="cash")
+    reference = CharField(max_length=FIELD_LENGTH, null=True)
+    notes = TextField(null=True)
+    expense_account = ForeignKeyField(LedgerAccount, backref="expenses", on_delete="RESTRICT")
+    journal_entry = ForeignKeyField(JournalEntry, backref="expense_records", null=True, on_delete="SET NULL")
+    created_by = ForeignKeyField(User, backref="expenses", null=True, on_delete="SET NULL")
+    created_by_name = CharField(max_length=FIELD_LENGTH, default="Unknown")
+
+    class Meta:
+        table_name = "expense_records"
+        indexes = (
+            (("expense_date",), False),
+            (("category", "expense_date"), False),
+        )
 
 
 class AuditEvent(BaseModel):
