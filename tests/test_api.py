@@ -337,6 +337,143 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(protected_delete.status_code, 409, protected_delete.text)
 
+    def test_stocktake_count_variance_is_applied_once_and_rejects_stale_stock(self):
+        headers = self.setup_admin()
+        created = self.client.post(
+            "/api/v1/products",
+            headers=headers,
+            json={
+                "name": "کالای شمارش",
+                "buy_price": 4,
+                "sell_price": 9,
+                "track_stock": True,
+                "reorder_level": 1,
+            },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        product = created.json()
+        adjust = self.client.post(
+            "/api/v1/inventory/adjustments",
+            headers=headers,
+            json={"product_id": product["id"], "quantity_change": 10, "reason": "opening"},
+        )
+        self.assertEqual(adjust.status_code, 201, adjust.text)
+
+        created_take = self.client.post(
+            "/api/v1/stocktakes",
+            headers=headers,
+            json={"name": "انبارگردانی تست", "product_ids": [product["id"]]},
+        )
+        self.assertEqual(created_take.status_code, 201, created_take.text)
+        take = created_take.json()
+        self.assertEqual(take["status"], "draft")
+        line = take["lines"][0]
+        count = self.client.patch(
+            "/api/v1/stocktakes/{}/lines/{}".format(take["id"], line["id"]),
+            headers=headers,
+            json={"counted_quantity": 7},
+        )
+        self.assertEqual(count.status_code, 200, count.text)
+        self.assertEqual(count.json()["lines"][0]["difference"], -3)
+
+        applied = self.client.post(
+            "/api/v1/stocktakes/{}/apply".format(take["id"]),
+            headers=headers,
+        )
+        self.assertEqual(applied.status_code, 200, applied.text)
+        self.assertEqual(applied.json()["status"], "applied")
+        inventory = self.client.get(
+            "/api/v1/inventory?q=کالای شمارش", headers=headers
+        ).json()
+        self.assertEqual(inventory["items"][0]["stock_quantity"], 7)
+        self.assertEqual(
+            self.client.post("/api/v1/stocktakes/{}/apply".format(take["id"]), headers=headers).status_code,
+            409,
+        )
+
+        stale_take = self.client.post(
+            "/api/v1/stocktakes",
+            headers=headers,
+            json={"name": "شمارش قدیمی", "product_ids": [product["id"]]},
+        )
+        self.assertEqual(stale_take.status_code, 201, stale_take.text)
+        stale = stale_take.json()
+        self.client.post(
+            "/api/v1/inventory/adjustments",
+            headers=headers,
+            json={"product_id": product["id"], "quantity_change": 1, "reason": "correction"},
+        )
+        stale_apply = self.client.post(
+            "/api/v1/stocktakes/{}/apply".format(stale["id"]), headers=headers
+        )
+        self.assertEqual(stale_apply.status_code, 409, stale_apply.text)
+        current = self.client.get("/api/v1/inventory?q=کالای شمارش", headers=headers).json()
+        self.assertEqual(current["items"][0]["stock_quantity"], 8)
+
+    def test_partial_returns_restore_stock_and_post_balanced_journals(self):
+        headers = self.setup_admin()
+        created = self.client.post(
+            "/api/v1/products",
+            headers=headers,
+            json={
+                "name": "کالای مرجوعی",
+                "buy_price": 4,
+                "sell_price": 10,
+                "track_stock": True,
+                "reorder_level": 0,
+            },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        product = created.json()
+        self.client.post(
+            "/api/v1/inventory/adjustments",
+            headers=headers,
+            json={"product_id": product["id"], "quantity_change": 5, "reason": "opening"},
+        )
+
+        sale = self.client.post(
+            "/api/v1/sales",
+            headers=dict(headers, **{"Idempotency-Key": "return-sale-key-001"}),
+            json={"items": [{"product_id": product["id"], "quantity": 3}], "paid": True},
+        )
+        self.assertEqual(sale.status_code, 201, sale.text)
+        receipt = sale.json()
+        original_line = receipt["items"][0]
+        self.assertEqual(original_line["product_name"], "کالای مرجوعی")
+        self.assertEqual(original_line["returnable_quantity"], 3)
+
+        returned = self.client.post(
+            "/api/v1/returns",
+            headers=headers,
+            json={
+                "receipt_id": receipt["id"],
+                "items": [{"original_line_id": original_line["id"], "quantity": 2}],
+                "refund_method": "cash",
+                "reason": "damaged",
+            },
+        )
+        self.assertEqual(returned.status_code, 201, returned.text)
+        self.assertEqual(float(returned.json()["total_amount"]), 20)
+        self.assertEqual(returned.json()["items"][0]["quantity"], 2)
+        inventory = self.client.get("/api/v1/inventory?q=کالای مرجوعی", headers=headers).json()
+        self.assertEqual(inventory["items"][0]["stock_quantity"], 4)
+
+        too_many = self.client.post(
+            "/api/v1/returns",
+            headers=headers,
+            json={
+                "receipt_id": receipt["id"],
+                "items": [{"original_line_id": original_line["id"], "quantity": 2}],
+            },
+        )
+        self.assertEqual(too_many.status_code, 409, too_many.text)
+
+        journals = self.client.get("/api/v1/journals?page=1&page_size=25", headers=headers)
+        self.assertEqual(journals.status_code, 200, journals.text)
+        entries = journals.json()
+        self.assertGreaterEqual(entries["total"], 2)
+        self.assertTrue(all(float(item["debit_total"]) == float(item["credit_total"]) for item in entries["items"]))
+
     def test_custom_fields_are_returned_as_table_columns_in_batches(self):
         admin_headers = self.setup_admin()
         product_response = self.client.post(
