@@ -382,26 +382,35 @@ class AccountingApiClient:
     def delete_receipt(self, receipt_id):
         return self._request("DELETE", "/api/v1/receipts/{}".format(receipt_id))
 
-    def quote_sale(self, items, paid=False):
+    def quote_sale(self, items, paid=False, payment_method="cash", seat_number=None):
         return self._request(
             "POST", "/api/v1/sales/quote",
-            json_body={"items": items, "paid": bool(paid), "payment_method": payment_method},
+            json_body={
+                "items": items, "paid": bool(paid), "payment_method": payment_method,
+                "seat_number": seat_number,
+            },
         )
 
-    def create_sale(self, items, paid=False, idempotency_key=None, payment_method="cash"):
+    def create_sale(self, items, paid=False, idempotency_key=None, payment_method="cash", seat_number=None):
         """Create a sale. Reuse last_idempotency_key if the result of a request is uncertain."""
         key = idempotency_key or uuid.uuid4().hex
         self._last_idempotency_key = key
         return self._request(
             "POST", "/api/v1/sales",
-            json_body={"items": items, "paid": bool(paid), "payment_method": payment_method},
+            json_body={
+                "items": items, "paid": bool(paid), "payment_method": payment_method,
+                "seat_number": seat_number,
+            },
             headers={"Idempotency-Key": key},
         )
 
-    def update_sale(self, receipt_id, items, paid=False, payment_method="cash"):
+    def update_sale(self, receipt_id, items, paid=False, payment_method="cash", seat_number=None):
         return self._request(
             "PUT", "/api/v1/sales/{}".format(receipt_id),
-            json_body={"items": items, "paid": bool(paid), "payment_method": payment_method},
+            json_body={
+                "items": items, "paid": bool(paid), "payment_method": payment_method,
+                "seat_number": seat_number,
+            },
         )
 
     def sales_summary(self, start_at=None, end_at=None):
@@ -574,6 +583,20 @@ class AccountingApiClient:
 
     def get_company_profile(self):
         return self._request("GET", "/api/v1/company-profile")
+
+    def get_kiosk_settings(self):
+        return self._request("GET", "/api/v1/kiosk/settings")
+
+    def save_kiosk_settings(self, **values):
+        return self._request("PUT", "/api/v1/kiosk/settings", json_body=values)
+
+    def get_kiosk_config(self):
+        return self._request("GET", "/api/v1/kiosk/config")
+
+    def list_recent_receipts_page(self, page=1, page_size=25):
+        return self._request_page(
+            "GET", "/api/v1/sales/recent-receipts", page=page, page_size=page_size
+        )
 
     def list_partners_page(self, q=None, partner_type=None, page=1, page_size=25):
         return self._request_page(
