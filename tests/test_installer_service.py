@@ -32,6 +32,17 @@ class InstallerAndSchemaRegistryTests(unittest.TestCase):
         with DBManager():
             self.assertEqual(User.select().count(), 0)
 
+    def test_existing_database_with_users_skips_wizard(self):
+        with DBManager():
+            user = User(username="legacy_admin", password="legacy-hash", is_admin=True)
+            user.save(force_insert=True)
+        self.assertFalse(is_setup_required())
+        with DBManager():
+            from accounting_app.database.extension_models import AppSetting
+            marker = AppSetting.get(AppSetting.key == "initial_setup_complete")
+            self.assertEqual(marker.value, "1")
+            self.assertEqual(User.select().count(), 1)
+
     def test_installer_creates_custom_model_and_hashed_admin(self):
         rows = [
             {
