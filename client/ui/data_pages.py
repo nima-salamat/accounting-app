@@ -121,6 +121,9 @@ class ApiTablePage(QFrame):
         layout.addLayout(pager)
         self.set_admin(False)
 
+    def _form_fields(self):
+        return list(self.fields)
+
     def set_admin(self, is_admin):
         self.create_button.setVisible(bool(is_admin) and self.create_fn is not None)
         self.edit_button.setVisible(bool(is_admin) and self.update_fn is not None)
@@ -264,7 +267,7 @@ class ApiTablePage(QFrame):
     def create_record(self):
         if not self.create_fn:
             return
-        dialog = RecordDialog("افزودن " + self.title, self.fields, parent=self)
+        dialog = RecordDialog("افزودن " + self.title, self._form_fields(), parent=self)
         if dialog.exec() != dialog.DialogCode.Accepted:
             return
         try:
@@ -283,7 +286,7 @@ class ApiTablePage(QFrame):
         record = self.selected_record()
         if not record:
             self.window.show_error("ابتدا یک رکورد را انتخاب کنید."); return
-        dialog = RecordDialog("ویرایش " + self.title, self.fields, record, self)
+        dialog = RecordDialog("ویرایش " + self.title, self._form_fields(), record, self)
         if dialog.exec() != dialog.DialogCode.Accepted:
             return
         try:
@@ -397,22 +400,53 @@ class ProductsPage(ApiTablePage):
     def __init__(self, window):
         fields = [
             {"key": "name", "label": "نام محصول", "required": True},
-            {"key": "buy_price", "label": "قیمت خرید", "kind": "number", "required": True},
+            {"key": "buy_price", "label": "قیمت خرید", "kind": "number", "required": False},
             {"key": "sell_price", "label": "قیمت فروش", "kind": "number", "required": True},
             {"key": "category_id", "label": "شناسهٔ دسته‌بندی (اختیاری)", "nullable": True},
             {"key": "custom_product", "label": "محصول سفارشی", "kind": "bool"},
             {"key": "track_stock", "label": "رهگیری موجودی", "kind": "bool"},
             {"key": "reorder_level", "label": "حد سفارش", "kind": "number", "default": 0, "required": True},
-            {"key": "image_path", "label": "مسیر تصویر در سرور", "nullable": True},
+            {"key": "image_file", "label": "عکس محصول (اختیاری)", "kind": "image"},
         ]
         super().__init__(window, "محصولات", "نام، قیمت‌ها و دسته‌بندی کالاها.",
             [("id","شناسه"),("name","نام محصول"),("buy_price","قیمت خرید"),
              ("sell_price","قیمت فروش"),("track_stock","رهگیری"),("stock_quantity","موجودی"),
              ("reorder_level","حد سفارش"),("category_id","دسته‌بندی")],
             lambda api,q,page,page_size: api.list_products_page(q=q or None,page=page,page_size=page_size), fields,
-            lambda api,p: api.create_product(**p),
-            lambda api,rid,p: api.update_product(rid,**p),
+            lambda api,p: self._create_product(api, p),
+            lambda api,rid,p: self._update_product(api, rid, p),
             lambda api,rid: api.delete_product(rid), schema_entity="products")
+
+    def _form_fields(self):
+        required = bool((getattr(self.window, "company_profile", None) or {}).get(
+            "product_buy_price_required", True
+        ))
+        specs = []
+        for source in self.fields:
+            spec = dict(source)
+            if spec.get("key") == "buy_price":
+                spec["required"] = required
+                spec["label"] = "قیمت خرید" if required else "قیمت خرید (اختیاری)"
+            specs.append(spec)
+        return specs
+
+    @staticmethod
+    def _create_product(api, payload):
+        values = dict(payload)
+        image_file = values.pop("image_file", None)
+        product = api.create_product(**values)
+        if image_file:
+            return api.upload_product_image(product["id"], image_file)
+        return product
+
+    @staticmethod
+    def _update_product(api, record_id, payload):
+        values = dict(payload)
+        image_file = values.pop("image_file", None)
+        product = api.update_product(record_id, **values)
+        if image_file:
+            return api.upload_product_image(product["id"], image_file)
+        return product
 
 
 class CategoriesPage(ApiTablePage):
