@@ -156,7 +156,7 @@ class StockMovementOut(BaseModel):
     id: UUID
     product_id: UUID
     product_name: str
-    user_id: UUID
+    user_id: Optional[UUID] = None
     username: str
     quantity_change: float
     stock_before: float
