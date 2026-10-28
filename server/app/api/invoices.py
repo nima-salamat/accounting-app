@@ -18,6 +18,7 @@ DEFAULT_TEMPLATE = {
     "legal_id": "",
     "address": "",
     "phone": "",
+    "seat_number_label": "شماره صندلی / میز",
     "footer": "از خرید شما سپاسگزاریم.",
     "paper_size": "A4",
     "orientation": "portrait",
@@ -52,6 +53,7 @@ class InvoiceTemplateInput(BaseModel):
     legal_id: str = Field(default="", max_length=80)
     address: str = Field(default="", max_length=500)
     phone: str = Field(default="", max_length=80)
+    seat_number_label: str = Field(default="شماره صندلی / میز", max_length=80)
     footer: str = Field(default="از خرید شما سپاسگزاریم.", max_length=500)
     paper_size: Literal["A4", "A5", "A6", "receipt80", "receipt58"] = "A4"
     orientation: Literal["portrait", "landscape"] = "portrait"
