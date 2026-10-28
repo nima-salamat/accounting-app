@@ -97,11 +97,31 @@ def stylesheet(mode="light", design=None):
     QMainWindow, QDialog {{ background: {window}; }}
     QWidget#AppRoot, QWidget#AuthRoot, QWidget#WizardRoot {{ background: {window}; }}
     QFrame#Card, QGroupBox#Card {{ background: {surface}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
+    QFrame#AuthCard {{ background: {surface}; border: 1px solid {border}; border-radius: 22px; }}
+    QFrame#AuthHero {{ background: {sidebar}; border: 1px solid rgba(255,255,255,0.07); border-radius: 22px; }}
+    QFrame#AuthFeature {{ background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; }}
+    QFrame#AuthSection {{ background: {surface_alt}; border: 1px solid {border}; border-radius: 14px; }}
     QFrame#Sidebar {{ background: {sidebar}; border: none; }}
     QLabel#Brand {{ font-size: 20px; font-weight: 800; color: {text}; }}
     QLabel#BrandSub {{ color: {muted}; font-size: 11px; }}
     QLabel#PageTitle {{ font-size: {heading_size}px; font-weight: 750; }}
     QLabel#PageSubtitle {{ font-size: {font_size}px; color: {muted}; }}
+    QLabel#AuthTitle {{ font-size: {round(d["font_size"] * 1.9 * d["heading_scale"])}px; font-weight: 850; color: {text}; }}
+    QLabel#AuthEyebrow {{ color: {primary}; font-size: {font_size}px; font-weight: 800; }}
+    QLabel#AuthHeroTitle {{ font-size: {round(d["font_size"] * 2.1 * d["heading_scale"])}px; font-weight: 900; color: #FFFFFF; }}
+    QLabel#AuthHeroSubtitle {{ font-size: {font_size}px; color: #B6C5DC; }}
+    QLabel#AuthFeatureTitle {{ font-weight: 800; color: #FFFFFF; }}
+    QLabel#AuthFeatureSubtitle {{ color: #9FB0CA; }}
+    QLabel#AuthHeroFooter {{ font-size: 10px; color: #7F92B0; }}
+    QLabel#AuthSectionTitle {{ font-weight: 800; }}
+    QLabel#AuthConnectionStatus {{ color: {muted}; font-size: {font_size}px; }}
+    QLabel#AuthMessage {{ color: {danger}; }}
+    QLabel#AuthBrandmark {{ background: {primary}; color: white; border-radius: 17px; font-size: 30px; font-weight: 900; }}
+    QPushButton#AuthLoginButton {{ background: {primary}; color: white; border: 1px solid {primary}; border-radius: {corner_radius}px; padding: 10px 16px; font-size: {round(d["font_size"] * 1.05)}px; font-weight: 850; }}
+    QPushButton#AuthLoginButton:hover {{ background: {primary_hover}; }}
+    QPushButton#AuthConnectButton {{ min-width: 78px; background: {surface}; }}
+    QLineEdit#AuthInput {{ min-height: 44px; padding: 10px 12px; }}
+    QCheckBox#AuthRemember {{ font-weight: 650; padding: 3px 0; }}
     QLabel#MetricValue {{ font-size: {metric_size}px; font-weight: 800; }}
     QLabel#MetricLabel {{ font-size: {font_size}px; color: {muted}; }}
     QLabel#Muted {{ color: {muted}; }}
