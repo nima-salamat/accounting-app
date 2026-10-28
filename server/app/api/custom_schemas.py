@@ -11,6 +11,7 @@ from accounting_app.services.schema_values import (
     delete_custom_record, get_entity_values, list_entity_records, save_entity_values,
 )
 from server.app.dependencies import get_current_user, require_admin
+from server.app.permissions import require_permission
 
 router = APIRouter(prefix="/schemas", tags=["custom schemas"])
 
@@ -35,7 +36,7 @@ def _field_payload(field):
 
 
 @router.get("/entities")
-def list_entities(_user=Depends(get_current_user)):
+def list_entities(user=Depends(require_permission("schemas", "read"))):
     entities = [
         {"key": key, "label": label, "builtin": True}
         for key, (label, _model) in BUILTIN_ENTITIES.items()
@@ -49,7 +50,7 @@ def list_entities(_user=Depends(get_current_user)):
 
 
 @router.post("/fields")
-def upsert_schema_fields(payload: SchemaRowsInput, _admin=Depends(require_admin)):
+def upsert_schema_fields(payload: SchemaRowsInput, user=Depends(require_permission("schemas", "update"))):
     try:
         with DBManager():
             created = register_schema_rows(payload.rows)
@@ -59,7 +60,7 @@ def upsert_schema_fields(payload: SchemaRowsInput, _admin=Depends(require_admin)
 
 
 @router.get("/fields/{entity_type}")
-def schema_fields(entity_type: str, _admin=Depends(require_admin)):
+def schema_fields(entity_type: str, user=Depends(require_permission("schemas", "read"))):
     try:
         return [_field_payload(field) for field in get_entity_fields(entity_type)]
     except ValueError as exc:
@@ -70,7 +71,7 @@ def schema_fields(entity_type: str, _admin=Depends(require_admin)):
 def entity_records(
     entity_type: str,
     limit: int = Query(200, ge=1, le=500),
-    _admin=Depends(require_admin),
+    user=Depends(require_permission("schemas", "read")),
 ):
     try:
         return [{"id": record_id, "label": label} for record_id, label in list_entity_records(entity_type, limit)]
@@ -79,7 +80,7 @@ def entity_records(
 
 
 @router.post("/records/{entity_type}", status_code=201)
-def create_custom_record(entity_type: str, payload: ValuesInput, _admin=Depends(require_admin)):
+def create_custom_record(entity_type: str, payload: ValuesInput, user=Depends(require_permission("schemas", "create"))):
     if entity_type in BUILTIN_ENTITIES:
         raise HTTPException(status_code=405, detail="رکورد مدل اصلی باید از مسیر CRUD همان مدل ساخته شود.")
     try:
@@ -90,7 +91,7 @@ def create_custom_record(entity_type: str, payload: ValuesInput, _admin=Depends(
 
 
 @router.get("/values/{entity_type}/{record_id}")
-def entity_values(entity_type: str, record_id: str, _admin=Depends(require_admin)):
+def entity_values(entity_type: str, record_id: str, user=Depends(require_permission("schemas", "read"))):
     try:
         return get_entity_values(entity_type, record_id)
     except ValueError as exc:
@@ -99,7 +100,7 @@ def entity_values(entity_type: str, record_id: str, _admin=Depends(require_admin
 
 @router.patch("/values/{entity_type}/{record_id}")
 def update_entity_values(
-    entity_type: str, record_id: str, payload: ValuesInput, _admin=Depends(require_admin)
+    entity_type: str, record_id: str, payload: ValuesInput, user=Depends(require_permission("schemas", "update"))
 ):
     try:
         save_entity_values(entity_type, record_id, payload.values)
@@ -109,7 +110,7 @@ def update_entity_values(
 
 
 @router.delete("/records/{entity_type}/{record_id}", status_code=204)
-def remove_custom_record(entity_type: str, record_id: str, _admin=Depends(require_admin)):
+def remove_custom_record(entity_type: str, record_id: str, user=Depends(require_permission("schemas", "delete"))):
     try:
         deleted = delete_custom_record(entity_type, record_id)
     except ValueError as exc:
