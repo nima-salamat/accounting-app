@@ -159,7 +159,7 @@ def render_invoice_html(receipt, template=None):
 @page { size: %s; margin: %smm; }
 * { box-sizing: border-box; }
 html, body { margin:0; padding:0; color:#182235; font-family:"Vazirmatn","Segoe UI","Noto Sans Arabic",sans-serif; background:#fff; }
-.invoice { width:%s; min-height:%smm; border:%s; border-radius:%s; padding:8mm; display:flex; flex-direction:column; }
+ .invoice { width: %s; min-height: %smm; border:%s; border-radius:%s; padding:8mm; display:flex; flex-direction:column; }
 .layout-grid { direction:ltr; flex:1; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-content:space-between; column-gap:8mm; row-gap:7mm; }
 .layout-block { min-width:0; direction:rtl; break-inside:avoid; }
 .col-full { grid-column:1 / -1; } .col-left { grid-column:1; } .col-right { grid-column:2; }
