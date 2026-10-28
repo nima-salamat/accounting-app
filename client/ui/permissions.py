@@ -17,6 +17,9 @@ RESOURCE_LABELS = {
     "fiscal_years": "سال مالی",
     "audit": "سوابق فعالیت کارکنان",
     "pos_devices": "دستگاه‌های صندوق",
+    "partners": "مشتریان و تأمین‌کنندگان",
+    "purchase_invoices": "فاکتورهای خرید",
+    "expenses": "هزینه‌ها و پرداخت‌ها",
 }
 ACTION_LABELS = (("r", "مشاهده"), ("c", "ایجاد"), ("u", "ویرایش"), ("d", "حذف"))
 
@@ -37,7 +40,7 @@ ROLE_GRANTS = {
         "checks_in": "rcud", "checks_out": "rcud", "sales": "cu",
         "receipts": "rcud", "reports": "r", "schemas": "r", "invoices": "ru",
         "returns": "rcud", "journals": "rcud", "fiscal_years": "ru", "audit": "r",
-        "pos_devices": "r",
+        "pos_devices": "r", "partners": "rcud", "purchase_invoices": "rcud", "expenses": "rcud",
     },
     "viewer": {resource: "r" for resource in RESOURCE_LABELS},
     "kiosk": {"products": "r", "sales": "c", "invoices": "r"},
