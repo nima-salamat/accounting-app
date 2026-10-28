@@ -8,6 +8,8 @@ from peewee import fn
 from accounting_app.database.connection import DBManager
 from accounting_app.database.models import Product, Receipt, ReceiptProduct, StockMovement
 from accounting_app.services.validation import validate_money, validate_quantity
+from accounting_app.services.audit import record_audit
+from accounting_app.services.accounting_controls import ensure_period_open
 
 
 class InsufficientStockError(ValueError):
@@ -43,6 +45,7 @@ def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None):
     next_day = day_start + timedelta(days=1)
 
     with DBManager():
+        ensure_period_open(now.date(), actor=user, action="sale")
         if edit_mode:
             receipt = Receipt.get_by_id(receipt_to_edit.id)
             # Reverse only the inventory movements previously recorded for this receipt.
@@ -133,4 +136,17 @@ def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None):
             }
             for product_id, buy_price, sell_price, quantity, product_name in normalized_items
         ]).execute()
+        record_audit(
+            user,
+            action="sale.updated" if edit_mode else "sale.created",
+            resource="sales",
+            target_id=receipt.id,
+            details={
+                "day_receipt_id": receipt.day_receipt_id,
+                "total_price": str(total),
+                "paid": bool(payed),
+                "line_count": len(normalized_items),
+                "tracked_quantity": sum(quantity for _pid, _buy, _sell, quantity, _name in normalized_items),
+            },
+        )
     return receipt
