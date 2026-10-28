@@ -94,6 +94,51 @@ def _get_replay(user, key, digest):
         return _receipt_detail(receipt)
 
 
+@router.post("/sales/quote")
+def quote_sale(
+    payload: SaleCreate,
+    user=Depends(require_permission("sales", "create")),
+    _catalog_access=Depends(require_permission("products", "read")),
+):
+    """Return server-authoritative totals before a payment terminal is charged."""
+    from decimal import Decimal
+    from datetime import date
+    from accounting_app.services.accounting_controls import FiscalPeriodClosedError, ensure_period_open
+
+    try:
+        with DBManager():
+            ensure_period_open(date.today(), actor=user, action="فروش")
+            product_ids = [item.product_id for item in payload.items]
+            products = {
+                product.id: product
+                for product in Product.select().where(Product.id.in_(product_ids))
+            }
+            if len(products) != len(product_ids):
+                raise HTTPException(status_code=422, detail="یک یا چند محصول وجود ندارد.")
+            items = []
+            total = Decimal("0")
+            for requested in payload.items:
+                product = products[requested.product_id]
+                if product.track_stock and float(product.stock_quantity or 0) < requested.quantity:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="موجودی کالای «{}» برای این تعداد کافی نیست.".format(product.name),
+                    )
+                unit_price = Decimal(str(product.sell_price)).quantize(Decimal("0.01"))
+                line_total = unit_price * requested.quantity
+                total += line_total
+                items.append({
+                    "product_id": str(product.id),
+                    "product_name": product.name,
+                    "quantity": requested.quantity,
+                    "unit_price": str(unit_price),
+                    "line_total": str(line_total),
+                })
+            return {"total": str(total), "items": items, "currency": "LOCAL"}
+    except FiscalPeriodClosedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.post("/sales", response_model=ReceiptDetailOut, status_code=status.HTTP_201_CREATED)
 def create_sale(
     payload: SaleCreate,
