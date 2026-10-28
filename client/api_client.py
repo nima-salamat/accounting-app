@@ -307,6 +307,12 @@ class AccountingApiClient:
         )
 
 
+    def get_invoice_template(self):
+        return self._request("GET", "/api/v1/invoices/template")
+
+    def save_invoice_template(self, **values):
+        return self._request("PUT", "/api/v1/invoices/template", json_body=values)
+
     def update_warehouse(self, record_id, **values):
         return self._request("PATCH", "/api/v1/warehouses/{}".format(record_id), json_body=values)
 
