@@ -409,7 +409,7 @@ class WarehousePage(ApiTablePage):
             lambda api,q,page,page_size: api.list_warehouses_page(q=q or None,page=page,page_size=page_size), fields,
             lambda api,p: api.create_warehouse(**p),
             lambda api,rid,p: api.update_warehouse(rid,**p),
-            lambda api,rid: api.delete_warehouse(rid), searchable=False, schema_entity="warehouses")
+            lambda api,rid: api.delete_warehouse(rid), schema_entity="warehouses")
 
 
 class ChecksPage(ApiTablePage):
@@ -451,7 +451,7 @@ class UsersPage(ApiTablePage):
             lambda api,q,page,page_size: api.list_users_page(q=q or None,page=page,page_size=page_size), fields,
             lambda api,p: api.create_user(**p),
             lambda api,rid,p: api.update_user(rid,**p),
-            lambda api,rid: api.delete_user(rid), searchable=False, schema_entity="users")
+            lambda api,rid: api.delete_user(rid), schema_entity="users")
 
 
 class ReceiptsPage(QFrame):
@@ -552,7 +552,6 @@ class ReceiptsPage(QFrame):
         self.table.setColumnCount(len(self.columns))
         self.table.setHorizontalHeaderLabels([label for _key, label in self.columns])
         self.table.setColumnHidden(0, True)
-        self.current_page = 1
         self._render_page()
 
     def _render_page(self):
