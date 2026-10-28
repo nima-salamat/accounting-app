@@ -230,6 +230,61 @@ class AccountingApiClient:
             params={"q": q, "category_id": category_id},
         )
 
+    def upload_product_image(self, product_id, image_path):
+        """Upload a selected local photo to the authenticated server."""
+        import mimetypes
+        import os
+
+        content_type = mimetypes.guess_type(image_path)[0] or "application/octet-stream"
+        if content_type not in {"image/jpeg", "image/png", "image/webp", "image/gif"}:
+            raise ValueError("فرمت عکس باید JPEG، PNG، WebP یا GIF باشد.")
+        token = self.access_token
+        if not token:
+            raise ApiError(401, "برای ارسال عکس ابتدا وارد شوید.", "POST", "/products/{}/image".format(product_id))
+        try:
+            with open(image_path, "rb") as stream:
+                response = self._session().post(
+                    "{}/api/v1/products/{}/image".format(self.base_url, product_id),
+                    files={"file": (os.path.basename(image_path), stream, content_type)},
+                    headers={"Authorization": "Bearer {}".format(token), "Accept": "application/json"},
+                    timeout=self.timeout,
+                )
+        except OSError as exc:
+            raise ApiError(0, "فایل عکس خوانده نشد: {}".format(exc), "POST", "/products/{}/image".format(product_id)) from exc
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {}
+        if not response.ok:
+            detail = payload.get("detail", "ارسال عکس ناموفق بود.") if isinstance(payload, dict) else "ارسال عکس ناموفق بود."
+            raise ApiError(response.status_code, str(detail), "POST", "/products/{}/image".format(product_id))
+        return payload
+
+    def get_product_image_bytes(self, product_id):
+        """Download an image through the protected API route."""
+        token = self.access_token
+        if not token:
+            raise ApiError(401, "برای دریافت عکس باید وارد شوید.", "GET", "/products/{}/image".format(product_id))
+        try:
+            response = self._session().get(
+                "{}/api/v1/products/{}/image".format(self.base_url, product_id),
+                headers={"Authorization": "Bearer {}".format(token), "Accept": "image/*"},
+                timeout=self.timeout,
+            )
+        except requests.RequestException as exc:
+            raise ApiError(0, "دریافت عکس از سرور ناموفق بود.", "GET", "/products/{}/image".format(product_id)) from exc
+        if response.status_code == 404:
+            return None
+        if not response.ok:
+            try:
+                detail = response.json().get("detail", "دریافت عکس ناموفق بود.")
+            except ValueError:
+                detail = "دریافت عکس ناموفق بود."
+            if response.status_code == 401:
+                self.clear_session()
+            raise ApiError(response.status_code, str(detail), "GET", "/products/{}/image".format(product_id))
+        return response.content
+
     def create_product(self, *, name, buy_price, sell_price, category_id=None,
                        image_path=None, custom_product=False, track_stock=False, reorder_level=0):
         return self._request(
