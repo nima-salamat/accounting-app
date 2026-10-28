@@ -264,6 +264,9 @@ class ReportMaintenanceMixin:
         def run():
             self.worker = QueryWorker(query_func)
             self.worker.dataReady.connect(on_data_ready)
+            self.worker.error.connect(
+                lambda message: QMessageBox.warning(self, "خطا در گزارش چک", message)
+            )
             self.worker.start()
 
         btn_run.clicked.connect(run)
