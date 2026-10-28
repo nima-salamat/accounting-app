@@ -4,7 +4,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox, QColorDialog, QComboBox, QFormLayout, QFrame, QHBoxLayout,
     QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
-    QScrollArea, QSplitter, QSpinBox, QTextBrowser, QTextEdit, QVBoxLayout,
+    QScrollArea, QSplitter, QSpinBox, QDoubleSpinBox, QTextBrowser, QTextEdit, QVBoxLayout,
     QWidget, QAbstractItemView,
 )
 
@@ -132,6 +132,46 @@ class InvoiceTemplatesPage(QFrame):
         page_form.addRow("رنگ قاب", self._color_row(self.border_color_button, self.border_swatch))
         editor_layout.addWidget(page_card)
 
+        typography_card = QFrame()
+        typography_card.setObjectName("Card")
+        typography_layout = QVBoxLayout(typography_card)
+        typography_layout.setContentsMargins(14, 14, 14, 14)
+        typography_layout.setSpacing(9)
+        typography_title = QLabel("فونت، خوانایی و زبان فاکتور")
+        typography_title.setObjectName("PageTitle")
+        typography_hint = QLabel("فونت نصب‌شده روی سیستم چاپ را انتخاب کنید؛ تنظیمات در پیش‌نمایش، PDF و چاپ استفاده می‌شوند.")
+        typography_hint.setObjectName("PageSubtitle")
+        typography_hint.setWordWrap(True)
+        typography_layout.addWidget(typography_title)
+        typography_layout.addWidget(typography_hint)
+        typography_form = QFormLayout()
+        typography_form.setSpacing(9)
+        self.font_family = QComboBox()
+        self.font_family.setEditable(True)
+        self.font_family.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.font_family.addItems(["Vazirmatn", "Noto Sans Arabic", "Noto Naskh Arabic", "Tahoma", "Segoe UI", "Arial", "IRANSans", "B Nazanin"])
+        self.font_family.setCurrentText(DEFAULT_TEMPLATE["font_family"])
+        self.font_size = QSpinBox()
+        self.font_size.setRange(8, 18)
+        self.font_size.setSuffix(" px")
+        self.header_font_size = QSpinBox()
+        self.header_font_size.setRange(14, 32)
+        self.header_font_size.setSuffix(" px")
+        self.line_height = QDoubleSpinBox()
+        self.line_height.setRange(1.2, 2.4)
+        self.line_height.setSingleStep(0.1)
+        self.line_height.setDecimals(1)
+        self.text_direction = QComboBox()
+        self.text_direction.addItem("راست‌به‌چپ (فارسی)", "rtl")
+        self.text_direction.addItem("چپ‌به‌راست", "ltr")
+        typography_form.addRow("خانوادهٔ فونت", self.font_family)
+        typography_form.addRow("اندازهٔ متن", self.font_size)
+        typography_form.addRow("اندازهٔ عنوان", self.header_font_size)
+        typography_form.addRow("فاصلهٔ خطوط", self.line_height)
+        typography_form.addRow("جهت نوشتار", self.text_direction)
+        typography_layout.addLayout(typography_form)
+        editor_layout.addWidget(typography_card)
+
         layout_card = QFrame()
         layout_card.setObjectName("Card")
         layout_form = QVBoxLayout(layout_card)
@@ -222,6 +262,11 @@ class InvoiceTemplatesPage(QFrame):
         for control in (self.paper_size, self.orientation, self.margin_mm):
             control.currentIndexChanged.connect(self.update_preview) if isinstance(control, QComboBox) else control.valueChanged.connect(self.update_preview)
         self.show_border.toggled.connect(self.update_preview)
+        self.font_family.currentTextChanged.connect(self.update_preview)
+        self.font_size.valueChanged.connect(self.update_preview)
+        self.header_font_size.valueChanged.connect(self.update_preview)
+        self.line_height.valueChanged.connect(self.update_preview)
+        self.text_direction.currentIndexChanged.connect(self.update_preview)
         self.layout_order_list.model().rowsMoved.connect(self.update_preview)
         self.layout_order_list.currentRowChanged.connect(self._layout_block_selected)
         self.block_picker.currentIndexChanged.connect(self._block_picker_changed)
@@ -280,6 +325,12 @@ class InvoiceTemplatesPage(QFrame):
         self.orientation.setCurrentIndex(max(0, self.orientation.findData(values.get("orientation", "portrait"))))
         self.margin_mm.setValue(int(values.get("margin_mm", 12)))
         self.show_border.setChecked(bool(values.get("show_border", True)))
+        self.font_family.setCurrentText(str(values.get("font_family", DEFAULT_TEMPLATE["font_family"])))
+        self.font_size.setValue(int(values.get("font_size", DEFAULT_TEMPLATE["font_size"])))
+        self.header_font_size.setValue(int(values.get("header_font_size", DEFAULT_TEMPLATE["header_font_size"])))
+        self.line_height.setValue(float(values.get("line_height", DEFAULT_TEMPLATE["line_height"])))
+        direction_index = self.text_direction.findData(values.get("text_direction", "rtl"))
+        self.text_direction.setCurrentIndex(max(0, direction_index))
         self.accent_color_value = str(values.get("accent_color", "#3157A4"))
         self.frame_border_color_value = str(values.get("frame_border_color", "#CBD5E1"))
         self.accent_swatch.setStyleSheet("background:{};border:1px solid #9AA9BB;border-radius:4px;".format(self.accent_color_value))
@@ -372,6 +423,11 @@ class InvoiceTemplatesPage(QFrame):
             "paper_size": self.paper_size.currentData() or "A4",
             "orientation": self.orientation.currentData() or "portrait",
             "margin_mm": self.margin_mm.value(),
+            "font_family": self.font_family.currentText().strip() or DEFAULT_TEMPLATE["font_family"],
+            "font_size": self.font_size.value(),
+            "header_font_size": self.header_font_size.value(),
+            "line_height": self.line_height.value(),
+            "text_direction": self.text_direction.currentData() or "rtl",
             "accent_color": self.accent_color_value,
             "show_border": self.show_border.isChecked(),
             "frame_border_color": self.frame_border_color_value,

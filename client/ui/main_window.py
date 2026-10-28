@@ -2,15 +2,15 @@
 import os
 import uuid
 
-from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QIcon, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, Slot, QSettings
+from PySide6.QtGui import QAction, QIcon, QKeySequence, QShortcut
 try:
     import qtawesome as qta
 except ImportError:  # Keep the interface usable before optional icon assets are installed.
     qta = None
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
-    QPushButton, QStackedWidget, QVBoxLayout, QWidget,
+    QPushButton, QStackedWidget, QVBoxLayout, QWidget, QMenu, QToolButton,
 )
 
 from client.api_client import AccountingApiClient, ApiError
@@ -95,23 +95,30 @@ class AccountingMainWindow(QMainWindow):
         self.setWindowTitle("Accounting App")
         self.resize(1420,900)
         self.setMinimumSize(1040,680)
-        self.mode=os.environ.get("ACCOUNTING_APP_THEME","light").lower()
-        if self.mode not in ("light","dark"):self.mode="light"
+        self.local_settings = QSettings("AccountingApp", "DesktopClient")
+        self.mode = str(self.local_settings.value("theme_mode", os.environ.get("ACCOUNTING_APP_THEME", "light"))).lower()
+        if self.mode not in ("light", "dark"):
+            self.mode = "light"
         self.api=None
         self.current_user=None
         self._workers={}
         self._callbacks={}
         self._nav={}
+        self._nav_actions={}
         self._pages={}
         self.company_profile = {}
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
         self.root=QWidget(self);self.root.setObjectName("AppRoot")
-        outer=QHBoxLayout(self.root);outer.setContentsMargins(14,14,14,14);outer.setSpacing(14)
+        outer=QVBoxLayout(self.root);outer.setContentsMargins(14,14,14,14);outer.setSpacing(10)
+        # Retain the legacy navigation widgets as permission state, but expose navigation
+        # through the compact, grouped workbar instead of a long, crowded sidebar.
         self.sidebar=self._build_sidebar()
-        outer.addWidget(self.sidebar)
+        self.sidebar.hide()
         main_area=QWidget()
-        main_layout=QVBoxLayout(main_area);main_layout.setContentsMargins(0,0,0,0);main_layout.setSpacing(14)
+        main_layout=QVBoxLayout(main_area);main_layout.setContentsMargins(0,0,0,0);main_layout.setSpacing(10)
+        self.workbar=self._build_workbar()
+        main_layout.addWidget(self.workbar)
         self.topbar=self._build_topbar()
         main_layout.addWidget(self.topbar)
         self.page_stack=QStackedWidget()
@@ -146,7 +153,7 @@ class AccountingMainWindow(QMainWindow):
         self.sale_shortcut.activated.connect(lambda: self.navigate("sales"))
 
     def _build_sidebar(self):
-        side=QFrame();side.setObjectName("Sidebar");side.setMinimumWidth(218);side.setMaximumWidth(252)
+        side=QFrame(self.root);side.setObjectName("Sidebar");side.setMinimumWidth(218);side.setMaximumWidth(252)
         layout=QVBoxLayout(side);layout.setContentsMargins(13,20,13,17);layout.setSpacing(5)
         brand=QLabel("A");brand.setAlignment(Qt.AlignmentFlag.AlignCenter);brand.setFixedSize(45,45)
         brand.setStyleSheet("background:#4169E1;color:white;border-radius:13px;font-size:23px;font-weight:900;")
@@ -207,6 +214,41 @@ class AccountingMainWindow(QMainWindow):
         parent_layout.addWidget(button)
         self._nav[key]=(button,admin_only)
 
+    def _build_workbar(self):
+        """Top-level work areas with grouped drop-down navigation menus."""
+        frame = QFrame()
+        frame.setObjectName("Card")
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(7)
+        eyebrow = QLabel("محیط کار")
+        eyebrow.setObjectName("Muted")
+        layout.addWidget(eyebrow)
+        groups = [
+            ("خانه", "⌂", [("dashboard", "نمای کلی")]),
+            ("فروش", "▣", [("sales", "صندوق فروش"), ("receipts", "رسیدها و فاکتورها"), ("returns", "مرجوعی‌ها و استرداد")]),
+            ("کالا و انبار", "▦", [("products", "محصولات"), ("categories", "دسته‌بندی‌ها"), ("warehouse", "اقلام انبار"), ("inventory", "موجودی کالا"), ("stocktakes", "انبارگردانی"), ("kiosk", "مدیریت کیوسک")]),
+            ("حسابداری", "≡", [("purchases", "خریدها، طرف‌حساب و هزینه"), ("checks_in", "چک‌های دریافتی"), ("checks_out", "چک‌های پرداختی"), ("journals", "اسناد حسابداری"), ("fiscal_years", "سال مالی"), ("accounting_reports", "گزارش‌های مالی"), ("audit", "سوابق فعالیت")]),
+            ("مدیریت", "⚙", [("admin", "پنل مدیریت"), ("sessions", "نشست‌ها و فعال‌سازی"), ("users", "کاربران"), ("permissions", "نقش‌ها و مجوزها"), ("schemas", "فیلدهای سفارشی")]),
+            ("قالب و تنظیمات", "⚑", [("invoices", "قالب فاکتور"), ("settings", "تنظیمات برنامه")]),
+        ]
+        for group_label, glyph, entries in groups:
+            button = QToolButton(frame)
+            button.setText("{}  {}  ▾".format(glyph, group_label))
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+            menu = QMenu(button)
+            for key, label in entries:
+                action = QAction(label, menu)
+                action.setCheckable(True)
+                action.triggered.connect(lambda _checked=False, target=key: self.navigate(target))
+                menu.addAction(action)
+                self._nav_actions[key] = action
+            button.setMenu(menu)
+            layout.addWidget(button)
+        layout.addStretch(1)
+        return frame
+
     def _build_topbar(self):
         frame=QFrame();frame.setObjectName("Card")
         layout=QHBoxLayout(frame);layout.setContentsMargins(18,12,18,12)
@@ -222,9 +264,6 @@ class AccountingMainWindow(QMainWindow):
         self.search_button=QPushButton("جست‌وجوی سریع  Ctrl+K")
         self.search_button.clicked.connect(self.open_global_search)
         layout.addWidget(self.search_button)
-        self.settings_button=QPushButton("تنظیمات")
-        self.settings_button.clicked.connect(lambda:self.navigate("settings"))
-        layout.addWidget(self.settings_button)
         self.logout_button=QPushButton("خروج")
         self.logout_button.setObjectName("DangerButton");self.logout_button.clicked.connect(self.logout)
         layout.addWidget(self.logout_button)
@@ -364,6 +403,9 @@ class AccountingMainWindow(QMainWindow):
                 button.setVisible(allowed)
             else:
                 button.setVisible(True)
+            action = self._nav_actions.get(key)
+            if action is not None:
+                action.setVisible(not button.isHidden())
         for page, resource in (
             (self.products_page, "products"), (self.categories_page, "categories"),
             (self.warehouse_page, "warehouse"), (self.checks_in_page, "checks_in"),
@@ -384,14 +426,16 @@ class AccountingMainWindow(QMainWindow):
         self.fiscal_years_page.set_permissions(user)
         self.accounting_reports_page.set_permissions(user)
         self.audit_page.set_permissions(user)
-        self.settings_button.setVisible(True)
+        if "settings" in self._nav_actions:
+            self._nav_actions["settings"].setVisible(True)
+        self.settings_page.set_user(user)
         self.dashboard.set_user(user)
         self._apply_theme()
         sales_allowed = can_access(user, "sales", "create") and can_access(user, "products", "read")
         start_page = "dashboard" if can_access(user, "reports", "read") else (
             "sales" if sales_allowed else next(
                 (key for key in ("products", "inventory", "warehouse", "receipts", "invoices", "schemas")
-                 if key in self._nav and self._nav[key][0].isVisible()),
+                 if key in self._nav and not self._nav[key][0].isHidden()),
                 "settings",
             )
         )
@@ -417,7 +461,7 @@ class AccountingMainWindow(QMainWindow):
     def navigate(self,key):
         if key not in self._pages:return
         if self.current_user is None:return
-        if key in self._nav and not self._nav[key][0].isVisible():return
+        if key in self._nav and self._nav[key][0].isHidden():return
         page=self._pages[key]
         self.page_stack.setCurrentWidget(page)
         title,subtitle=self.page_meta[key]
@@ -425,6 +469,8 @@ class AccountingMainWindow(QMainWindow):
         for nav_key,(button,_admin) in self._nav.items():
             button.setProperty("active",nav_key==key)
             button.style().unpolish(button);button.style().polish(button)
+        for nav_key, action in self._nav_actions.items():
+            action.setChecked(nav_key == key)
         refresh=getattr(page,"refresh",None)
         if callable(refresh):refresh()
         elif hasattr(page,"refresh_products"):page.refresh_products()
@@ -447,6 +493,8 @@ class AccountingMainWindow(QMainWindow):
         if mode not in ("light","dark"):return
         self.mode=mode
         os.environ["ACCOUNTING_APP_THEME"]=mode
+        self.local_settings.setValue("theme_mode", mode)
+        self.local_settings.sync()
         self._apply_theme()
         if hasattr(self,"auth_page"):self.auth_page.set_mode(mode)
         if hasattr(self,"settings_page") and self.settings_page.theme.currentData()!=mode:
@@ -502,17 +550,19 @@ class AccountingMainWindow(QMainWindow):
 
     def show_error(self,error):
         if getattr(error,"status_code",None)==401:
+            if hasattr(self, "auth_page"):
+                self.auth_page.clear_remembered_session()
             self.force_logout()
         QMessageBox.warning(self,"خطای برنامه",str(error))
 
     def logout(self):
         if self.api is None:
-            self.force_logout();return
+            self.force_logout(clear_remembered=True);return
         api=self.api
-        self.run_api(api.logout,lambda _result:self.force_logout(),failure=lambda _err:self.force_logout())
+        self.run_api(api.logout,lambda _result:self.force_logout(clear_remembered=True),failure=lambda _err:self.force_logout(clear_remembered=True))
 
-    def force_logout(self):
-        if hasattr(self, "auth_page"):
+    def force_logout(self, clear_remembered=False):
+        if clear_remembered and hasattr(self, "auth_page"):
             self.auth_page.clear_remembered_session()
         if self.api is not None:self.api.clear_session()
         self.current_user=None

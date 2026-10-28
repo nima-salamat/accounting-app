@@ -2,7 +2,7 @@
 import os
 import uuid
 
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Qt, Slot, QSettings
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
     QPushButton, QStackedWidget, QVBoxLayout, QWidget,
@@ -24,7 +24,10 @@ class POSWindow(QMainWindow):
         self.setWindowTitle("Accounting App · صندوق فروش")
         self.resize(1180, 780)
         self.setMinimumSize(880, 620)
-        self.mode = os.environ.get("ACCOUNTING_APP_THEME", "light").lower()
+        self.local_settings = QSettings("AccountingApp", "POSClient")
+        self.mode = str(self.local_settings.value(
+            "theme_mode", os.environ.get("ACCOUNTING_APP_THEME", "light")
+        )).lower()
         if self.mode not in ("light", "dark"):
             self.mode = "light"
         self.api = None
@@ -142,17 +145,22 @@ class POSWindow(QMainWindow):
 
     def show_error(self, error):
         if getattr(error, "status_code", None) == 401:
-            self.force_logout()
+            self.force_logout(clear_remembered=True)
         QMessageBox.warning(self, "خطای صندوق فروش", str(error))
 
     def logout(self):
         if self.api is None:
-            self.force_logout()
+            self.force_logout(clear_remembered=True)
             return
-        self.run_api(self.api.logout, lambda _result: self.force_logout(),
-                     failure=lambda _error: self.force_logout())
+        self.run_api(
+            self.api.logout,
+            lambda _result: self.force_logout(clear_remembered=True),
+            failure=lambda _error: self.force_logout(clear_remembered=True),
+        )
 
-    def force_logout(self):
+    def force_logout(self, clear_remembered=False):
+        if clear_remembered:
+            self.auth_page.clear_remembered_session()
         if self.api is not None:
             self.api.clear_session()
         self.current_user = None
@@ -168,6 +176,8 @@ class POSWindow(QMainWindow):
             return
         self.mode = mode
         os.environ["ACCOUNTING_APP_THEME"] = mode
+        self.local_settings.setValue("theme_mode", mode)
+        self.local_settings.sync()
         self.setStyleSheet(stylesheet(mode))
         self.auth_page.set_mode(mode)
 

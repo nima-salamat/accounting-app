@@ -662,6 +662,14 @@ class AccountingApiClient:
     def create_expense(self, **values):
         return self._request("POST", "/api/v1/expenses", json_body=values)
 
+    def get_appearance_settings(self):
+        """Fetch shared UI design tokens stored in the server database (login is not required)."""
+        return self._request("GET", "/api/v1/appearance-settings", authenticated=False)
+
+    def save_appearance_settings(self, **values):
+        """Update shared UI design tokens; the API restricts this to administrators."""
+        return self._request("PUT", "/api/v1/appearance-settings", json_body=values)
+
     def get_invoice_template(self):
         return self._request("GET", "/api/v1/invoices/template")
 

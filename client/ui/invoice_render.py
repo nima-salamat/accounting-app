@@ -10,7 +10,10 @@ ALIGNMENTS = {"left", "center", "right"}
 COLUMNS = {"full", "left", "right"}
 DEFAULT_TEMPLATE = {
     "company_name": "نام کسب‌وکار", "legal_id": "", "address": "", "phone": "",
+    "seat_number_label": "شماره صندلی / میز",
     "footer": "از خرید شما سپاسگزاریم.", "paper_size": "A4", "orientation": "portrait",
+    "font_family": "Vazirmatn", "font_size": 11, "header_font_size": 23,
+    "line_height": 1.8, "text_direction": "rtl",
     "margin_mm": 12, "accent_color": "#3157A4", "show_border": True,
     "frame_border_color": "#CBD5E1",
     "layout_order": ["company", "metadata", "items", "totals", "footer"],
@@ -56,6 +59,20 @@ def _template_config(template):
         config["margin_mm"] = max(3, min(30, int(config["margin_mm"])))
     except (TypeError, ValueError):
         config["margin_mm"] = DEFAULT_TEMPLATE["margin_mm"]
+    font_family = str(config.get("font_family") or DEFAULT_TEMPLATE["font_family"]).strip()
+    if not re.fullmatch(r"[\w .()\-]{1,80}", font_family, flags=re.UNICODE):
+        font_family = DEFAULT_TEMPLATE["font_family"]
+    config["font_family"] = font_family
+    for key, fallback, minimum, maximum in (("font_size", 11, 8, 18), ("header_font_size", 23, 14, 32)):
+        try:
+            config[key] = max(minimum, min(maximum, int(config.get(key, fallback))))
+        except (TypeError, ValueError):
+            config[key] = fallback
+    try:
+        config["line_height"] = max(1.2, min(2.4, float(config.get("line_height", 1.8))))
+    except (TypeError, ValueError):
+        config["line_height"] = 1.8
+    config["text_direction"] = config.get("text_direction") if config.get("text_direction") in ("rtl", "ltr") else "rtl"
     config["accent_color"] = _valid_color(config["accent_color"], DEFAULT_TEMPLATE["accent_color"])
     config["frame_border_color"] = _valid_color(config["frame_border_color"], DEFAULT_TEMPLATE["frame_border_color"])
     order = config.get("layout_order")
@@ -159,21 +176,21 @@ def render_invoice_html(receipt, template=None):
         )
     border = "2px solid {}".format(frame_color) if config["show_border"] else "none"
     radius = "3px" if config["show_border"] else "0"
-    return """<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><style>
+    html = """<!doctype html><html lang="fa" dir="__DIRECTION__"><head><meta charset="utf-8"><style>
 @page { size: %s; margin: %smm; }
 * { box-sizing: border-box; }
-html, body { margin:0; padding:0; color:#182235; font-family:"Vazirmatn","Segoe UI","Noto Sans Arabic",sans-serif; background:#fff; }
+html, body { margin:0; padding:0; color:#182235; font-family:"__FONT_FAMILY__","Vazirmatn","Segoe UI","Noto Sans Arabic",sans-serif; font-size:__FONT_SIZE__px; line-height:__LINE_HEIGHT__; background:#fff; }
  .invoice { width: %s; min-height: %smm; border:%s; border-radius:%s; padding:8mm; display:flex; flex-direction:column; }
 .layout-grid { direction:ltr; flex:1; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-content:space-between; column-gap:8mm; row-gap:7mm; }
-.layout-block { min-width:0; direction:rtl; break-inside:avoid; }
+.layout-block { min-width:0; direction:__DIRECTION__; break-inside:avoid; }
 .col-full { grid-column:1 / -1; } .col-left { grid-column:1; } .col-right { grid-column:2; }
 .align-left { text-align:left; } .align-center { text-align:center; } .align-right { text-align:right; }
 .brand { border:1px solid #D9E1EC; border-top:3px solid %s; padding:6mm; border-radius:3px; }
-h1 { margin:0 0 3mm; color:%s; font-size:23px; } h2 { font-size:16px; margin:0 0 3mm; color:#22334A; }
-.meta { color:#5F6D80; font-size:10px; line-height:1.8; overflow-wrap:anywhere; }
+h1 { margin:0 0 3mm; color:%s; font-size:__HEADER_FONT_SIZE__px; } h2 { font-size:__SUBHEAD_FONT_SIZE__px; margin:0 0 3mm; color:#22334A; }
+.meta { color:#5F6D80; font-size:calc(__FONT_SIZE__px - 1px); line-height:__LINE_HEIGHT__; overflow-wrap:anywhere; white-space:pre-line; }
 .meta-box { border:1px solid #E0E6EF; padding:4mm; border-radius:3px; }
-.meta-grid { display:grid; grid-template-columns:1fr 1fr; gap:4mm; font-size:11px; line-height:1.8; }
-table { width:100%%; border-collapse:collapse; table-layout:fixed; font-size:11px; border:1px solid #CAD4E2; }
+.meta-grid { display:grid; grid-template-columns:1fr 1fr; gap:4mm; font-size:__FONT_SIZE__px; line-height:__LINE_HEIGHT__; }
+table { width:100%%; border-collapse:collapse; table-layout:fixed; font-size:__FONT_SIZE__px; line-height:__LINE_HEIGHT__; border:1px solid #CAD4E2; }
 th { background:%s; color:white; padding:3mm 2mm; border:1px solid %s; overflow-wrap:anywhere; }
 td { padding:2.7mm 2mm; border:1px solid #D7DFEA; overflow-wrap:anywhere; vertical-align:top; }
 .al-left { text-align:left; } .al-center { text-align:center; } .al-right { text-align:right; } .money { direction:ltr; white-space:nowrap; }
@@ -186,3 +203,10 @@ td { padding:2.7mm 2mm; border:1px solid #D7DFEA; overflow-wrap:anywhere; vertic
         page_size_css, margin, invoice_width_css, min_height, border, radius, accent, accent, accent,
         accent, frame_color, accent, accent, "".join(rendered_blocks),
     )
+    html = html.replace("__DIRECTION__", config["text_direction"])
+    html = html.replace("__FONT_FAMILY__", config["font_family"])
+    html = html.replace("__FONT_SIZE__", str(config["font_size"]))
+    html = html.replace("__LINE_HEIGHT__", str(config["line_height"]))
+    html = html.replace("__HEADER_FONT_SIZE__", str(config["header_font_size"]))
+    html = html.replace("__SUBHEAD_FONT_SIZE__", str(max(12, config["header_font_size"] - 7)))
+    return html

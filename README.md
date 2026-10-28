@@ -36,8 +36,13 @@ python -m venv .venv
 source .venv/bin/activate
 
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python main.py
+python -m pip install -r requirements.txt -r server/requirements.txt -r client/requirements.txt
+
+# Terminal 1 — run the API server separately
+python -m server --host 127.0.0.1 --port 8000
+
+# Terminal 2 — run the desktop client and point it at that server
+python -m client --api-url http://127.0.0.1:8000
 ~~~
 
 ## ساختار پروژه
@@ -98,7 +103,7 @@ python -m client
 python -m client.pos
 ~~~
 
-برنامهٔ اصلی اکنون رابط فعال خود را از **client/ui/** بارگذاری می‌کند و مسیر دادهٔ پنل‌ها از **client/api_client.py** به API نسخه‌بندی‌شده می‌گذرد. برای اجرای معمول، **python main.py** را اجرا کنید؛ سرور محلی در یک پردازهٔ جدا و فقط روی loopback بالا می‌آید. برای اتصال به سرور موجود می‌توانید از `python main.py --api-url https://your-host.example` یا متغیر `ACCOUNTING_APP_API_URL` استفاده کنید. رابط شامل ورود، wizard چندمرحله‌ای نصب اولیه، داشبورد، فروش، کالاها، دسته‌بندی‌ها، انبار، چک‌ها، رسیدها، کاربران، مدل‌های سفارشی و پنل مدیریت نشست‌هاست.
+برنامهٔ اصلی از **client/ui/** اجرا می‌شود و داده‌ها را از طریق **client/api_client.py** و API نسخه‌بندی‌شده دریافت می‌کند. کلاینت به‌هیچ‌وجه سرور را برای خودش اجرا نمی‌کند؛ سرور را جداگانه با `python -m server --host 127.0.0.1 --port 8000` اجرا کنید و سپس در ترمینال دوم `python -m client` یا `python main.py` را اجرا کنید. برای تعیین نشانی سرور از `python -m client --api-url https://your-host.example`، `python main.py --api-url https://your-host.example` یا متغیر `ACCOUNTING_APP_API_URL` استفاده کنید. آخرین نشانی سرور در تنظیمات محلی کلاینت ذخیره می‌شود. رابط شامل ورود، wizard چندمرحله‌ای نصب اولیه، داشبورد، فروش، کالاها، دسته‌بندی‌ها، انبار، چک‌ها، رسیدها، کاربران، مدل‌های سفارشی و پنل مدیریت نشست‌هاست.
 
 پس از ساخت مدیر اصلی، مدیر می‌تواند برای هر کاربر تعیین کند حساب فعال باشد یا نه و آیا ورود هر دستگاه به تأیید مدیر نیاز دارد. نشست‌های منتظر تأیید در پنل «نشست‌ها و فعال‌سازی» ظاهر می‌شوند. تأیید، لغو یا غیرفعال‌کردن حساب در سمت API اعمال می‌شود؛ توکن مربوط به نشست لغوشده در درخواست بعدی پذیرفته نمی‌شود.
 
