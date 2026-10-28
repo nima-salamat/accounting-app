@@ -152,6 +152,7 @@ def update_sale(
 
 @router.get("/receipts", response_model=List[ReceiptOut])
 def list_receipts(
+    response: Response,
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=200),
     user=Depends(require_permission("receipts", "read")),
@@ -160,6 +161,10 @@ def list_receipts(
         query = Receipt.select()
         if not user.is_admin:
             query = query.where(Receipt.user == user.id)
+        total = query.count()
+        response.headers["X-Total-Count"] = str(total)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
         return [_serialize(item) for item in query.order_by(Receipt.created_at.desc()).paginate(page, page_size)]
 
 
