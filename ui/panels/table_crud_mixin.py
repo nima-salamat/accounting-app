@@ -37,6 +37,7 @@ class TableCrudMixin:
 
         self.adder.added.connect(self.thread.quit)
         self.adder.error.connect(self.thread.quit)
+        self.thread.finished.connect(self.adder.deleteLater)
         self.thread.finished.connect(self.thread.deleteLater)
 
         self.thread.start()
@@ -85,6 +86,7 @@ class TableCrudMixin:
 
         self.editor.edited.connect(self.thread.quit)
         self.editor.error.connect(self.thread.quit)
+        self.thread.finished.connect(self.editor.deleteLater)
         self.thread.finished.connect(self.thread.deleteLater)
 
         self.thread.start()
@@ -112,7 +114,8 @@ class TableCrudMixin:
             # وقتی عملیات تموم شد thread رو ببند
             self.deleter.deleted.connect(self.thread.quit)
             self.deleter.error.connect(self.thread.quit)
-            self.thread.finished.connect(self.thread.deleteLater)
+            self.thread.finished.connect(self.deleter.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
 
             self.thread.start()
             self.data_table.setEnabled(False)
@@ -142,6 +145,7 @@ class TableCrudMixin:
         # وقتی عملیات تمام شد، thread را ببند
         self.exporter.finished.connect(self.thread.quit)
         self.exporter.error.connect(self.thread.quit)
+        self.thread.finished.connect(self.exporter.deleteLater)
         self.thread.finished.connect(self.thread.deleteLater)
 
         self.thread.start()
