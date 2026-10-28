@@ -1,9 +1,10 @@
 """Server-persisted invoice template settings, validated at the API boundary."""
 import json
 import re
+from copy import deepcopy
 from typing import Dict, List, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from accounting_app.database.connection import DBManager
@@ -121,12 +122,85 @@ class InvoiceTemplateInput(BaseModel):
         return self
 
 
+TEMPLATE_SETTING_KEYS = {
+    "invoice": "invoice_template",
+    "pos_receipt": "invoice_template_pos_receipt",
+    "kiosk_receipt": "invoice_template_kiosk_receipt",
+    "return_slip": "invoice_template_return_slip",
+    "purchase_slip": "invoice_template_purchase_slip",
+}
+
+
+def _template_setting_key(kind):
+    kind = str(kind or "invoice")
+    if kind not in TEMPLATE_SETTING_KEYS:
+        raise HTTPException(
+            status_code=422,
+            detail="نوع برگه نامعتبر است. یکی از قالب‌های تعریف‌شده را انتخاب کنید.",
+        )
+    return TEMPLATE_SETTING_KEYS[kind]
+
+
+def _default_template_for_kind(kind):
+    """Return a usable, Persian-first initial layout for each independent print workflow."""
+    _template_setting_key(kind)
+    values = deepcopy(DEFAULT_TEMPLATE)
+    values["text_direction"] = "rtl"
+    if kind in ("pos_receipt", "kiosk_receipt"):
+        paper = "receipt80"
+        values.update({
+            "paper_size": paper,
+            "orientation": "portrait",
+            "margin_mm": 4,
+            "accent_color": "#0F766E" if kind == "pos_receipt" else "#3157A4",
+            "font_size": 9,
+            "header_font_size": 15,
+            "footer": "از خرید شما سپاسگزاریم.",
+        })
+        values["elements"] = [
+            {"id": "company", "type": "company", "label": "نام مجموعه", "x_mm": 4, "y_mm": 4, "w_mm": 72, "h_mm": 15, "font_size": 12, "align": "center", "bold": True, "visible": True, "text": ""},
+            {"id": "invoice_number", "type": "invoice_number", "label": "شماره فاکتور", "x_mm": 4, "y_mm": 20, "w_mm": 72, "h_mm": 7, "font_size": 8, "align": "right", "bold": True, "visible": True, "text": ""},
+            {"id": "invoice_date", "type": "invoice_date", "label": "تاریخ", "x_mm": 4, "y_mm": 27, "w_mm": 72, "h_mm": 7, "font_size": 8, "align": "right", "bold": False, "visible": True, "text": ""},
+            {"id": "payment_status", "type": "payment_status", "label": "وضعیت پرداخت", "x_mm": 4, "y_mm": 34, "w_mm": 72, "h_mm": 7, "font_size": 8, "align": "right", "bold": False, "visible": True, "text": ""},
+            {"id": "seat_number", "type": "seat_number", "label": "شماره میز / صندلی", "x_mm": 4, "y_mm": 41, "w_mm": 72, "h_mm": 7, "font_size": 8, "align": "right", "bold": False, "visible": kind == "kiosk_receipt", "text": ""},
+            {"id": "items_table", "type": "items_table", "label": "جدول کالاها", "x_mm": 4, "y_mm": 50, "w_mm": 72, "h_mm": 137, "font_size": 7, "align": "right", "bold": False, "visible": True, "text": ""},
+            {"id": "totals", "type": "totals", "label": "مبلغ نهایی", "x_mm": 4, "y_mm": 190, "w_mm": 72, "h_mm": 11, "font_size": 10, "align": "right", "bold": True, "visible": True, "text": ""},
+            {"id": "footer", "type": "footer", "label": "متن پایانی", "x_mm": 4, "y_mm": 203, "w_mm": 72, "h_mm": 10, "font_size": 7, "align": "center", "bold": False, "visible": True, "text": ""},
+        ]
+    elif kind in ("return_slip", "purchase_slip"):
+        scale = 0.707 if kind == "return_slip" else 1.0
+        values.update({
+            "paper_size": "A5" if kind == "return_slip" else "A4",
+            "orientation": "portrait",
+            "margin_mm": 8 if kind == "return_slip" else 12,
+            "accent_color": "#B45309" if kind == "return_slip" else "#475569",
+            "footer": "رسید مرجوعی کالا را نزد خود نگه دارید." if kind == "return_slip" else "سند خرید را بررسی و نگهداری کنید.",
+        })
+        values["elements"] = deepcopy(DEFAULT_TEMPLATE["elements"])
+        for element in values["elements"]:
+            for key in ("x_mm", "y_mm", "w_mm", "h_mm"):
+                element[key] = round(float(element.get(key, 0)) * scale, 2)
+            if kind == "return_slip":
+                if element["type"] == "invoice_number":
+                    element["label"] = "شماره رسید مرجوعی"
+                elif element["type"] == "invoice_date":
+                    element["label"] = "تاریخ مرجوعی"
+                elif element["type"] in ("seat_number", "payment_status"):
+                    element["visible"] = False
+            elif element["type"] == "invoice_number":
+                element["label"] = "شماره سند خرید"
+    return InvoiceTemplateInput.model_validate(values).model_dump()
+
+
 @router.get("/template")
-def get_invoice_template(_user=Depends(require_permission("invoices", "read"))):
+def get_invoice_template(kind: str = "invoice", _user=Depends(require_permission("invoices", "read"))):
+    storage_key = _template_setting_key(kind)
     with DBManager():
-        setting = AppSetting.get_or_none(AppSetting.key == "invoice_template")
+        setting = AppSetting.get_or_none(AppSetting.key == storage_key)
+        if setting is None:
+            return _default_template_for_kind(kind)
         try:
-            stored = json.loads(setting.value or "{}") if setting else {}
+            stored = json.loads(setting.value or "{}")
         except (TypeError, ValueError):
             stored = {}
         if not isinstance(stored, dict):
@@ -137,26 +211,28 @@ def get_invoice_template(_user=Depends(require_permission("invoices", "read"))):
         stored = {key: value for key, value in stored.items() if key in allowed}
         try:
             validated = InvoiceTemplateInput.model_validate(stored)
-            result = validated.model_dump()
+            return validated.model_dump()
         except Exception:
-            result = dict(DEFAULT_TEMPLATE)
+            fallback = _default_template_for_kind(kind)
             for key in ("company_name", "legal_id", "address", "phone", "footer"):
                 value = stored.get(key)
                 if isinstance(value, str):
-                    result[key] = value
-        return result
+                    fallback[key] = value
+            return fallback
 
 
 @router.put("/template")
 def save_invoice_template(
     payload: InvoiceTemplateInput,
+    kind: str = "invoice",
     _user=Depends(require_permission("invoices", "update")),
 ):
+    storage_key = _template_setting_key(kind)
     value = json.dumps(payload.model_dump(), ensure_ascii=False, separators=(",", ":"))
     with DBManager():
-        setting = AppSetting.get_or_none(AppSetting.key == "invoice_template")
+        setting = AppSetting.get_or_none(AppSetting.key == storage_key)
         if setting is None:
-            AppSetting.create(key="invoice_template", value=value)
+            AppSetting.create(key=storage_key, value=value)
         else:
             setting.value = value
             setting.save(only=[AppSetting.value, AppSetting.updated_at])
