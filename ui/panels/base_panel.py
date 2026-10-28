@@ -1,7 +1,7 @@
 """Generic CRUD table with filtering, pagination and background operations."""
 from functools import partial
 
-from peewee import *
+from peewee import DateField, DateTimeField, DecimalField, FloatField, ForeignKeyField, IntegerField
 from PySide2.QtWidgets import (
     QWidget, QVBoxLayout, QTableWidget, QPushButton, QLineEdit, QHBoxLayout,
     QTableWidgetItem, QMessageBox, QDialog, QLabel, QCheckBox, QComboBox, QMenu,
@@ -187,8 +187,7 @@ class TableManagement(QWidget):
             self.toggle_btn.setText("❯")
 
     def _toggle_date_group(self, state):
-        should_enable = state == Qt.Checked
-        self.date_group.setVisible(not self.date_group.isVisible())
+        self.date_group.setVisible(state == Qt.Checked)
 
     def setModel(self, model):
         self.model = model
@@ -277,7 +276,7 @@ class TableManagement(QWidget):
             self.load_data()
 
     def _go_next(self):
-        max_page = (self.total_rows - 1) // self.page_size + 1
+        max_page = max(1, (self.total_rows - 1) // self.page_size + 1)
         if self.current_page < max_page:
             self.current_page += 1
             self.load_data()
@@ -358,7 +357,6 @@ class TableManagement(QWidget):
     def _render_table(self):
         self.data_table.setRowCount(len(self.data))
         for r, rec in enumerate(self.data):
-            print(r, rec)
             for c, key in enumerate(self.fields):
                 val = getattr(rec, key)
                 f = self._all_fields[key]
@@ -403,10 +401,14 @@ class TableManagement(QWidget):
             return
 
         data = dlg.data.copy()
-        raw_pw = data.get("password", "").strip()
-        if "password" in self._create and not raw_pw:
-            raw_pw = "12345"
-        data['password'] = raw_pw
+        if "password" in self._create:
+            raw_pw = data.get("password", "")
+            if not raw_pw:
+                QMessageBox.warning(self, "رمز عبور لازم است", "برای ساخت کاربر جدید باید رمز عبور تعیین کنید.")
+                return
+            data["password"] = raw_pw
+        else:
+            data.pop("password", None)
 
         self.adder = RecordAdder(self.model, data, self._image_fields)
         self.thread = QThread(self)
@@ -452,7 +454,7 @@ class TableManagement(QWidget):
             return
 
         data = dlg.data.copy()
-        raw_pw = data.pop("password", "").strip()
+        raw_pw = data.pop("password", "")
         if raw_pw:
             data['password'] = raw_pw
 
