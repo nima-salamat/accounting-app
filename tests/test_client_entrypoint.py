@@ -1,5 +1,6 @@
-"""Regression tests for the desktop entry point's server lifecycle."""
+"""Regression tests for strict client/server process separation."""
 import os
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -7,23 +8,21 @@ import main
 
 
 class DesktopEntryPointTests(unittest.TestCase):
-    def test_default_launch_never_starts_a_local_server(self):
+    def test_default_launch_never_starts_server_process(self):
         with patch.dict(os.environ, {"ACCOUNTING_APP_API_URL": ""}, clear=False):
-            with patch.object(main, "_start_local_server") as start_server:
+            with patch("subprocess.Popen") as spawn_process:
                 with patch("client.desktop.main", return_value=0) as desktop_main:
                     self.assertEqual(main.run([]), 0)
-        start_server.assert_not_called()
+        spawn_process.assert_not_called()
         desktop_main.assert_called_once()
 
-    def test_local_server_requires_explicit_opt_in(self):
-        fake_process = object()
+    def test_custom_api_url_is_passed_without_spawning_server(self):
         with patch.dict(os.environ, {"ACCOUNTING_APP_API_URL": ""}, clear=False):
-            with patch.object(main, "_start_local_server", return_value=(fake_process, "http://127.0.0.1:8123")) as start_server:
-                with patch.object(main, "_stop_local_server") as stop_server:
-                    with patch("client.desktop.main", return_value=0) as desktop_main:
-                        self.assertEqual(main.run(["--with-local-server"]), 0)
-        start_server.assert_called_once_with()
-        stop_server.assert_called_once_with(fake_process)
+            with patch("subprocess.Popen") as spawn_process:
+                with patch("client.desktop.main", return_value=0) as desktop_main:
+                    self.assertEqual(main.run(["--api-url", "https://accounting.example.test"]), 0)
+                    self.assertEqual(os.environ["ACCOUNTING_APP_API_URL"], "https://accounting.example.test")
+        spawn_process.assert_not_called()
         desktop_main.assert_called_once()
 
 
