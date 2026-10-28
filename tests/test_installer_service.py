@@ -43,6 +43,14 @@ class InstallerAndSchemaRegistryTests(unittest.TestCase):
             self.assertEqual(marker.value, "1")
             self.assertEqual(User.select().count(), 1)
 
+    def test_setup_can_recover_when_marker_exists_but_no_users_remain(self):
+        from accounting_app.database.extension_models import AppSetting
+        with DBManager():
+            AppSetting.create(key="initial_setup_complete", value="1")
+        self.assertTrue(is_setup_required())
+        complete_initial_setup("recovered_admin", "password123", "password123")
+        self.assertFalse(is_setup_required())
+
     def test_installer_creates_custom_model_and_hashed_admin(self):
         rows = [
             {
