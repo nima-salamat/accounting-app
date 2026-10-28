@@ -3,9 +3,10 @@ import csv
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFileDialog, QFrame, QHBoxLayout, QLabel, QMessageBox, QPushButton,
-    QTableWidget, QTableWidgetItem, QVBoxLayout, QHeaderView, QLineEdit,
+    QTableWidget, QTableWidgetItem, QVBoxLayout, QHeaderView, QLineEdit, QComboBox,
 )
 from client.ui.forms import RecordDialog
+from client.ui.permissions import can_access
 
 
 def display_value(key, value):
@@ -32,6 +33,8 @@ class ApiTablePage(QFrame):
         self.create_fn, self.update_fn, self.delete_fn = create_fn, update_fn, delete_fn
         self.searchable = searchable
         self.records = []
+        self.current_page = 1
+        self.page_size = 25
         self.setObjectName("Card")
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         layout = QVBoxLayout(self)
@@ -75,6 +78,24 @@ class ApiTablePage(QFrame):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.itemDoubleClicked.connect(lambda _item: self.edit_record())
         layout.addWidget(self.table, 1)
+        pager = QHBoxLayout()
+        pager.addWidget(QLabel("تعداد در صفحه"))
+        self.page_size_combo = QComboBox()
+        for size in (25, 50, 100):
+            self.page_size_combo.addItem(str(size), size)
+        self.page_size_combo.currentIndexChanged.connect(self._page_size_changed)
+        pager.addWidget(self.page_size_combo)
+        self.page_label = QLabel("صفحه ۱ از ۱")
+        self.page_label.setObjectName("PageSubtitle")
+        pager.addWidget(self.page_label)
+        pager.addStretch(1)
+        self.previous_page_button = QPushButton("صفحهٔ قبل")
+        self.next_page_button = QPushButton("صفحهٔ بعد")
+        self.previous_page_button.clicked.connect(self.previous_page)
+        self.next_page_button.clicked.connect(self.next_page)
+        pager.addWidget(self.previous_page_button)
+        pager.addWidget(self.next_page_button)
+        layout.addLayout(pager)
         self.set_admin(False)
 
     def set_admin(self, is_admin):
@@ -82,23 +103,62 @@ class ApiTablePage(QFrame):
         self.edit_button.setVisible(bool(is_admin) and self.update_fn is not None)
         self.delete_button.setVisible(bool(is_admin) and self.delete_fn is not None)
 
+    def set_permissions(self, user, resource):
+        self.create_button.setVisible(can_access(user, resource, "create") and self.create_fn is not None)
+        self.edit_button.setVisible(can_access(user, resource, "update") and self.update_fn is not None)
+        self.delete_button.setVisible(can_access(user, resource, "delete") and self.delete_fn is not None)
+
     def refresh(self):
         if not self.window.api:
             return
+        self.current_page = 1
         query = self.search_input.text().strip() if self.searchable else ""
         self.window.run_api(lambda: self.load_fn(self.window.api, query), self.populate, busy=self.refresh_button)
 
     def populate(self, records):
         self.records = list(records or [])
+        self.current_page = 1
+        self._render_page()
+
+    def _render_page(self):
+        total = len(self.records)
+        pages = max(1, (total + self.page_size - 1) // self.page_size)
+        self.current_page = max(1, min(self.current_page, pages))
+        start = (self.current_page - 1) * self.page_size
+        visible = self.records[start:start + self.page_size]
         self.table.setRowCount(0)
-        for row, record in enumerate(self.records):
+        for row, record in enumerate(visible):
             self.table.insertRow(row)
             for col, (key, _label) in enumerate(self.columns):
                 item = QTableWidgetItem(display_value(key, record.get(key)))
                 if col == 0:
                     item.setData(Qt.ItemDataRole.UserRole, record)
                 self.table.setItem(row, col, item)
-        self.count_label.setText("{} رکورد".format(len(self.records)))
+        if total:
+            end = min(start + len(visible), total)
+            self.count_label.setText("{} رکورد · {} تا {}".format(total, start + 1, end))
+        else:
+            self.count_label.setText("بدون رکورد")
+        self.page_label.setText("صفحه {} از {}".format(self.current_page, pages))
+        self.previous_page_button.setEnabled(self.current_page > 1)
+        self.next_page_button.setEnabled(self.current_page < pages)
+
+    def _page_size_changed(self, *_args):
+        if hasattr(self, "page_size_combo"):
+            self.page_size = int(self.page_size_combo.currentData() or 25)
+            self.current_page = 1
+            self._render_page()
+
+    def previous_page(self):
+        if self.current_page > 1:
+            self.current_page -= 1
+            self._render_page()
+
+    def next_page(self):
+        pages = max(1, (len(self.records) + self.page_size - 1) // self.page_size)
+        if self.current_page < pages:
+            self.current_page += 1
+            self._render_page()
 
     def selected_record(self):
         row = self.table.currentRow()
