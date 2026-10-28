@@ -1076,11 +1076,7 @@ class KioskWindow(QMainWindow):
             self._auto_login_failed("کیوسک در پنل مدیر فعال نیست یا محصولی برای نمایش انتخاب نشده است.")
             return
         self.api, self.current_user = api, user
-        try:
-            appearance = api.get_appearance_settings()
-        except Exception:
-            appearance = None
-        self._apply_shared_appearance(appearance)
+        self._apply_shared_appearance(result.get("appearance"))
         self._enter_shop(config)
 
     def _auto_login_failed(self, error):
