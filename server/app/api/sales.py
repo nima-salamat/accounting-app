@@ -14,6 +14,7 @@ from accounting_app.database.models import (
 from accounting_app.services.sales import record_sale
 from accounting_app.services.schema_registry import cleanup_builtin_extension_values_many
 from server.app.dependencies import get_current_user
+from server.app.permissions import require_permission
 from server.app.schemas import ReceiptDetailOut, ReceiptOut, SaleCreate
 
 router = APIRouter(tags=["sales"])
@@ -33,7 +34,7 @@ def _serialize(record):
 def _receipt_detail(receipt):
     result = _serialize(receipt)
     result["items"] = [
-        _serialize(item)
+        dict(_serialize(item), product_name=(item.product.name if item.product_id else "محصول حذف‌شده"))
         for item in ReceiptProduct.select().where(
             ReceiptProduct.receipt == receipt.id
         ).order_by(ReceiptProduct.created_at)
@@ -78,7 +79,7 @@ def _get_replay(user, key, digest):
 def create_sale(
     payload: SaleCreate,
     idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=8, max_length=128),
-    user=Depends(get_current_user),
+    user=Depends(require_permission("sales", "create")),
 ):
     digest = _payload_hash(payload)
     replay = _get_replay(user, idempotency_key, digest)
@@ -115,7 +116,7 @@ def create_sale(
 
 
 @router.put("/sales/{receipt_id}", response_model=ReceiptDetailOut)
-def update_sale(receipt_id: UUID, payload: SaleCreate, user=Depends(get_current_user)):
+def update_sale(receipt_id: UUID, payload: SaleCreate, user=Depends(require_permission("sales", "update"))):
     with DBManager():
         receipt = Receipt.get_or_none(Receipt.id == receipt_id)
         if receipt is None:
@@ -143,7 +144,7 @@ def update_sale(receipt_id: UUID, payload: SaleCreate, user=Depends(get_current_
 def list_receipts(
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=200),
-    user=Depends(get_current_user),
+    user=Depends(require_permission("receipts", "read")),
 ):
     with DBManager():
         query = Receipt.select()
@@ -153,7 +154,7 @@ def list_receipts(
 
 
 @router.get("/receipts/{receipt_id}", response_model=ReceiptDetailOut)
-def get_receipt(receipt_id: UUID, user=Depends(get_current_user)):
+def get_receipt(receipt_id: UUID, user=Depends(require_permission("receipts", "read"))):
     with DBManager():
         receipt = Receipt.get_or_none(Receipt.id == receipt_id)
         if receipt is None:
@@ -164,7 +165,7 @@ def get_receipt(receipt_id: UUID, user=Depends(get_current_user)):
 
 
 @router.delete("/receipts/{receipt_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_receipt(receipt_id: UUID, user=Depends(get_current_user)):
+def delete_receipt(receipt_id: UUID, user=Depends(require_permission("receipts", "delete"))):
     with DBManager():
         receipt = Receipt.get_or_none(Receipt.id == receipt_id)
         if receipt is None:
