@@ -5,11 +5,11 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
-from peewee import ForeignKeyField, IntegrityError
+from peewee import ForeignKeyField, IntegrityError, fn
 
 from accounting_app.database.connection import DBManager
 from accounting_app.database.models import (
-    IdempotencyRecord, Product, Receipt, ReceiptProduct,
+    IdempotencyRecord, Product, Receipt, ReceiptProduct, SaleReturnLine,
 )
 from accounting_app.services.sales import InsufficientStockError, record_sale
 from accounting_app.services.accounting_controls import FiscalPeriodClosedError
@@ -34,12 +34,30 @@ def _serialize(record):
 
 def _receipt_detail(receipt):
     result = _serialize(receipt)
-    result["items"] = [
-        dict(_serialize(item), product_name=(item.product_name or (item.product.name if item.product_id else "محصول حذف‌شده")))
-        for item in ReceiptProduct.select().where(
-            ReceiptProduct.receipt == receipt.id
-        ).order_by(ReceiptProduct.created_at)
-    ]
+    returned = {
+        str(row["original_line_id"]): int(row["total"] or 0)
+        for row in (
+            SaleReturnLine.select(
+                SaleReturnLine.original_line.alias("original_line_id"),
+                fn.SUM(SaleReturnLine.quantity).alias("total"),
+            )
+            .join(ReceiptProduct, on=(SaleReturnLine.original_line == ReceiptProduct.id))
+            .where(ReceiptProduct.receipt == receipt.id)
+            .group_by(SaleReturnLine.original_line)
+            .dicts()
+        )
+    }
+    result["items"] = []
+    for item in ReceiptProduct.select().where(
+        ReceiptProduct.receipt == receipt.id
+    ).order_by(ReceiptProduct.created_at):
+        returned_quantity = returned.get(str(item.id), 0)
+        result["items"].append(dict(
+            _serialize(item),
+            product_name=(item.product_name or (item.product.name if item.product_id else "محصول حذف‌شده")),
+            returned_quantity=returned_quantity,
+            returnable_quantity=max(0, int(item.quantity) - returned_quantity),
+        ))
     return result
 
 
