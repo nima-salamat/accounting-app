@@ -168,6 +168,7 @@ class TableDataMixin:
         loader.moveToThread(thread)
         thread.started.connect(loader.load_data, Qt.QueuedConnection)
         loader.data_loaded.connect(self._on_data_loaded, Qt.QueuedConnection)
+        loader.page_changed.connect(self._on_page_changed, Qt.QueuedConnection)
         loader.error.connect(self._on_load_error, Qt.QueuedConnection)
         loader.finished.connect(thread.quit)
         loader.finished.connect(loader.deleteLater)
@@ -176,6 +177,10 @@ class TableDataMixin:
         self.search_input.setEnabled(False)
         self.sort_field_combo.setEnabled(False)
         self.data_table.setEnabled(False)
+
+    def _on_page_changed(self, page):
+        self.current_page = max(1, int(page))
+        self.page_input.setText(str(self.current_page))
 
     def _on_data_loaded(self, data, total_rows):
         self.data = data
