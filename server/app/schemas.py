@@ -54,6 +54,19 @@ class SetupRequest(StrictModel):
     setup_token: Optional[str] = Field(default=None, max_length=256)
 
 
+class AppearanceSettingsUpdate(StrictModel):
+    """Shared application-wide typography and control density settings."""
+    font_family: str = Field(default="Vazirmatn", min_length=1, max_length=64, pattern=r"^[\\w .()\\-]{1,64}$")
+    font_size: int = Field(default=13, ge=10, le=18)
+    heading_scale: float = Field(default=1.0, ge=0.9, le=1.5)
+    density: Literal["compact", "comfortable", "spacious"] = "comfortable"
+    corner_radius: int = Field(default=10, ge=4, le=20)
+    control_height: int = Field(default=36, ge=28, le=52)
+    control_padding: int = Field(default=8, ge=4, le=16)
+    horizontal_padding: int = Field(default=12, ge=4, le=24)
+    section_spacing: int = Field(default=12, ge=4, le=24)
+
+
 class KioskSettingsUpdate(StrictModel):
     active: bool = False
     allowed_product_ids: List[UUID] = Field(default_factory=list, max_length=500)

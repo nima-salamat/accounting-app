@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 
 from client.api_client import AccountingApiClient
 from client.ui.setup_wizard import SetupWizard
-from client.ui.theme import stylesheet
+from client.ui.theme import set_design_config, stylesheet
 from client.ui.worker import ApiWorker
 
 
@@ -111,9 +111,12 @@ class AuthPage(QWidget):
         card_layout.addWidget(self.title)
         card_layout.addWidget(self.subtitle)
 
-        self.server_url = QLineEdit(os.environ.get("ACCOUNTING_APP_API_URL", "http://127.0.0.1:8000"))
+        configured_url = os.environ.get("ACCOUNTING_APP_API_URL")
+        last_server_url = self.local_settings.value("last_server_url", "", type=str)
+        self.server_url = QLineEdit(configured_url or last_server_url or "http://127.0.0.1:8000")
         self.server_url.setPlaceholderText("https://accounting.example.com")
         self.server_url.setClearButtonEnabled(True)
+        self.server_url.editingFinished.connect(self._store_server_url)
         connect_row = QHBoxLayout()
         connect_row.addWidget(self.server_url, 1)
         self.connect_button = QPushButton("بررسی")
@@ -235,6 +238,9 @@ class AuthPage(QWidget):
             self.message.setText(str(exc))
             return
         self.api = api
+        self.local_settings.setValue("last_server_url", api.base_url)
+        self.local_settings.sync()
+        self._restore_attempted_for_url = None
         self.api_changed.emit(api)
         self.server_status.setText("●  در حال بررسی سرور...")
         def check():
@@ -260,6 +266,12 @@ class AuthPage(QWidget):
         )
         self.server_status.setText("●  سرور آماده است")
         self.server_status.setStyleSheet("color:#0F9D83;font-weight:700;")
+        if self.api is not None:
+            self._run(
+                self.api.get_appearance_settings,
+                self._appearance_loaded,
+                failure=lambda _ticket, _error: None,
+            )
         self._attempt_restore_session()
 
     @Slot(str, object)
@@ -271,23 +283,46 @@ class AuthPage(QWidget):
     def _keyring_account(server_url):
         return str(server_url or "").strip().rstrip("/")
 
+    def _store_server_url(self):
+        """Remember the last valid API endpoint independently of session persistence."""
+        candidate = self.server_url.text().strip()
+        if not candidate:
+            return
+        try:
+            normalized = AccountingApiClient(candidate).base_url
+        except ValueError:
+            return
+        self.local_settings.setValue("last_server_url", normalized)
+        self.local_settings.sync()
+
     def _remember_setting_changed(self, enabled):
         self.local_settings.setValue("remember_session", bool(enabled))
         self.local_settings.sync()
         if not enabled:
             self.clear_remembered_session()
+        else:
+            self._restore_attempted_for_url = None
+            if self.api is not None:
+                self._attempt_restore_session()
 
     def clear_remembered_session(self):
-        if keyring is not None:
+        """Delete stored credentials for the current and last-used endpoints."""
+        if keyring is None:
+            return
+        candidates = [self.server_url.text(), self.local_settings.value("last_server_url", "", type=str)]
+        if self.api is not None:
+            candidates.append(self.api.base_url)
+        for account in {self._keyring_account(value) for value in candidates if value}:
             try:
-                keyring.delete_password(
-                    "Accounting App Desktop Session",
-                    self._keyring_account(self.server_url.text()),
-                )
+                keyring.delete_password("Accounting App Desktop Session", account)
             except Exception:
                 pass
 
     def _persist_session(self):
+        # Keep endpoint preferences even when the user explicitly opts out of session storage.
+        if self.api is not None:
+            self.local_settings.setValue("last_server_url", self.api.base_url)
+            self.local_settings.sync()
         if not self.remember_session_checkbox.isChecked():
             self.clear_remembered_session()
             return
@@ -300,10 +335,15 @@ class AuthPage(QWidget):
                 self._keyring_account(self.api.base_url),
                 self.api.access_token,
             )
-            self.local_settings.setValue("last_server_url", self.api.base_url)
-            self.local_settings.sync()
         except Exception as exc:
             self.message.setText("ورود انجام شد، اما ذخیرهٔ امن نشست ناموفق بود: {}".format(exc))
+
+    @Slot(str, object)
+    def _appearance_loaded(self, _ticket, values):
+        set_design_config(values)
+        self.setStyleSheet(stylesheet(self.mode))
+        # Notify the main shell so it applies the same database-backed design tokens.
+        self.theme_changed.emit(self.mode)
 
     def _attempt_restore_session(self):
         if self.api is None or not self.remember_session_checkbox.isChecked() or keyring is None:

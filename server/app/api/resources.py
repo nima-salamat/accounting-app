@@ -31,10 +31,55 @@ from server.app.schemas import (
     CheckCreate, CheckOut, CheckUpdate,
     ProductCreate, ProductOut, ProductUpdate,
     UserCreate, UserOut, UserUpdate,
-    WarehouseCreate, WarehouseOut, WarehouseUpdate,
+    WarehouseCreate, WarehouseOut, WarehouseUpdate, AppearanceSettingsUpdate,
 )
 
 router = APIRouter(tags=["resources"])
+
+DEFAULT_APPEARANCE_SETTINGS = {
+    "font_family": "Vazirmatn", "font_size": 13, "heading_scale": 1.0,
+    "density": "comfortable", "corner_radius": 10, "control_height": 36,
+    "control_padding": 8, "horizontal_padding": 12, "section_spacing": 12,
+}
+
+
+def _load_appearance_settings():
+    setting = AppSetting.get_or_none(AppSetting.key == "appearance_preferences")
+    try:
+        stored = json.loads(setting.value or "{}") if setting else {}
+    except (TypeError, ValueError):
+        stored = {}
+    if not isinstance(stored, dict):
+        stored = {}
+    try:
+        return AppearanceSettingsUpdate.model_validate(
+            {**DEFAULT_APPEARANCE_SETTINGS, **stored}
+        ).model_dump()
+    except Exception:
+        return dict(DEFAULT_APPEARANCE_SETTINGS)
+
+
+@router.get("/appearance-settings")
+def get_appearance_settings():
+    """Return non-sensitive shared UI preferences before authentication as well as after it."""
+    with DBManager():
+        return _load_appearance_settings()
+
+
+@router.put("/appearance-settings")
+def save_appearance_settings(
+    payload: AppearanceSettingsUpdate,
+    _user=Depends(require_admin),
+):
+    value = json.dumps(payload.model_dump(), ensure_ascii=False, separators=(",", ":"))
+    with DBManager():
+        setting = AppSetting.get_or_none(AppSetting.key == "appearance_preferences")
+        if setting is None:
+            AppSetting.create(key="appearance_preferences", value=value)
+        else:
+            setting.value = value
+            setting.save(only=[AppSetting.value, AppSetting.updated_at])
+    return payload.model_dump()
 
 
 @router.get("/company-profile")
