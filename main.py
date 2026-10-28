@@ -3,28 +3,36 @@ import sys
 from pathlib import Path
 
 from accounting_app.config import ensure_data_dir
-from manager.db import create_admin, create_db, initialize_database
+from manager.db import create_db, initialize_database
 
 ICON_PATH = Path(__file__).resolve().parent / "icon.ico"
 
 
 def run(argv=None):
-    """Initialize persistent services, then start the Qt event loop."""
+    """Initialize persistent services, run setup when needed, then open the app."""
     ensure_data_dir()
     initialize_database()
     create_db()
-    create_admin()
 
     from PySide2.QtCore import Qt
     from PySide2.QtGui import QIcon
-    from PySide2.QtWidgets import QApplication
-    from ui.main_window import MainWindow
+    from PySide2.QtWidgets import QApplication, QDialog
 
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv if argv is None else argv)
     app.setApplicationName("Accounting App")
     app.setWindowIcon(QIcon(str(ICON_PATH)))
+
+    from accounting_app.services.installer import is_setup_required
+    if is_setup_required():
+        from ui.pages.installer_wizard import InitialSetupWizard
+
+        wizard = InitialSetupWizard()
+        if wizard.exec_() != QDialog.Accepted or not wizard.installation_complete:
+            return 0
+
+    from ui.pages.main_window import MainWindow
 
     window = MainWindow()
     window.show()
