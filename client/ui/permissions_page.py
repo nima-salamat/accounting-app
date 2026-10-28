@@ -47,7 +47,7 @@ class PermissionsPage(QFrame):
         toolbar.addWidget(self.user_combo, 2)
         toolbar.addWidget(QLabel("نقش پایه"))
         self.role_combo = QComboBox()
-        for role in ("cashier", "inventory", "accountant", "viewer", "custom"):
+        for role in ("cashier", "inventory", "accountant", "viewer", "kiosk", "custom"):
             self.role_combo.addItem(ROLE_LABELS[role], role)
         self.role_combo.currentIndexChanged.connect(self._apply_role)
         toolbar.addWidget(self.role_combo, 1)
