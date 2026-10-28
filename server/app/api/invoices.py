@@ -116,7 +116,12 @@ class InvoiceTemplateInput(BaseModel):
     def unique_layout_blocks(self):
         if len(self.layout_order) != len(set(self.layout_order)):
             raise ValueError("هر بخش فاکتور فقط یک بار در ترتیب چیدمان قرار می‌گیرد.")
-        element_ids = [element.id for element in self.elements]
+        # Pydantic does not validate unmodified default_factory values by default:
+        # schema defaults therefore include raw dictionaries as well as model instances.
+        element_ids = [
+            element.id if isinstance(element, InvoiceElementInput) else element.get("id")
+            for element in self.elements
+        ]
         if len(element_ids) != len(set(element_ids)):
             raise ValueError("شناسهٔ هر المان فاکتور باید یکتا باشد.")
         return self
