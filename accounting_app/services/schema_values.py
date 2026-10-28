@@ -199,10 +199,18 @@ def entity_key_for_model(model):
 
 def cleanup_builtin_extension_values(entity_type, record_id):
     """Remove extension values when their owning built-in record is deleted."""
+    return cleanup_builtin_extension_values_many(entity_type, [record_id])
+
+
+def cleanup_builtin_extension_values_many(entity_type, record_ids):
+    """Delete extension metadata in one query for a batch of built-in records."""
     if entity_type not in BUILTIN_ENTITIES:
         raise ValueError("مدل اصلی معتبر نیست.")
+    normalized_ids = [str(record_id) for record_id in record_ids if record_id is not None]
+    if not normalized_ids:
+        return 0
     with DBManager():
         return CustomFieldValue.delete().where(
             (CustomFieldValue.entity_type == entity_type)
-            & (CustomFieldValue.record_id == str(record_id))
+            & (CustomFieldValue.record_id.in_(normalized_ids))
         ).execute()
