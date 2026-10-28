@@ -177,7 +177,7 @@ class MainWindow(QMainWindow):
                     if isinstance(buttons, list):
                         self.button_indices = [
                             value for value in buttons
-                            if type(value) is int and 0 <= value < 12
+                            if type(value) is int and 0 <= value < 13
                         ]
                 except (TypeError, ValueError):
                     self.button_indices = []
