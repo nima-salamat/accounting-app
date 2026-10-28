@@ -35,6 +35,7 @@ import os
 import arabic_reshaper
 from bidi.algorithm import get_display
 
+from accounting_app.services.schema_registry import cleanup_builtin_extension_values
 from ui.panels.report_support import (
     farsi, to_jalali, from_jalali, ReportWorker, PurgeWorker, QueryWorker,
     SearchLineEdit, DataLoader, cache, wrap_scrollable,
@@ -48,42 +49,6 @@ from ui.panels.report_support import (
 class ReportMaintenanceMixin:
     def _purge_tab(self):
 
-
-        # Worker thread to load, filter, and emit data
-        class PurgeWorker(QThread):
-            dataReady = Signal(list, list, int, float, float)
-            error = Signal(str)
-
-            def __init__(self, start_dt, end_dt):
-                super().__init__()
-                self.start_dt = start_dt
-                self.end_dt = end_dt
-
-            def run(self):
-                try:
-                    # 1) select receipts in date range by created_at
-                    rec_q = Receipt.select().where(
-                        (Receipt.created_at >= self.start_dt) &
-                        (Receipt.created_at <= self.end_dt)
-                    )
-                    recs = [r.__data__ for r in rec_q]
-                    rec_ids = [r['id'] for r in recs]
-
-                    # 2) related items
-                    items_q = ReceiptProduct.select().where(
-                        ReceiptProduct.receipt.in_(rec_ids)
-                    )
-                    items = [i.__data__ for i in items_q]
-
-                    # compute summaries
-                    count = len(recs)
-                    sum_total = sum(r.get('total', 0) for r in recs)
-                    sum_buy = sum(r.get('buy_total', 0) for r in recs)
-
-                    # emit for saving
-                    self.dataReady.emit(recs, items, count, sum_total, sum_buy)
-                except Exception as e:
-                    self.error.emit(str(e))
 
         # main widget
         w = QWidget()
@@ -100,6 +65,11 @@ class ReportMaintenanceMixin:
         lo.addWidget(lbl)
 
         def on_data(recs, items, count, sum_total, sum_buy):
+            if not recs:
+                QMessageBox.information(self, "بدون داده", "در این بازه فاکتوری برای پاک‌سازی وجود ندارد.")
+                btn.setEnabled(True)
+                return
+
             # select save path
             path_r, _ = QFileDialog.getSaveFileName(self, "ذخیره فاکتورها", filter="CSV Files (*.csv)")
             if not path_r:
@@ -123,12 +93,17 @@ class ReportMaintenanceMixin:
             # deletion in transaction
             try:
                 with DBManager():
-                    ReceiptProduct.delete().where(
-                        ReceiptProduct.receipt.in_([r['id'] for r in recs])
-                    ).execute()
-                    Receipt.delete().where(
-                        Receipt.id.in_([r['id'] for r in recs])
-                    ).execute()
+                    receipt_ids = [record["id"] for record in recs]
+                    item_ids = [item["id"] for item in items]
+                    for record_id in receipt_ids:
+                        cleanup_builtin_extension_values("receipts", record_id)
+                    for item_id in item_ids:
+                        cleanup_builtin_extension_values("receipt_products", item_id)
+                    if item_ids:
+                        ReceiptProduct.delete().where(
+                            ReceiptProduct.id.in_(item_ids)
+                        ).execute()
+                    Receipt.delete().where(Receipt.id.in_(receipt_ids)).execute()
             except Exception as e:
                 QMessageBox.critical(self, "خطا هنگام حذف", str(e))
                 btn.setEnabled(True)
@@ -159,6 +134,8 @@ class ReportMaintenanceMixin:
                 end_j = f"{dt_to_date.text()} {dt_to_time.text()}:00".replace('/', '-')
                 start_dt = from_jalali(start_j, is_datetime=True)
                 end_dt = from_jalali(end_j, is_datetime=True)
+                if start_dt > end_dt:
+                    raise ValueError("زمان شروع نباید از زمان پایان بزرگ‌تر باشد.")
             except ValueError as e:
                 QMessageBox.critical(self, "خطا", f"فرمت تاریخ/زمان نادرست:\n{e}")
                 return
