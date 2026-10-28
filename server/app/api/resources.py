@@ -192,9 +192,22 @@ def delete_product(product_id: UUID, user=Depends(require_permission("products",
 
 
 @router.get("/warehouses", response_model=List[WarehouseOut])
-def list_warehouses(user=Depends(require_permission("warehouse", "read"))):
+def list_warehouses(
+    response: Response,
+    q: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=200),
+    user=Depends(require_permission("warehouse", "read")),
+):
     with DBManager():
-        return [_serialize(item) for item in WarehouseModel.select().order_by(WarehouseModel.name)]
+        query = WarehouseModel.select()
+        if q and q.strip():
+            query = query.where(WarehouseModel.name.contains(q.strip()))
+        total = query.count()
+        response.headers["X-Total-Count"] = str(total)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
+        return [_serialize(item) for item in query.order_by(WarehouseModel.name).paginate(page, page_size)]
 
 
 @router.post("/warehouses", response_model=WarehouseOut, status_code=status.HTTP_201_CREATED)
