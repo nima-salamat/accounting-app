@@ -14,6 +14,7 @@ from server.app.api.sales import router as sales_router
 from server.app.api.invoices import router as invoices_router
 from server.app.api.inventory import router as inventory_router
 from server.app.api.returns import router as returns_router
+from server.app.api.accounting import router as accounting_router
 from server.app.config import API_PREFIX
 
 
@@ -47,3 +48,4 @@ app.include_router(schema_router, prefix=API_PREFIX)
 app.include_router(invoices_router, prefix=API_PREFIX)
 app.include_router(inventory_router, prefix=API_PREFIX)
 app.include_router(returns_router, prefix=API_PREFIX)
+app.include_router(accounting_router, prefix=API_PREFIX)
