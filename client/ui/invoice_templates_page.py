@@ -2,7 +2,7 @@
 from copy import deepcopy
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QBrush, QPen
+from PySide6.QtGui import QColor, QBrush, QPainter, QPen
 from PySide6.QtWidgets import (
     QCheckBox, QColorDialog, QComboBox, QFormLayout, QFrame, QGraphicsItem,
     QGraphicsRectItem, QGraphicsScene, QGraphicsView, QHBoxLayout, QLabel,
@@ -293,7 +293,7 @@ class InvoiceTemplatesPage(QFrame):
         self.canvas.setObjectName("InvoiceDesignerCanvas")
         self.canvas.setBackgroundBrush(QBrush(QColor("#E9EDF4")))
         self.canvas.setFrameShape(QFrame.Shape.NoFrame)
-        self.canvas.setRenderHints(self.canvas.renderHints())
+        self.canvas.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         self.canvas.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.canvas.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.canvas.setMinimumWidth(360)
@@ -469,6 +469,8 @@ class InvoiceTemplatesPage(QFrame):
     def _rebuild_canvas(self):
         self.scene.clear()
         self._items_by_id.clear()
+        self._paper_item = None
+        self._safe_margin_item = None
         width, height = page_dimensions(self._values())
         self.scene.setSceneRect(QRectF(0, 0, width, height))
         page = QGraphicsRectItem(QRectF(0, 0, width, height))
@@ -476,6 +478,7 @@ class InvoiceTemplatesPage(QFrame):
         page.setPen(QPen(QColor(self.frame_border_color_value), 0.6 if self.show_border.isChecked() else 0.25))
         page.setZValue(-100)
         page.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self._paper_item = page
         self.scene.addItem(page)
         margin = float(self.margin_mm.value())
         safe = QGraphicsRectItem(QRectF(margin, margin, max(1, width - 2 * margin), max(1, height - 2 * margin)))
@@ -483,6 +486,7 @@ class InvoiceTemplatesPage(QFrame):
         safe.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         safe.setZValue(-90)
         safe.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self._safe_margin_item = safe
         self.scene.addItem(safe)
         current_template = self._values()
         for element in self._elements:
@@ -505,8 +509,16 @@ class InvoiceTemplatesPage(QFrame):
 
     def _update_canvas_appearance(self, *_args):
         self._update_page_info()
+        if self._paper_item is not None:
+            pen = QPen(QColor(self.frame_border_color_value), 0.65 if self.show_border.isChecked() else 0.25)
+            self._paper_item.setPen(pen)
+        if self._safe_margin_item is not None:
+            width, height = page_dimensions(self._values())
+            margin = float(self.margin_mm.value())
+            self._safe_margin_item.setRect(QRectF(margin, margin, max(1, width - 2 * margin), max(1, height - 2 * margin)))
         self.scene.update()
         for item in self._items_by_id.values():
+            item.page = self
             item.update()
 
     def _update_page_info(self):
