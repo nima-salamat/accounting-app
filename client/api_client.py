@@ -139,7 +139,7 @@ class AccountingApiClient:
     def setup_status(self):
         return self._request("GET", "/api/v1/setup/status", authenticated=False)
 
-    def complete_setup(self, username, password, password_confirmation, schema_rows=None, setup_token=None, company_name="کسب‌وکار من", business_profile="general"):
+    def complete_setup(self, username, password, password_confirmation, schema_rows=None, setup_token=None, company_name="کسب‌وکار من", business_profile="general", product_buy_price_required=None):
         payload = self._request(
             "POST", "/api/v1/setup",
             json_body={
@@ -149,6 +149,7 @@ class AccountingApiClient:
                 "schema_rows": schema_rows or [],
                 "company_name": company_name,
                 "business_profile": business_profile,
+                "product_buy_price_required": product_buy_price_required,
                 "setup_token": setup_token,
             },
             authenticated=False,
@@ -570,6 +571,9 @@ class AccountingApiClient:
             "GET", "/api/v1/audit", page=page, page_size=page_size,
             params={"q": q, "resource": resource},
         )
+
+    def get_company_profile(self):
+        return self._request("GET", "/api/v1/company-profile")
 
     def get_invoice_template(self):
         return self._request("GET", "/api/v1/invoices/template")
