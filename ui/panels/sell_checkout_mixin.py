@@ -25,6 +25,8 @@ from ui.panels.sell_widgets import (
     ProductCard, CartItemCard, CategoryCard, SearchLineEdit, get_color_from_name,
 )
 from ui.panels.sell_workers import CategoryProductFetcher, ReceiptFetcher, CheckoutWorker
+from manager.db import DBManager
+from accounting_app.services.schema_registry import cleanup_builtin_extension_values
 
 from ui.panels.sell_widgets import (
     SplitterAnimation, FlowLayout, SmallFlatButton, PanelCartItemCard,
@@ -185,11 +187,26 @@ class SellCheckoutMixin:
             QMessageBox.critical(self, "خطا", f"ثبت فروش با خطا مواجه شد:\n{message}")
 
     def delete_receipt(self, receipt):
-        if QMessageBox.question(self, "حذف", "آیا می‌خواهید این را حذف کنید؟") == QMessageBox.Yes:
-            
-            receipt.delete_instance(recursive=True)
-            self.show_notification("رسید با موفقیت حذف شد")
-            self.refresh_receipts()
+        if QMessageBox.question(self, "حذف", "آیا می‌خواهید این را حذف کنید؟") != QMessageBox.Yes:
+            return
+        try:
+            with DBManager():
+                receipt_id = str(receipt.id)
+                item_ids = [
+                    str(item.id)
+                    for item in ReceiptProduct.select().where(ReceiptProduct.receipt == receipt.id)
+                ]
+                for item_id in item_ids:
+                    cleanup_builtin_extension_values("receipt_products", item_id)
+                cleanup_builtin_extension_values("receipts", receipt_id)
+                if item_ids:
+                    ReceiptProduct.delete().where(ReceiptProduct.id.in_(item_ids)).execute()
+                Receipt.delete().where(Receipt.id == receipt.id).execute()
+        except Exception as exc:
+            QMessageBox.critical(self, "خطا در حذف", "رسید حذف نشد: {}".format(exc))
+            return
+        self.show_notification("رسید با موفقیت حذف شد")
+        self.refresh_receipts()
 
     def show_notification(self, message: str, duration: int = 2000):
         self.notification_label.setText(message)
