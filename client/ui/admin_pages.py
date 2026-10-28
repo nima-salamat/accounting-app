@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout, QInputDialog,
     QLabel, QMessageBox, QPushButton, QSplitter, QTableWidget, QTableWidgetItem,
-    QTextEdit, QVBoxLayout, QWidget, QHeaderView,
+    QTextEdit, QVBoxLayout, QWidget, QHeaderView, QLineEdit,
 )
 from client.ui.data_pages import display_value
 from client.ui.forms import RecordDialog
