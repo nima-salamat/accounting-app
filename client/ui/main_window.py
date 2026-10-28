@@ -4,6 +4,10 @@ import uuid
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QIcon
+try:
+    import qtawesome as qta
+except ImportError:  # Keep the interface usable before optional icon assets are installed.
+    qta = None
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
     QPushButton, QStackedWidget, QVBoxLayout, QWidget,
@@ -19,6 +23,9 @@ from client.ui.data_pages import (
 )
 from client.ui.sales_page import SalesPage
 from client.ui.settings_page import SettingsPage
+from client.ui.permissions_page import PermissionsPage
+from client.ui.invoice_templates_page import InvoiceTemplatesPage
+from client.ui.permissions import can_access
 from client.ui.theme import stylesheet
 from client.ui.worker import ApiWorker
 
@@ -133,18 +140,20 @@ class AccountingMainWindow(QMainWindow):
         layout.addSpacing(12)
         section=QLabel("محیط کار");section.setObjectName("SidebarSection");layout.addWidget(section)
         nav_specs=[
-            ("dashboard","نمای کلی","◫",False),("sales","ثبت فروش","＋",False),
-            ("products","محصولات","▦",False),("categories","دسته‌بندی‌ها","◇",True),
-            ("warehouse","انبار","▤",True),("checks_in","چک‌های دریافتی","↙",True),
-            ("checks_out","چک‌های پرداختی","↗",True),("receipts","رسیدها","▧",False),
+            ("dashboard","نمای کلی","◫",False),("sales","صندوق فروش","＋",False),
+            ("products","محصولات","▦",False),("categories","دسته‌بندی‌ها","◇",False),
+            ("warehouse","انبار","▤",False),("checks_in","چک‌های دریافتی","↙",False),
+            ("checks_out","چک‌های پرداختی","↗",False),("receipts","رسیدها و فاکتورها","▧",False),
         ]
         for key,label,icon,admin in nav_specs:self._make_nav(layout,key,label,icon,admin)
         self.admin_section=QLabel("مدیریت و تنظیمات");self.admin_section.setObjectName("SidebarSection")
         layout.addWidget(self.admin_section)
         for key,label,icon in [
             ("admin","پنل مدیریت","✦"),("sessions","نشست‌ها و فعال‌سازی","◉"),
-            ("users","کاربران و دسترسی‌ها","♙"),("schemas","فیلدهای سفارشی","⌘"),
+            ("users","کاربران","♙"),("permissions","نقش‌ها و مجوزها","♢"),
+            ("schemas","مدل‌ها و فیلدهای سفارشی","⌘"),
         ]:self._make_nav(layout,key,label,icon,True)
+        self._make_nav(layout,"invoices","قالب فاکتور","▤",False)
         layout.addStretch(1)
         self.sidebar_user=QLabel("وارد نشده");self.sidebar_user.setObjectName("SidebarSub")
         layout.addWidget(self.sidebar_user)
@@ -153,8 +162,24 @@ class AccountingMainWindow(QMainWindow):
         return side
 
     def _make_nav(self,parent_layout,key,label,icon,admin_only):
-        button=QPushButton("{}   {}".format(icon,label));button.setObjectName("NavigationButton")
-        button.setProperty("active",False);button.setMinimumHeight(39)
+        icon_names = {
+            "dashboard":"fa5s.chart-pie", "sales":"fa5s.cash-register",
+            "products":"fa5s.boxes", "categories":"fa5s.tags",
+            "warehouse":"fa5s.warehouse", "checks_in":"fa5s.file-import",
+            "checks_out":"fa5s.file-export", "receipts":"fa5s.receipt",
+            "admin":"fa5s.chart-line", "sessions":"fa5s.laptop",
+            "users":"fa5s.users", "permissions":"fa5s.user-shield",
+            "schemas":"fa5s.sliders-h", "invoices":"fa5s.file-invoice",
+        }
+        button=QPushButton(label if qta else "{}   {}".format(icon,label))
+        button.setObjectName("NavigationButton")
+        if qta:
+            try:
+                button.setIcon(qta.icon(icon_names.get(key,"fa5s.circle"),color="#D5DEEF"))
+            except Exception:
+                button.setText("{}   {}".format(icon,label))
+        button.setProperty("active",False);button.setMinimumHeight(41)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.clicked.connect(lambda _checked=False,k=key:self.navigate(k))
         parent_layout.addWidget(button)
         self._nav[key]=(button,admin_only)
@@ -191,6 +216,8 @@ class AccountingMainWindow(QMainWindow):
         self.users_page=UsersPage(self)
         self.sessions_page=SessionsPage(self)
         self.schemas_page=SchemaPage(self)
+        self.permissions_page=PermissionsPage(self)
+        self.invoice_templates_page=InvoiceTemplatesPage(self)
         self.admin_page=AdminOverviewPage(self)
         self.settings_page=SettingsPage(self)
         definitions=[
@@ -199,7 +226,8 @@ class AccountingMainWindow(QMainWindow):
             ("warehouse","انبار",self.warehouse_page),("checks_in","چک‌های دریافتی",self.checks_in_page),
             ("checks_out","چک‌های پرداختی",self.checks_out_page),("receipts","رسیدها",self.receipts_page),
             ("admin","پنل مدیریت",self.admin_page),("sessions","نشست‌ها و فعال‌سازی",self.sessions_page),
-            ("users","کاربران و دسترسی‌ها",self.users_page),("schemas","فیلدهای سفارشی",self.schemas_page),
+            ("users","کاربران و دسترسی‌ها",self.users_page),("permissions","نقش‌ها و مجوزها",self.permissions_page),
+            ("schemas","فیلدهای سفارشی",self.schemas_page),("invoices","قالب فاکتور",self.invoice_templates_page),
             ("settings","تنظیمات",self.settings_page),
         ]
         for key,title,page in definitions:
@@ -217,8 +245,10 @@ class AccountingMainWindow(QMainWindow):
             "receipts":("رسیدها","جست‌وجو، جزئیات و خروجی رسیدها"),
             "admin":("پنل مدیریت","کنترل حساب‌ها و وضعیت نشست‌ها"),
             "sessions":("نشست‌ها و فعال‌سازی","تأیید یا لغو دسترسی دستگاه‌ها"),
-            "users":("کاربران و دسترسی‌ها","فعال‌سازی حساب و سیاست ورود"),
-            "schemas":("فیلدهای سفارشی","مدیریت مدل‌ها و فیلدهای توسعه‌پذیر"),
+            "users":("کاربران","فعال‌سازی حساب و سیاست ورود"),
+            "permissions":("نقش‌ها و مجوزها","تعیین مجوز مشاهده، ایجاد، ویرایش و حذف هر منبع"),
+            "schemas":("مدل‌ها و فیلدهای سفارشی","مدیریت مدل‌ها و فیلدهای توسعه‌پذیر"),
+            "invoices":("قالب فاکتور","طراحی قالب چاپ مشترک کلاینت و صندوق فروش"),
             "settings":("تنظیمات","تنظیم اتصال و ظاهر برنامه"),
         }
 
@@ -237,20 +267,43 @@ class AccountingMainWindow(QMainWindow):
         self.sidebar_user.setText("{}  ·  {}".format(user.get("username"),"مدیر" if user.get("is_admin") else "کاربر"))
         self.user_status.setText("{}  ·  {}".format(user.get("username"),"مدیر" if user.get("is_admin") else "کاربر"))
         admin=bool(user.get("is_admin"))
+        nav_permissions = {
+            "dashboard": ("reports", "read"), "sales": ("sales", "create"),
+            "products": ("products", "read"), "categories": ("categories", "read"),
+            "warehouse": ("warehouse", "read"), "checks_in": ("checks_in", "read"),
+            "checks_out": ("checks_out", "read"), "receipts": ("receipts", "read"),
+            "invoices": ("invoices", "read"),
+        }
         for key,(button,admin_only) in self._nav.items():
-            button.setVisible(not admin_only or admin)
-        for page in (self.products_page, self.categories_page, self.warehouse_page,
-                     self.checks_in_page, self.checks_out_page, self.users_page):
-            page.set_admin(admin)
+            if admin_only:
+                button.setVisible(admin)
+            elif key in nav_permissions:
+                resource, action = nav_permissions[key]
+                button.setVisible(can_access(user, resource, action))
+            else:
+                button.setVisible(True)
+        for page, resource in (
+            (self.products_page, "products"), (self.categories_page, "categories"),
+            (self.warehouse_page, "warehouse"), (self.checks_in_page, "checks_in"),
+            (self.checks_out_page, "checks_out"),
+        ):
+            page.set_permissions(user, resource)
+        self.users_page.set_admin(admin)
+        self.permissions_page.set_permissions(user)
+        self.invoice_templates_page.set_permissions(user)
         self.settings_button.setVisible(True)
         self.dashboard.set_user(user)
         self._apply_theme()
-        self.navigate("dashboard")
+        start_page = "dashboard" if can_access(user, "reports", "read") else (
+            "sales" if can_access(user, "sales", "create") else "settings"
+        )
+        self.navigate(start_page)
         self.refresh_dashboard_data()
 
     def navigate(self,key):
         if key not in self._pages:return
         if self.current_user is None:return
+        if key in self._nav and not self._nav[key][0].isVisible():return
         page=self._pages[key]
         self.page_stack.setCurrentWidget(page)
         title,subtitle=self.page_meta[key]
