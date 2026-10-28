@@ -26,7 +26,7 @@ from ui.panels.sell_widgets import (
 )
 from ui.panels.sell_workers import CategoryProductFetcher, ReceiptFetcher, CheckoutWorker
 from manager.db import DBManager
-from accounting_app.services.schema_registry import cleanup_builtin_extension_values
+from accounting_app.services.schema_registry import cleanup_builtin_extension_values, cleanup_builtin_extension_values_many
 
 from ui.panels.sell_widgets import (
     SplitterAnimation, FlowLayout, SmallFlatButton, PanelCartItemCard,
@@ -200,8 +200,7 @@ class SellCheckoutMixin:
                     str(item.id)
                     for item in ReceiptProduct.select().where(ReceiptProduct.receipt == receipt.id)
                 ]
-                for item_id in item_ids:
-                    cleanup_builtin_extension_values("receipt_products", item_id)
+                cleanup_builtin_extension_values_many("receipt_products", item_ids)
                 cleanup_builtin_extension_values("receipts", receipt_id)
                 if item_ids:
                     ReceiptProduct.delete().where(ReceiptProduct.id.in_(item_ids)).execute()
