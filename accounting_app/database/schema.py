@@ -10,13 +10,15 @@ from accounting_app.database.extension_models import (
 )
 from accounting_app.database.models import (
     ApiSession, Category, CheckIn, CheckOut, IdempotencyRecord, Product, Receipt,
-    ReceiptProduct, StockMovement, User, Warehouse,
+    ReceiptProduct, StockMovement, User, Warehouse, SaleReturn, SaleReturnLine,
+    FiscalYear, LedgerAccount, JournalEntry, JournalLine, AuditEvent, Stocktake, StocktakeLine,
 )
 
 TABLES = (
     User, Category, Product, Receipt, ReceiptProduct, Warehouse, CheckIn, CheckOut,
     AppSetting, CustomModelDefinition, CustomFieldDefinition, CustomFieldValue,
-    CustomRecord, IdempotencyRecord, ApiSession, StockMovement,
+    CustomRecord, IdempotencyRecord, ApiSession, StockMovement, SaleReturn, SaleReturnLine,
+    FiscalYear, LedgerAccount, JournalEntry, JournalLine, AuditEvent, Stocktake, StocktakeLine,
 )
 
 
