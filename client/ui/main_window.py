@@ -99,6 +99,7 @@ class AccountingMainWindow(QMainWindow):
         self._callbacks={}
         self._nav={}
         self._pages={}
+        self.company_profile = {}
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
         self.root=QWidget(self);self.root.setObjectName("AppRoot")
@@ -291,6 +292,10 @@ class AccountingMainWindow(QMainWindow):
     def _api_changed(self,api):
         self.api=api
 
+    def _company_profile_loaded(self, profile):
+        self.company_profile = dict(profile or {})
+        self.set_status("تنظیمات کسب‌وکار بارگذاری شد.")
+
     def _show_auth(self):
         self.central_stack.setCurrentWidget(self.auth_page)
         self.auth_page.set_mode(self.mode)
@@ -299,6 +304,13 @@ class AccountingMainWindow(QMainWindow):
     def _authenticated(self,user):
         self.current_user=user
         self.api=self.auth_page.api
+        self.company_profile = {}
+        if self.api is not None:
+            self.run_api(
+                self.api.get_company_profile,
+                self._company_profile_loaded,
+                failure=lambda error: self.set_status("تنظیمات کسب‌وکار بارگذاری نشد: {}".format(error)),
+            )
         self.central_stack.setCurrentWidget(self.root)
         self.sidebar_user.setText("{}  ·  {}".format(user.get("username"),"مدیر" if user.get("is_admin") else "کاربر"))
         self.user_status.setText("{}  ·  {}".format(user.get("username"),"مدیر" if user.get("is_admin") else "کاربر"))
