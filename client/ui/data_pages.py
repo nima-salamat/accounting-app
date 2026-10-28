@@ -329,7 +329,7 @@ class ProductsPage(ApiTablePage):
             [("id","شناسه"),("name","نام محصول"),("buy_price","قیمت خرید"),
              ("sell_price","قیمت فروش"),("track_stock","رهگیری"),("stock_quantity","موجودی"),
              ("reorder_level","حد سفارش"),("category_id","دسته‌بندی")],
-            lambda api,q: api.list_products(q=q or None,page_size=200), fields,
+            lambda api,q,page,page_size: api.list_products_page(q=q or None,page=page,page_size=page_size), fields,
             lambda api,p: api.create_product(**p),
             lambda api,rid,p: api.update_product(rid,**p),
             lambda api,rid: api.delete_product(rid), schema_entity="products")
@@ -339,7 +339,7 @@ class CategoriesPage(ApiTablePage):
     def __init__(self, window):
         super().__init__(window, "دسته‌بندی‌ها", "گروه‌بندی کالاها برای یافتن و تحلیل بهتر.",
             [("id","شناسه"),("name","نام دسته‌بندی")],
-            lambda api,q: api.list_categories(q=q or None,page_size=200),
+            lambda api,q,page,page_size: api.list_categories_page(q=q or None,page=page,page_size=page_size),
             [{"key":"name","label":"نام دسته‌بندی","required":True}],
             lambda api,p: api.create_category(**p),
             lambda api,rid,p: api.update_category(rid,**p),
@@ -357,7 +357,7 @@ class WarehousePage(ApiTablePage):
         ]
         super().__init__(window,"انبار","مقدار و ارزش اقلام انبار.",
             [("id","شناسه"),("name","نام"),("price","قیمت"),("amount","مقدار"),("unit","واحد")],
-            lambda api,_q: api.list_warehouses(), fields,
+            lambda api,q,page,page_size: api.list_warehouses_page(q=q or None,page=page,page_size=page_size), fields,
             lambda api,p: api.create_warehouse(**p),
             lambda api,rid,p: api.update_warehouse(rid,**p),
             lambda api,rid: api.delete_warehouse(rid), searchable=False, schema_entity="warehouses")
@@ -377,7 +377,7 @@ class ChecksPage(ApiTablePage):
         super().__init__(window,title,"اطلاعات و وضعیت چک‌ها.",
             [("id","شناسه"),("name","طرف حساب"),("check_id","شماره چک"),
              ("price","مبلغ"),("date","تاریخ"),("payed","پرداخت")],
-            lambda api,q: api.list_checks(direction,q=q or None,page_size=200), fields,
+            lambda api,q,page,page_size: api.list_checks_page(direction,q=q or None,page=page,page_size=page_size), fields,
             lambda api,p: api.create_check(direction,**p),
             lambda api,rid,p: api.update_check(direction,rid,**p),
             lambda api,rid: api.delete_check(direction,rid),
@@ -399,7 +399,7 @@ class UsersPage(ApiTablePage):
             "حساب‌ها را فعال یا غیرفعال کنید و تعیین کنید نشست دستگاه‌های جدید به تأیید مدیر نیاز دارند یا خیر.",
             [("id","شناسه"),("username","نام کاربری"),("is_admin","مدیر"),
              ("is_active","حساب فعال"),("requires_session_activation","تأیید دستگاه"),("buttons","مجوزها")],
-            lambda api,_q: api.list_users(), fields,
+            lambda api,q,page,page_size: api.list_users_page(q=q or None,page=page,page_size=page_size), fields,
             lambda api,p: api.create_user(**p),
             lambda api,rid,p: api.update_user(rid,**p),
             lambda api,rid: api.delete_user(rid), searchable=False, schema_entity="users")
