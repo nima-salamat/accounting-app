@@ -12,7 +12,10 @@ router = APIRouter(prefix="/kiosk", tags=["kiosk"])
 
 
 @router.get("/settings")
-def read_kiosk_settings(user=Depends(require_permission("kiosk", "read"))):
+def read_kiosk_settings(
+    user=Depends(require_permission("kiosk", "read")),
+    _products=Depends(require_permission("products", "read")),
+):
     """Manager-facing configuration; users need an explicit kiosk read grant."""
     with DBManager():
         return load_kiosk_settings()
@@ -22,6 +25,7 @@ def read_kiosk_settings(user=Depends(require_permission("kiosk", "read"))):
 def update_kiosk_settings(
     payload: KioskSettingsUpdate,
     user=Depends(require_permission("kiosk", "update")),
+    _products=Depends(require_permission("products", "read")),
 ):
     """Persist allowlisted kiosk products and behaviour with server-side validation."""
     with DBManager():
