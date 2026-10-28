@@ -2,7 +2,7 @@
 import os
 import uuid
 
-from PySide6.QtCore import Qt, Slot, QSettings, QTimer
+from PySide6.QtCore import Qt, Slot, QSettings, QTimer, QEvent, QObject
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QBoxLayout, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFrame,
@@ -31,6 +31,24 @@ from client.ui.worker import ApiWorker
 
 KIOSK_KEYRING_SERVICE = "Accounting App Self-service Kiosk"
 KIOSK_GRANTS = "role:kiosk;products:r;categories:r;sales:c;receipts:r;invoices:r;kiosk:r"
+
+
+class _LineEditFocusTracker(QObject):
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.FocusIn and isinstance(watched, QLineEdit):
+            self.owner._keyboard_target = watched
+        return False
+
+
+def _track_input_focus(owner, *fields):
+    owner._keyboard_target = fields[0] if fields else None
+    owner._keyboard_focus_tracker = _LineEditFocusTracker(owner)
+    for field in fields:
+        field.installEventFilter(owner._keyboard_focus_tracker)
 
 
 def _clear_layout(layout):
@@ -63,6 +81,7 @@ class ManagerUnlockDialog(QDialog):
         self.username = QLineEdit()
         self.password = QLineEdit()
         self.password.setEchoMode(QLineEdit.EchoMode.Password)
+        _track_input_focus(self, self.username, self.password)
         self.keyboard_button = QPushButton("⌨ صفحه‌کلید لمسی")
         self.keyboard_button.clicked.connect(self.show_keyboard)
         form.addRow("نام کاربری مدیر", self.username)
@@ -77,7 +96,7 @@ class ManagerUnlockDialog(QDialog):
         root.addWidget(buttons)
 
     def show_keyboard(self):
-        target = self.focusWidget()
+        target = self._keyboard_target
         if not isinstance(target, QLineEdit):
             target = self.username
         TouchKeyboardDialog(target, self).exec()
@@ -126,6 +145,10 @@ class KioskSetupPage(QFrame):
         self.kiosk_password = QLineEdit()
         self.kiosk_password.setEchoMode(QLineEdit.EchoMode.Password)
         self.kiosk_password.setPlaceholderText("حداقل ۱۲ نویسه؛ فقط در مخزن امن سیستم‌عامل ذخیره می‌شود")
+        _track_input_focus(
+            self, self.server_url, self.company_name, self.admin_username, self.admin_password,
+            self.kiosk_username, self.kiosk_password,
+        )
         self.allow_unpaid = QCheckBox("اجازهٔ ثبت سفارش پرداخت‌نشده برای پرداخت در باجه / تحویل توسط کارمند")
         self.allow_unpaid.setChecked(False)
         form.addRow("نشانی API", self.server_url)
@@ -179,7 +202,7 @@ class KioskSetupPage(QFrame):
             self.allow_unpaid.setChecked(settings.value("allow_unpaid_orders", False, type=bool))
 
     def show_keyboard(self):
-        target = self.focusWidget()
+        target = self._keyboard_target
         if not isinstance(target, QLineEdit):
             target = self.server_url
         TouchKeyboardDialog(target, self).exec()
@@ -346,6 +369,7 @@ class KioskConnectionPage(QFrame):
         self.password = QLineEdit()
         self.password.setEchoMode(QLineEdit.EchoMode.Password)
         self.password.setPlaceholderText("رمز حساب کیوسک")
+        _track_input_focus(self, self.server_url, self.username, self.password)
         form.addRow("نشانی سرور", self.server_url)
         form.addRow("نام کاربری کیوسک", self.username)
         form.addRow("رمز عبور", self.password)
@@ -394,7 +418,7 @@ class KioskConnectionPage(QFrame):
             self.status.setText("رمز کیوسک در مخزن امن پیدا نشد؛ رمز را وارد کنید یا تنظیمات مدیر را باز کنید.")
 
     def show_keyboard(self):
-        target = self.focusWidget()
+        target = self._keyboard_target
         if not isinstance(target, QLineEdit):
             target = self.username
         TouchKeyboardDialog(target, self).exec()
