@@ -253,7 +253,7 @@ class SaleCreate(StrictModel):
     items: List[SaleItemCreate] = Field(min_length=1, max_length=500)
     paid: bool = False
     payment_method: Literal["cash", "card", "bank_transfer", "store_credit", "unpaid"] = "cash"
-    seat_number: Optional[str] = Field(default=None, min_length=1, max_length=32, pattern=r"^[\\w\\u0600-\\u06FF -]+$")
+    seat_number: Optional[str] = Field(default=None, min_length=1, max_length=32, pattern=r"^[\w\u0600-\u06FF -]+$")
 
     @model_validator(mode="after")
     def validate_unique_products(self):
