@@ -84,6 +84,8 @@ class InvoiceTemplatesPage(QFrame):
         self.address.setFixedHeight(64)
         self.phone = QLineEdit()
         self.phone.setPlaceholderText("تلفن تماس")
+        self.seat_number_label = QLineEdit()
+        self.seat_number_label.setPlaceholderText("مثلاً: شماره میز / صندلی")
         self.footer = QTextEdit()
         self.footer.setPlaceholderText("متن پایین فاکتور")
         self.footer.setFixedHeight(64)
@@ -91,6 +93,7 @@ class InvoiceTemplatesPage(QFrame):
         identity_form.addRow("شناسه", self.legal_id)
         identity_form.addRow("نشانی", self.address)
         identity_form.addRow("تلفن", self.phone)
+        identity_form.addRow("برچسب صندلی کافه", self.seat_number_label)
         identity_form.addRow("متن پایین", self.footer)
         editor_layout.addWidget(identity_card)
 
@@ -212,7 +215,7 @@ class InvoiceTemplatesPage(QFrame):
         splitter.setStretchFactor(1, 2)
         root.addWidget(splitter, 1)
 
-        for field in (self.company_name, self.legal_id, self.phone):
+        for field in (self.company_name, self.legal_id, self.phone, self.seat_number_label):
             field.textChanged.connect(self.update_preview)
         self.address.textChanged.connect(self.update_preview)
         self.footer.textChanged.connect(self.update_preview)
@@ -268,6 +271,7 @@ class InvoiceTemplatesPage(QFrame):
             (self.company_name, values.get("company_name", "")),
             (self.legal_id, values.get("legal_id", "")),
             (self.phone, values.get("phone", "")),
+            (self.seat_number_label, values.get("seat_number_label", "شماره صندلی / میز")),
         ):
             field.setText(str(value))
         self.address.setPlainText(str(values.get("address", "")))
@@ -363,6 +367,7 @@ class InvoiceTemplatesPage(QFrame):
             "legal_id": self.legal_id.text().strip(),
             "address": self.address.toPlainText().strip(),
             "phone": self.phone.text().strip(),
+            "seat_number_label": self.seat_number_label.text().strip() or "شماره صندلی / میز",
             "footer": self.footer.toPlainText().strip(),
             "paper_size": self.paper_size.currentData() or "A4",
             "orientation": self.orientation.currentData() or "portrait",
