@@ -41,6 +41,7 @@ class ApiTablePage(QFrame):
         self.records = []
         self.current_page = 1
         self.page_size = 25
+        self.total_records = 0
         self.setObjectName("Card")
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         layout = QVBoxLayout(self)
@@ -114,20 +115,39 @@ class ApiTablePage(QFrame):
         self.edit_button.setVisible(can_access(user, resource, "update") and self.update_fn is not None)
         self.delete_button.setVisible(can_access(user, resource, "delete") and self.delete_fn is not None)
 
-    def refresh(self):
+    def refresh(self, *_args):
         if not self.window.api:
             return
         self.current_page = 1
+        self._request_current_page()
+
+    def _request_current_page(self):
+        if not self.window.api:
+            return
         query = self.search_input.text().strip() if self.searchable else ""
         self.window.run_api(
-            lambda: self._load_table_payload(self.window.api, query),
+            lambda: self._load_table_payload(
+                self.window.api, query, self.current_page, self.page_size
+            ),
             self.populate,
             busy=self.refresh_button,
         )
 
-    def _load_table_payload(self, api, query):
-        records = self.load_fn(api, query)
-        payload = {"records": list(records or []), "custom": {"fields": [], "values": {}}}
+    def _load_table_payload(self, api, query, page, page_size):
+        response = self.load_fn(api, query, page, page_size)
+        if isinstance(response, dict) and "items" in response:
+            records = list(response.get("items") or [])
+            total = int(response.get("total", len(records)))
+        else:
+            records = list(response or [])
+            total = len(records)
+        payload = {
+            "records": records,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "custom": {"fields": [], "values": {}},
+        }
         if self.schema_entity and payload["records"] and can_access(
             self.window.current_user, "schemas", "read"
         ):
@@ -140,9 +160,13 @@ class ApiTablePage(QFrame):
     def populate(self, payload):
         if isinstance(payload, dict) and "records" in payload:
             self.records = list(payload.get("records") or [])
+            self.total_records = int(payload.get("total", len(self.records)))
+            self.current_page = int(payload.get("page", 1))
             custom = payload.get("custom") or {}
         else:
             self.records = list(payload or [])
+            self.total_records = len(self.records)
+            self.current_page = 1
             custom = {}
         self.custom_fields = list(custom.get("fields") or [])
         values_by_id = custom.get("values") or {}
@@ -155,15 +179,14 @@ class ApiTablePage(QFrame):
         self.table.setColumnCount(len(self.columns))
         self.table.setHorizontalHeaderLabels([label for _key, label in self.columns])
         self.table.setColumnHidden(0, True)
-        self.current_page = 1
         self._render_page()
 
     def _render_page(self):
-        total = len(self.records)
+        total = self.total_records
         pages = max(1, (total + self.page_size - 1) // self.page_size)
         self.current_page = max(1, min(self.current_page, pages))
         start = (self.current_page - 1) * self.page_size
-        visible = self.records[start:start + self.page_size]
+        visible = self.records
         self.table.setRowCount(0)
         for row, record in enumerate(visible):
             self.table.insertRow(row)
@@ -189,18 +212,18 @@ class ApiTablePage(QFrame):
         if hasattr(self, "page_size_combo"):
             self.page_size = int(self.page_size_combo.currentData() or 25)
             self.current_page = 1
-            self._render_page()
+            self._request_current_page()
 
     def previous_page(self):
         if self.current_page > 1:
             self.current_page -= 1
-            self._render_page()
+            self._request_current_page()
 
     def next_page(self):
-        pages = max(1, (len(self.records) + self.page_size - 1) // self.page_size)
+        pages = max(1, (self.total_records + self.page_size - 1) // self.page_size)
         if self.current_page < pages:
             self.current_page += 1
-            self._render_page()
+            self._request_current_page()
 
     def selected_record(self):
         row = self.table.currentRow()
