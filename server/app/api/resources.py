@@ -126,6 +126,7 @@ def delete_category(category_id: UUID, user=Depends(require_permission("categori
 
 @router.get("/products", response_model=List[ProductOut])
 def list_products(
+    response: Response,
     q: Optional[str] = None,
     category_id: Optional[UUID] = None,
     page: int = Query(1, ge=1),
@@ -138,6 +139,10 @@ def list_products(
             query = query.where(ProductModel.name.contains(q.strip()))
         if category_id is not None:
             query = query.where(ProductModel.category == category_id)
+        total = query.count()
+        response.headers["X-Total-Count"] = str(total)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
         return [_serialize(item) for item in query.order_by(ProductModel.name).paginate(page, page_size)]
 
 
