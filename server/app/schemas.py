@@ -235,12 +235,17 @@ class SaleItemCreate(StrictModel):
 class SaleCreate(StrictModel):
     items: List[SaleItemCreate] = Field(min_length=1, max_length=500)
     paid: bool = False
+    payment_method: Literal["cash", "card", "bank_transfer", "store_credit", "unpaid"] = "cash"
 
     @model_validator(mode="after")
     def validate_unique_products(self):
         ids = [item.product_id for item in self.items]
         if len(ids) != len(set(ids)):
             raise ValueError("هر محصول باید فقط یک بار در اقلام فروش ارسال شود.")
+        if not self.paid:
+            self.payment_method = "unpaid"
+        elif self.payment_method == "unpaid":
+            raise ValueError("فروش پرداخت‌شده باید روش دریافت وجه معتبری داشته باشد.")
         return self
 
 
@@ -261,6 +266,7 @@ class ReceiptProductOut(BaseModel):
 class ReceiptOut(BaseModel):
     id: UUID
     payed: bool
+    payment_method: str = "cash"
     total_price: float
     user_id: UUID
     day_receipt_id: int
