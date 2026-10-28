@@ -54,6 +54,22 @@ class SetupRequest(StrictModel):
     setup_token: Optional[str] = Field(default=None, max_length=256)
 
 
+class KioskSettingsUpdate(StrictModel):
+    active: bool = False
+    allowed_product_ids: List[UUID] = Field(default_factory=list, max_length=500)
+    receipt_history_hours: int = Field(default=48, ge=0, le=720)
+    cafe_seat_selection: bool = False
+    allow_unpaid_orders: bool = False
+
+    @model_validator(mode="after")
+    def validate_unique_product_selection(self):
+        if len(self.allowed_product_ids) != len(set(self.allowed_product_ids)):
+            raise ValueError("هر محصول فقط یک بار باید در فهرست کیوسک انتخاب شود.")
+        if self.active and not self.allowed_product_ids:
+            raise ValueError("برای فعال‌سازی کیوسک، دست‌کم یک محصول انتخاب کنید.")
+        return self
+
+
 class UserOut(BaseModel):
     id: UUID
     username: str
@@ -237,6 +253,7 @@ class SaleCreate(StrictModel):
     items: List[SaleItemCreate] = Field(min_length=1, max_length=500)
     paid: bool = False
     payment_method: Literal["cash", "card", "bank_transfer", "store_credit", "unpaid"] = "cash"
+    seat_number: Optional[str] = Field(default=None, min_length=1, max_length=32, pattern=r"^[\\w\\u0600-\\u06FF -]+$")
 
     @model_validator(mode="after")
     def validate_unique_products(self):
@@ -271,6 +288,7 @@ class ReceiptOut(BaseModel):
     total_price: float
     user_id: UUID
     day_receipt_id: int
+    seat_number: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
