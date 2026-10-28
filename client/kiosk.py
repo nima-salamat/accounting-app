@@ -561,7 +561,7 @@ class KioskShopPage(QFrame):
 
     def _checkout_operation(self, items, settings, mode):
         if mode != "tcp":
-            receipt = self.api.create_sale(items, paid=False)
+            receipt = self.api.create_sale(items, paid=False, payment_method="unpaid")
             return {
                 "receipt": receipt,
                 "template": self._safe_invoice_template(),
@@ -574,13 +574,13 @@ class KioskShopPage(QFrame):
         reference = uuid.uuid4().hex
         payment = authorize_payment(amount, reference, settings)
         try:
-            receipt = self.api.create_sale(items, paid=True, idempotency_key=reference)
+            receipt = self.api.create_sale(items, paid=True, idempotency_key=reference, payment_method="card")
         except Exception as first_sale_error:
             # A socket timeout can happen after the API committed the receipt. Retry the
             # exact same idempotency key once before voiding a payment that may already
             # have a valid, paid receipt on the server.
             try:
-                receipt = self.api.create_sale(items, paid=True, idempotency_key=reference)
+                receipt = self.api.create_sale(items, paid=True, idempotency_key=reference, payment_method="card")
             except Exception as retry_error:
                 try:
                     void_payment(amount, reference, payment["transaction_id"], settings)
