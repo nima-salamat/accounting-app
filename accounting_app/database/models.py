@@ -50,14 +50,11 @@ class User(BaseModel):
                 actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, rounds)
                 return hmac.compare_digest(actual, expected)
 
-            # Older builds stored salt + PBKDF2 digest as one hexadecimal string.
             decoded = binascii.unhexlify(stored.encode("ascii"))
             if len(decoded) == 48:
                 salt, expected = decoded[:16], decoded[16:]
                 actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, _LEGACY_ITERATIONS)
                 return hmac.compare_digest(actual, expected)
-
-            # Support the SHA-256 hex format used by an intermediate legacy version.
             if len(decoded) == 32:
                 actual = hashlib.sha256(password.encode("utf-8")).digest()
                 return hmac.compare_digest(actual, decoded)
@@ -66,7 +63,6 @@ class User(BaseModel):
         return False
 
     def password_needs_upgrade(self):
-        """Return whether this credential uses a legacy hash representation."""
         return not self.password.startswith(_HASH_NAME + "$")
 
     def __str__(self):
@@ -142,3 +138,15 @@ class CheckOut(BaseModel):
     price = FloatField(null=False, default=0)
     date = CharField(max_length=FIELD_LENGTH)
     payed = BooleanField(default=False)
+
+
+class IdempotencyRecord(BaseModel):
+    """Persist sale request keys so a retried HTTP request cannot create a duplicate receipt."""
+    key = CharField(max_length=128)
+    user = ForeignKeyField(User, backref="idempotency_records", on_delete="CASCADE")
+    request_hash = CharField(max_length=64)
+    receipt = ForeignKeyField(Receipt, backref="idempotency_records", on_delete="CASCADE")
+
+    class Meta:
+        table_name = "api_idempotency_records"
+        indexes = ((("user", "key"), True),)

@@ -50,7 +50,9 @@ accounting-app/
 │   └── styles/
 ├── manager/                      # Compatibility facades for older imports
 ├── db/                           # Compatibility facades for older imports
-└── tests/                        # Unit and service tests
+├── server/                       # FastAPI server and versioned API routers
+├── client/                       # HTTP client for separate desktop/API integration
+└── tests/                        # Unit, service and API tests
 ~~~
 
 ### تفکیک اجزای رابط کاربری
@@ -63,6 +65,34 @@ accounting-app/
 - **سرویس‌ها:** تعریف ساختار سفارشی، اعتبارسنجی فیلدها و ذخیرهٔ مقدارها ماژول‌های جدا دارند.
 
 workerهای خواندن گزارش‌ها و برخی عملیات طولانی، خطا را از طریق سیگنال به رابط برمی‌گردانند و اتصال‌های دیتابیس خود را می‌بندند. فایل‌های قدیمی که به‌عنوان import facade باقی مانده‌اند، برای سازگاری با importهای قبلی هستند.
+
+## سرور مستقل FastAPI و کلاینت HTTP
+
+یک سرور مستقل در پوشهٔ **server/** اضافه شده است. رابط API نسخه‌بندی‌شده در **/api/v1** قرار دارد و قراردادهای JSON آن در مستندات OpenAPI قابل مشاهده‌اند.
+
+برای نصب وابستگی‌های سرور و اجرای محلی:
+
+~~~bash
+python -m pip install -r server/requirements.txt
+python -m server --host 127.0.0.1 --port 8000
+~~~
+
+سپس نشانی **http://127.0.0.1:8000/docs** را باز کنید. اگر پایگاه دادهٔ انتخاب‌شده هیچ کاربری نداشته باشد، endpoint **POST /api/v1/setup** برای ساخت مدیر اولیه در دسترس است. در اجراهای بعدی، ورود از **POST /api/v1/auth/login** و هویت کاربر جاری از **GET /api/v1/auth/me** انجام می‌شود.
+
+سرور از متغیر **ACCOUNTING_APP_DB_PATH** برای تعیین فایل SQLite استفاده می‌کند. در حالت پیش‌فرض فقط روی **127.0.0.1** گوش می‌دهد. برای دسترسی از کامپیوترهای دیگر، حداقل یک کلید تصادفی طولانی تعیین کنید و سرور را پشت HTTPS یا یک reverse proxy امن قرار دهید؛ کلید را در مخزن یا کد منبع ذخیره نکنید:
+
+~~~bash
+# Generate a secret with Python and set it in the server environment.
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+# Set ACCOUNTING_APP_SECRET_KEY to the generated value before starting the server.
+python -m server --host 0.0.0.0 --port 8000
+~~~
+
+برای جلوگیری از چند رسید در اثر تکرار درخواست شبکه، **POST /api/v1/sales** به هدر **Idempotency-Key** نیاز دارد. سرور این کلید را در SQLite ذخیره می‌کند. مشتریانی که نتیجهٔ درخواست در آن‌ها نامشخص شده است باید همان کلید را برای تکرار همان عملیات استفاده کنند.
+
+**client/api_client.py** یک کلاینت HTTP مستقل با timeout، مدیریت خطاها، نشست bearer و متدهای API ارائه می‌کند. درخواست‌های شبکه نباید در thread اصلی Qt اجرا شوند؛ فراخوانی آن از workerها یا یک لایهٔ async کلاینت لازم است.
+
+**وضعیت مهاجرت رابط کاربری:** در این مرحله سرور و قراردادهای API و کتابخانهٔ کلاینت اضافه شده‌اند، اما پنل‌های قدیمی PySide2 هنوز در برخی مسیرها مستقیماً از Peewee و SQLite استفاده می‌کنند. بنابراین، برای استفادهٔ عملی از معماری کاملاً جداشده، لازم است پنل‌ها به‌صورت مرحله‌ای به **AccountingApiClient** منتقل شوند. برنامهٔ دسکتاپ موجود و شیوهٔ اجرای فعلی آن عمداً دست‌نخورده باقی مانده است. سرور فعلی نیز هنوز از SQLite استفاده می‌کند؛ مهاجرت به PostgreSQL تغییر جداگانه‌ای است.
 
 ## محل ذخیرهٔ داده‌ها
 

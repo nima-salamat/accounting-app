@@ -8,12 +8,14 @@ from accounting_app.database.extension_models import (
     CustomRecord,
 )
 from accounting_app.database.models import (
-    Category, CheckIn, CheckOut, Product, Receipt, ReceiptProduct, User, Warehouse,
+    Category, CheckIn, CheckOut, IdempotencyRecord, Product, Receipt,
+    ReceiptProduct, User, Warehouse,
 )
 
 TABLES = (
     User, Category, Product, Receipt, ReceiptProduct, Warehouse, CheckIn, CheckOut,
-    AppSetting, CustomModelDefinition, CustomFieldDefinition, CustomFieldValue, CustomRecord,
+    AppSetting, CustomModelDefinition, CustomFieldDefinition, CustomFieldValue,
+    CustomRecord, IdempotencyRecord,
 )
 
 

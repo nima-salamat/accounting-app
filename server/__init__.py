@@ -1,0 +1,1 @@
+"""Standalone FastAPI server package."""

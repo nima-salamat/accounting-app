@@ -1,0 +1,1 @@
+"""Client-side API integration helpers for the desktop application."""
