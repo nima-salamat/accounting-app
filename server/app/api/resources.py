@@ -245,12 +245,16 @@ def delete_warehouse(record_id: UUID, user=Depends(require_permission("warehouse
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-def _list_checks(model, entity, q, page, page_size):
+def _list_checks(model, entity, q, page, page_size, response):
     with DBManager():
         query = model.select()
         if q and q.strip():
             text = q.strip()
             query = query.where((model.name.contains(text)) | (model.check_id.contains(text)))
+        total = query.count()
+        response.headers["X-Total-Count"] = str(total)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
         return [_serialize(item) for item in query.order_by(model.created_at.desc()).paginate(page, page_size)]
 
 
@@ -293,10 +297,10 @@ def _delete_check(model, entity, record_id):
 
 @router.get("/checks/in", response_model=List[CheckOut])
 def list_check_ins(
-    q: Optional[str] = None, page: int = Query(1, ge=1),
+    response: Response, q: Optional[str] = None, page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=200), user=Depends(require_permission("checks_in", "read")),
 ):
-    return _list_checks(CheckInModel, "check_ins", q, page, page_size)
+    return _list_checks(CheckInModel, "check_ins", q, page, page_size, response)
 
 
 @router.post("/checks/in", response_model=CheckOut, status_code=status.HTTP_201_CREATED)
@@ -316,10 +320,10 @@ def delete_check_in(record_id: UUID, user=Depends(require_permission("checks_in"
 
 @router.get("/checks/out", response_model=List[CheckOut])
 def list_check_outs(
-    q: Optional[str] = None, page: int = Query(1, ge=1),
+    response: Response, q: Optional[str] = None, page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=200), user=Depends(require_permission("checks_out", "read")),
 ):
-    return _list_checks(CheckOutModel, "check_outs", q, page, page_size)
+    return _list_checks(CheckOutModel, "check_outs", q, page, page_size, response)
 
 
 @router.post("/checks/out", response_model=CheckOut, status_code=status.HTTP_201_CREATED)
