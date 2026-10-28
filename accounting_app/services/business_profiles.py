@@ -161,10 +161,15 @@ def build_profile_rows(profile_key):
     return deepcopy(rows)
 
 
-def profile_metadata(profile_key, company_name):
+def profile_metadata(profile_key, company_name, product_buy_price_required=None):
     key = profile_key if profile_key in PROFILES else "general"
     return {
         "company_name": str(company_name or "").strip()[:256],
         "business_profile": key,
         "business_profile_label": PROFILES[key]["label"],
+        "product_buy_price_required": (
+            bool(product_buy_price_required)
+            if product_buy_price_required is not None
+            else key != "cafe"
+        ),
     }
