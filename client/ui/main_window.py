@@ -31,6 +31,7 @@ from client.ui.accounting_pages import JournalsPage, FiscalYearsPage, Accounting
 from client.ui.global_search import GlobalSearchDialog
 from client.ui.stocktakes_page import StocktakesPage
 from client.ui.purchasing_page import PurchasingPage
+from client.ui.kiosk_settings_page import KioskSettingsPage
 from client.ui.permissions import can_access
 from client.ui.theme import stylesheet
 from client.ui.worker import ApiWorker
@@ -71,7 +72,9 @@ class AdminOverviewPage(QFrame):
         self.users_button.clicked.connect(lambda:window.navigate("users"))
         self.schemas_button=QPushButton("فیلدها و مدل‌های سفارشی  →")
         self.schemas_button.clicked.connect(lambda:window.navigate("schemas"))
-        actions.addWidget(self.sessions_button);actions.addWidget(self.users_button);actions.addWidget(self.schemas_button)
+        self.kiosk_button=QPushButton("فعال‌سازی و تنظیم محصولات کیوسک  →")
+        self.kiosk_button.clicked.connect(lambda:window.navigate("kiosk"))
+        actions.addWidget(self.sessions_button);actions.addWidget(self.users_button);actions.addWidget(self.schemas_button);actions.addWidget(self.kiosk_button)
         layout.addWidget(card)
         note=QLabel("حساب جدیدی که گزینهٔ «تأیید مدیر برای هر نشست» دارد، تا فعال‌سازی در بخش نشست‌ها نمی‌تواند به endpointهای محافظت‌شده دسترسی پیدا کند.")
         note.setObjectName("StatusPill");note.setWordWrap(True);layout.addWidget(note);layout.addStretch(1)
@@ -169,6 +172,7 @@ class AccountingMainWindow(QMainWindow):
             ("admin","پنل مدیریت","✦"),("sessions","نشست‌ها و فعال‌سازی","◉"),
             ("users","کاربران","♙"),("permissions","نقش‌ها و مجوزها","♢"),
         ]:self._make_nav(layout,key,label,icon,True)
+        self._make_nav(layout,"kiosk","مدیریت کیوسک","▣",False)
         self._make_nav(layout,"schemas","مدل‌ها و فیلدهای سفارشی","⌘",False)
         self._make_nav(layout,"invoices","قالب فاکتور","▤",False)
         layout.addStretch(1)
@@ -188,7 +192,7 @@ class AccountingMainWindow(QMainWindow):
             "accounting_reports":"fa5s.chart-column", "audit":"fa5s.clipboard-list",
             "admin":"fa5s.chart-line", "sessions":"fa5s.laptop",
             "users":"fa5s.users", "permissions":"fa5s.user-shield",
-            "schemas":"fa5s.sliders-h", "invoices":"fa5s.file-invoice",
+            "schemas":"fa5s.sliders-h", "invoices":"fa5s.file-invoice", "kiosk":"fa5s.tablet-alt",
         }
         button=QPushButton(label if qta else "{}   {}".format(icon,label))
         button.setObjectName("NavigationButton")
@@ -235,6 +239,7 @@ class AccountingMainWindow(QMainWindow):
         self.inventory_page=InventoryPage(self)
         self.stocktakes_page=StocktakesPage(self)
         self.purchasing_page=PurchasingPage(self)
+        self.kiosk_settings_page=KioskSettingsPage(self)
         self.checks_in_page=ChecksPage(self,"in")
         self.checks_out_page=ChecksPage(self,"out")
         self.receipts_page=ReceiptsPage(self)
@@ -256,6 +261,7 @@ class AccountingMainWindow(QMainWindow):
             ("warehouse","اقلام انبار",self.warehouse_page),("inventory","موجودی کالا",self.inventory_page),("stocktakes","انبارگردانی",self.stocktakes_page),("checks_in","چک‌های دریافتی",self.checks_in_page),
             ("checks_out","چک‌های پرداختی",self.checks_out_page),("receipts","رسیدها",self.receipts_page),
             ("purchases","خریدها و طرف‌حساب‌ها",self.purchasing_page),
+            ("kiosk","مدیریت کیوسک",self.kiosk_settings_page),
             ("returns","مرجوعی‌ها",self.returns_page),("journals","اسناد حسابداری",self.journals_page),
             ("fiscal_years","سال مالی",self.fiscal_years_page),
             ("accounting_reports","گزارش‌های مالی",self.accounting_reports_page),("audit","سوابق فعالیت",self.audit_page),
@@ -280,6 +286,7 @@ class AccountingMainWindow(QMainWindow):
             "checks_out":("چک‌های پرداختی","مدیریت چک‌های پرداختی"),
             "receipts":("رسیدها و فاکتورها","جزئیات، چاپ، مرجوعی و خروجی رسیدها"),
             "purchases":("خریدها، طرف‌حساب و هزینه","ثبت فاکتور تأمین‌کننده، پرداخت‌ها و هزینه‌های عملیاتی"),
+            "kiosk":("مدیریت کیوسک","فعال‌سازی کیوسک، انتخاب کالاهای مجاز، شماره صندلی کافه و بازه فاکتورهای اخیر"),
             "returns":("مرجوعی‌ها و استرداد","سند مرجوعی مرتبط با فاکتور اصلی و گردش موجودی"),
             "journals":("اسناد حسابداری","ثبت سند دوطرفه و مشاهدهٔ دفتر روزنامه"),
             "fiscal_years":("سال مالی","ایجاد، بستن و بازگشایی کنترل‌شدهٔ دوره‌ها"),
@@ -327,7 +334,7 @@ class AccountingMainWindow(QMainWindow):
             "checks_in": ("checks_in", "read"),
             "checks_out": ("checks_out", "read"), "receipts": ("receipts", "read"),
             "invoices": ("invoices", "read"), "schemas": ("schemas", "read"),
-            "purchases": ("purchase_invoices", "read"),
+            "purchases": ("purchase_invoices", "read"), "kiosk": ("kiosk", "read"),
             "returns": ("returns", "read"), "journals": ("journals", "read"),
             "fiscal_years": ("fiscal_years", "read"),
             "accounting_reports": ("reports", "read"), "audit": ("audit", "read"),
@@ -344,6 +351,8 @@ class AccountingMainWindow(QMainWindow):
                         ("partners", "read"), ("partners", "create"),
                         ("expenses", "read"), ("expenses", "create"),
                     ))
+                if key == "kiosk":
+                    allowed = can_access(user, "kiosk", "read") or can_access(user, "kiosk", "update")
                 if key == "sales":
                     allowed = allowed and can_access(user, "products", "read")
                 button.setVisible(allowed)
@@ -361,6 +370,7 @@ class AccountingMainWindow(QMainWindow):
         self.inventory_page.set_permissions(user)
         self.stocktakes_page.set_permissions(user)
         self.purchasing_page.set_permissions(user)
+        self.kiosk_settings_page.set_permissions(user)
         self.schemas_page.set_permissions(user)
         self.returns_page.set_permissions(user)
         self.journals_page.set_permissions(user)
