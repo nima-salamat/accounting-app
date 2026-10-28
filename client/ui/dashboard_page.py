@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QVBoxLayout, QHeaderView, QWidget,
 )
 from client.ui.data_pages import display_value
+from client.ui.permissions import can_access
 
 
 class MetricCard(QFrame):
@@ -84,13 +85,20 @@ class DashboardPage(QWidget):
         footer=QHBoxLayout()
         self.role_label=QLabel("دسترسی‌ها طبق مجوزهای سرور اعمال می‌شوند.")
         self.role_label.setObjectName("PageSubtitle")
-        footer.addWidget(self.role_label);footer.addStretch(1)
+        footer.addWidget(self.role_label,1)
+        self.kiosk_button=QPushButton("مدیریت کیوسک  →")
+        self.kiosk_button.setObjectName("PrimaryButton")
+        self.kiosk_button.clicked.connect(lambda: self.window.navigate("kiosk"))
+        footer.addWidget(self.kiosk_button)
         layout.addLayout(footer)
 
     def set_user(self,user):
         self.role_label.setText("کاربر: {}  ·  نقش: {}".format(
             user.get("username","—"),"مدیر" if user.get("is_admin") else "کاربر"
         ))
+        self.kiosk_button.setVisible(
+            can_access(user, "kiosk", "read") or can_access(user, "kiosk", "update")
+        )
 
     def refresh(self):
         if not self.window.api:return
