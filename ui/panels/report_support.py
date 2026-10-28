@@ -67,6 +67,7 @@ class ReportWorker(QThread):
 
     def __init__(self, query_func):
         super().__init__()
+        self.finished.connect(self.deleteLater)
         self.query_func = query_func
 
     def run(self):
@@ -85,6 +86,7 @@ class PurgeWorker(QThread):
 
     def __init__(self, start_dt, end_dt):
         super().__init__()
+        self.finished.connect(self.deleteLater)
         self.start_dt = start_dt
         self.end_dt = end_dt
 
