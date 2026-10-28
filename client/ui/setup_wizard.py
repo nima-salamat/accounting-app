@@ -3,11 +3,12 @@ import uuid
 
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
-    QCheckBox, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit,
+    QCheckBox, QComboBox, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QProgressBar, QPushButton, QStackedWidget, QVBoxLayout, QWidget, QDialog,
 )
 
 from client.ui.worker import ApiWorker
+from accounting_app.services.business_profiles import build_profile_rows, profile_options
 
 
 class SetupWizard(QDialog):
@@ -135,7 +136,33 @@ class SetupWizard(QDialog):
         note.setObjectName("StatusPill")
         note.setWordWrap(True)
         layout.addWidget(note)
+
+        company_card = QFrame()
+        company_card.setObjectName("Card")
+        company_form = QFormLayout(company_card)
+        company_form.setContentsMargins(16, 14, 16, 14)
+        company_form.setVerticalSpacing(10)
+        self.company_name_edit = QLineEdit("کسب‌وکار من")
+        self.company_name_edit.setPlaceholderText("نام فروشگاه، شرکت یا دفتر")
+        self.business_profile_combo = QComboBox()
+        self.business_profile_help = QLabel()
+        self.business_profile_help.setObjectName("PageSubtitle")
+        self.business_profile_help.setWordWrap(True)
+        for profile in profile_options():
+            self.business_profile_combo.addItem(profile["label"], profile["key"])
+        self.business_profile_combo.currentIndexChanged.connect(self._profile_changed)
+        company_form.addRow("نام کسب‌وکار", self.company_name_edit)
+        company_form.addRow("بستهٔ آماده", self.business_profile_combo)
+        company_form.addRow("محتوای بسته", self.business_profile_help)
+        layout.addWidget(company_card)
+        self._profile_changed()
         return page
+
+    def _profile_changed(self, *_args):
+        key = self.business_profile_combo.currentData() if hasattr(self, "business_profile_combo") else "general"
+        selected = next((item for item in profile_options() if item["key"] == key), None)
+        if selected and hasattr(self, "business_profile_help"):
+            self.business_profile_help.setText(selected["description"])
 
     def _admin_page(self):
         page, layout = self._card(
@@ -248,9 +275,22 @@ class SetupWizard(QDialog):
         password = self.password.text()
         confirmation = self.confirmation.text()
         setup_token = self.setup_token.text().strip() or None
+        company_name = self.company_name_edit.text().strip()
+        if not company_name:
+            self._busy = False
+            self.finish_button.setEnabled(True)
+            self.back_button.setEnabled(True)
+            self.cancel_button.setEnabled(True)
+            self.message.setText("نام کسب‌وکار را وارد کنید.")
+            self._set_step(0)
+            return
+        profile_key = self.business_profile_combo.currentData() or "general"
+        schema_rows = build_profile_rows(profile_key)
         worker = ApiWorker(
             lambda: self.api.complete_setup(
-                username, password, confirmation, setup_token=setup_token
+                username, password, confirmation, schema_rows=schema_rows,
+                setup_token=setup_token, company_name=company_name,
+                business_profile=profile_key,
             ),
             parent=self,
         )
