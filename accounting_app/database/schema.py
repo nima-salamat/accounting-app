@@ -1,5 +1,6 @@
 """Schema bootstrap kept separate from model declarations."""
 from accounting_app.database.connection import db
+from accounting_app.config import FIELD_LENGTH
 from accounting_app.database.extension_models import (
     AppSetting,
     CustomFieldDefinition,
@@ -25,6 +26,7 @@ def create_tables(database=None):
     target.create_tables(TABLES, safe=True)
     _migrate_existing_user_table(target)
     _migrate_existing_product_table(target)
+    _migrate_existing_receipt_product_table(target)
 
 
 def _migrate_existing_user_table(database):
@@ -54,3 +56,23 @@ def _migrate_existing_product_table(database):
             database.execute_sql(
                 'ALTER TABLE "{}" ADD COLUMN "{}" {}'.format(table, name, definition)
             )
+
+
+def _migrate_existing_receipt_product_table(database):
+    """Snapshot item names onto receipt lines so historical invoices survive product edits/deletes."""
+    table = ReceiptProduct._meta.table_name
+    columns = {column.name for column in database.get_columns(table)}
+    if "product_name" not in columns:
+        database.execute_sql(
+            'ALTER TABLE "{}" ADD COLUMN "product_name" VARCHAR({}) NOT NULL DEFAULT ""'.format(
+                table, FIELD_LENGTH
+            )
+        )
+    # Backfill existing rows once, before later product deletions can null their FK.
+    database.execute_sql(
+        'UPDATE "{}" SET "product_name" = ('
+        'SELECT "name" FROM "{}" WHERE "{}"."id" = "{}"."product_id"'
+        ') WHERE ("product_name" = "" OR "product_name" IS NULL) AND "product_id" IS NOT NULL'.format(
+            table, Product._meta.table_name, Product._meta.table_name, table
+        )
+    )
