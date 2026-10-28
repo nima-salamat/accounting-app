@@ -327,7 +327,7 @@ class AuthPage(QWidget):
                 self.lbl_error.setVisible(False)
                 self._parent.page_stack.setCurrentIndex(1)
                 if self._parent.AUTH_MANAGER.user.is_admin:
-                    self._parent.visible_buttons = [0,1,2,3,4,5,6,7,8,9,10, 11]
+                    self._parent.visible_buttons = [0,1,2,3,4,5,6,7,8,9,10,11,12]
                     
                 else:
                     self._parent.visible_buttons = [0,8]
