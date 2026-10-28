@@ -121,6 +121,10 @@ class RecordDialog(QDialog):
             return container
 
         w = QLineEdit()
+        if name == "password":
+            w.setEchoMode(QLineEdit.Password)
+            w.setPlaceholderText("برای حفظ رمز فعلی خالی بگذارید")
+            return w
         if val:
             w.setText(str(val))
         return w
