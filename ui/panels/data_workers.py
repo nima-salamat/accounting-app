@@ -21,6 +21,7 @@ from accounting_app.services.file_safety import is_managed_image_path
 class DataLoader(QObject):
     data_loaded = Signal(list, int)  # Emits data and total_rows
     error = Signal(str)
+    finished = Signal()
 
     def __init__(self, model, search_text, sort_fields, page_size, current_page, cb_enable_date, dt_from_date, dt_from_time, dt_to_date, dt_to_time, lbl2fld, searchable, parent=None):
         super().__init__(parent)
@@ -97,6 +98,9 @@ class DataLoader(QObject):
             self.data_loaded.emit(data, total_rows)
         except Exception as exc:
             self.error.emit(str(exc))
+        finally:
+            self.finished.emit()
+
 
 class RecordAdder(QObject):
     # now carries the created model instance
