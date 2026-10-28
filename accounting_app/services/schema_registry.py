@@ -87,17 +87,3 @@ def list_entities():
             for model in CustomModelDefinition.select().order_by(CustomModelDefinition.label)
         )
     return items
-
-
-def list_entities():
-    """Return built-in and configured custom entities for UI selectors."""
-    items = [
-        {"key": key, "label": label, "is_custom": False}
-        for key, (label, _model) in BUILTIN_ENTITIES.items()
-    ]
-    with DBManager():
-        items.extend(
-            {"key": model.model_key, "label": model.label, "is_custom": True}
-            for model in CustomModelDefinition.select().order_by(CustomModelDefinition.label)
-        )
-    return items
