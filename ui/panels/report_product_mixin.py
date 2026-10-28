@@ -289,6 +289,9 @@ class ReportProductMixin:
         def run_worker():
             self._summary_worker = ReportWorker(query_func)
             self._summary_worker.dataReady.connect(on_data_ready)
+            self._summary_worker.error.connect(
+                lambda message: QMessageBox.warning(self, "خطا در گزارش محصولات", message)
+            )
             self._summary_worker.start()
 
         btn.clicked.connect(run_worker)
