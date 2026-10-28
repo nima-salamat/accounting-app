@@ -23,7 +23,7 @@ _LEGACY_CASHIER = {
     "receipts": "r",
     "reports": "r",
     "invoices": "r",
-    "returns": "rc",
+    "returns": "r",
     "journals": "",
     "fiscal_years": "",
     "audit": "",
