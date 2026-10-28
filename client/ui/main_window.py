@@ -9,7 +9,7 @@ try:
 except ImportError:  # Keep the interface usable before optional icon assets are installed.
     qta = None
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
+    QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
     QPushButton, QStackedWidget, QVBoxLayout, QWidget,
 )
 
@@ -62,9 +62,10 @@ class AdminOverviewPage(QFrame):
             c.addWidget(title_label);c.addWidget(value)
             self.metric_labels[key]=value;self.metric_layout.addWidget(card,1)
         layout.addLayout(self.metric_layout)
-        card=QFrame();card.setObjectName("Card");actions=QVBoxLayout(card)
-        actions.setContentsMargins(18,18,18,18);actions.setSpacing(12)
-        a=QLabel("کارهای مدیریتی");a.setObjectName("PageTitle");actions.addWidget(a)
+        card=QFrame();card.setObjectName("Card");actions_root=QVBoxLayout(card)
+        actions_root.setContentsMargins(18,18,18,18);actions_root.setSpacing(12)
+        a=QLabel("دسترسی سریع مدیریت");a.setObjectName("PageTitle");actions_root.addWidget(a)
+        actions=QGridLayout();actions.setHorizontalSpacing(10);actions.setVerticalSpacing(10)
         self.sessions_button=QPushButton("مدیریت نشست‌ها و درخواست‌های ورود  →")
         self.sessions_button.setObjectName("PrimaryButton")
         self.sessions_button.clicked.connect(lambda:window.navigate("sessions"))
@@ -74,7 +75,13 @@ class AdminOverviewPage(QFrame):
         self.schemas_button.clicked.connect(lambda:window.navigate("schemas"))
         self.kiosk_button=QPushButton("فعال‌سازی و تنظیم محصولات کیوسک  →")
         self.kiosk_button.clicked.connect(lambda:window.navigate("kiosk"))
-        actions.addWidget(self.sessions_button);actions.addWidget(self.users_button);actions.addWidget(self.schemas_button);actions.addWidget(self.kiosk_button)
+        for button in (self.sessions_button, self.users_button, self.schemas_button, self.kiosk_button):
+            button.setMinimumHeight(46)
+        actions.addWidget(self.sessions_button, 0, 0)
+        actions.addWidget(self.users_button, 0, 1)
+        actions.addWidget(self.schemas_button, 1, 0)
+        actions.addWidget(self.kiosk_button, 1, 1)
+        actions_root.addLayout(actions)
         layout.addWidget(card)
         note=QLabel("حساب جدیدی که گزینهٔ «تأیید مدیر برای هر نشست» دارد، تا فعال‌سازی در بخش نشست‌ها نمی‌تواند به endpointهای محافظت‌شده دسترسی پیدا کند.")
         note.setObjectName("StatusPill");note.setWordWrap(True);layout.addWidget(note);layout.addStretch(1)
@@ -113,13 +120,13 @@ class AccountingMainWindow(QMainWindow):
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
         self.root=QWidget(self);self.root.setObjectName("AppRoot")
-        outer=QVBoxLayout(self.root);outer.setContentsMargins(14,14,14,14);outer.setSpacing(10)
+        outer=QVBoxLayout(self.root);outer.setContentsMargins(10,10,10,10);outer.setSpacing(6)
         # Retain the legacy navigation widgets as permission state, but expose navigation
         # through the compact, grouped workbar instead of a long, crowded sidebar.
         self.sidebar=self._build_sidebar()
         self.sidebar.hide()
         main_area=QWidget()
-        main_layout=QVBoxLayout(main_area);main_layout.setContentsMargins(0,0,0,0);main_layout.setSpacing(10)
+        main_layout=QVBoxLayout(main_area);main_layout.setContentsMargins(0,0,0,0);main_layout.setSpacing(6)
         self.topbar=self._build_topbar()
         self.workbar=self._build_workbar()
         main_layout.addWidget(self.workbar)
@@ -357,8 +364,8 @@ class AccountingMainWindow(QMainWindow):
         self.workbar.updateGeometry()
 
     def _build_topbar(self):
-        frame=QFrame();frame.setObjectName("Card")
-        layout=QHBoxLayout(frame);layout.setContentsMargins(18,12,18,12)
+        frame=QFrame(self.root);frame.setObjectName("Card")
+        layout=QHBoxLayout(frame);layout.setContentsMargins(8,4,8,4)
         self.breadcrumb=QLabel("");self.breadcrumb.setObjectName("PageTitle")
         self.page_subtitle=QLabel("");self.page_subtitle.setObjectName("PageSubtitle")
         self.breadcrumb.hide()
