@@ -329,20 +329,20 @@ class AccountingApiClient:
     def quote_sale(self, items, paid=False):
         return self._request(
             "POST", "/api/v1/sales/quote",
-            json_body={"items": items, "paid": bool(paid)},
+            json_body={"items": items, "paid": bool(paid), "payment_method": payment_method},
         )
 
-    def create_sale(self, items, paid=False, idempotency_key=None):
+    def create_sale(self, items, paid=False, idempotency_key=None, payment_method="cash")
         """Create a sale. Reuse last_idempotency_key if the result of a request is uncertain."""
         key = idempotency_key or uuid.uuid4().hex
         self._last_idempotency_key = key
         return self._request(
             "POST", "/api/v1/sales",
-            json_body={"items": items, "paid": bool(paid)},
+            json_body={"items": items, "paid": bool(paid), "payment_method": payment_method},
             headers={"Idempotency-Key": key},
         )
 
-    def update_sale(self, receipt_id, items, paid=False):
+    def update_sale(self, receipt_id, items, paid=False, payment_method="cash")
         return self._request(
             "PUT", "/api/v1/sales/{}".format(receipt_id),
             json_body={"items": items, "paid": bool(paid)},
