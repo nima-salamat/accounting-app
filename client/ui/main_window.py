@@ -152,8 +152,8 @@ class AccountingMainWindow(QMainWindow):
         for key,label,icon in [
             ("admin","پنل مدیریت","✦"),("sessions","نشست‌ها و فعال‌سازی","◉"),
             ("users","کاربران","♙"),("permissions","نقش‌ها و مجوزها","♢"),
-            ("schemas","مدل‌ها و فیلدهای سفارشی","⌘"),
         ]:self._make_nav(layout,key,label,icon,True)
+        self._make_nav(layout,"schemas","مدل‌ها و فیلدهای سفارشی","⌘",False)
         self._make_nav(layout,"invoices","قالب فاکتور","▤",False)
         layout.addStretch(1)
         self.sidebar_user=QLabel("وارد نشده");self.sidebar_user.setObjectName("SidebarSub")
@@ -276,14 +276,17 @@ class AccountingMainWindow(QMainWindow):
             "warehouse": ("warehouse", "read"), "inventory": ("warehouse", "read"),
             "checks_in": ("checks_in", "read"),
             "checks_out": ("checks_out", "read"), "receipts": ("receipts", "read"),
-            "invoices": ("invoices", "read"),
+            "invoices": ("invoices", "read"), "schemas": ("schemas", "read"),
         }
         for key,(button,admin_only) in self._nav.items():
             if admin_only:
                 button.setVisible(admin)
             elif key in nav_permissions:
                 resource, action = nav_permissions[key]
-                button.setVisible(can_access(user, resource, action))
+                allowed = can_access(user, resource, action)
+                if key == "sales":
+                    allowed = allowed and can_access(user, "products", "read")
+                button.setVisible(allowed)
             else:
                 button.setVisible(True)
         for page, resource in (
@@ -296,11 +299,17 @@ class AccountingMainWindow(QMainWindow):
         self.permissions_page.set_permissions(user)
         self.invoice_templates_page.set_permissions(user)
         self.inventory_page.set_permissions(user)
+        self.schemas_page.set_permissions(user)
         self.settings_button.setVisible(True)
         self.dashboard.set_user(user)
         self._apply_theme()
+        sales_allowed = can_access(user, "sales", "create") and can_access(user, "products", "read")
         start_page = "dashboard" if can_access(user, "reports", "read") else (
-            "sales" if can_access(user, "sales", "create") else "settings"
+            "sales" if sales_allowed else next(
+                (key for key in ("products", "inventory", "warehouse", "receipts", "invoices", "schemas")
+                 if key in self._nav and self._nav[key][0].isVisible()),
+                "settings",
+            )
         )
         self.navigate(start_page)
         self.refresh_dashboard_data()
@@ -325,7 +334,8 @@ class AccountingMainWindow(QMainWindow):
 
     def refresh_dashboard_data(self):
         if self.current_user is None or self.api is None:return
-        self.dashboard.refresh()
+        if can_access(self.current_user, "reports", "read"):
+            self.dashboard.refresh()
         if self.current_user.get("is_admin"):
             self.admin_page.refresh()
 
