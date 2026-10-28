@@ -309,7 +309,7 @@ class ProductsPage(ApiTablePage):
             lambda api,q: api.list_products(q=q or None,page_size=200), fields,
             lambda api,p: api.create_product(**p),
             lambda api,rid,p: api.update_product(rid,**p),
-            lambda api,rid: api.delete_product(rid))
+            lambda api,rid: api.delete_product(rid), schema_entity="products")
 
 
 class CategoriesPage(ApiTablePage):
@@ -320,7 +320,7 @@ class CategoriesPage(ApiTablePage):
             [{"key":"name","label":"نام دسته‌بندی","required":True}],
             lambda api,p: api.create_category(**p),
             lambda api,rid,p: api.update_category(rid,**p),
-            lambda api,rid: api.delete_category(rid))
+            lambda api,rid: api.delete_category(rid), schema_entity="categories")
 
 
 class WarehousePage(ApiTablePage):
@@ -337,7 +337,7 @@ class WarehousePage(ApiTablePage):
             lambda api,_q: api.list_warehouses(), fields,
             lambda api,p: api.create_warehouse(**p),
             lambda api,rid,p: api.update_warehouse(rid,**p),
-            lambda api,rid: api.delete_warehouse(rid), searchable=False)
+            lambda api,rid: api.delete_warehouse(rid), searchable=False, schema_entity="warehouses")
 
 
 class ChecksPage(ApiTablePage):
@@ -357,7 +357,8 @@ class ChecksPage(ApiTablePage):
             lambda api,q: api.list_checks(direction,q=q or None,page_size=200), fields,
             lambda api,p: api.create_check(direction,**p),
             lambda api,rid,p: api.update_check(direction,rid,**p),
-            lambda api,rid: api.delete_check(direction,rid))
+            lambda api,rid: api.delete_check(direction,rid),
+            schema_entity="check_ins" if direction == "in" else "check_outs")
 
 
 class UsersPage(ApiTablePage):
@@ -378,7 +379,7 @@ class UsersPage(ApiTablePage):
             lambda api,_q: api.list_users(), fields,
             lambda api,p: api.create_user(**p),
             lambda api,rid,p: api.update_user(rid,**p),
-            lambda api,rid: api.delete_user(rid), searchable=False)
+            lambda api,rid: api.delete_user(rid), searchable=False, schema_entity="users")
 
 
 class ReceiptsPage(QFrame):
