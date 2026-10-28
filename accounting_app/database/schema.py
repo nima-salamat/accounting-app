@@ -12,6 +12,7 @@ from accounting_app.database.models import (
     ApiSession, Category, CheckIn, CheckOut, IdempotencyRecord, Product, Receipt,
     ReceiptProduct, StockMovement, User, Warehouse, SaleReturn, SaleReturnLine,
     FiscalYear, LedgerAccount, JournalEntry, JournalLine, AuditEvent, Stocktake, StocktakeLine,
+    BusinessPartner, PurchaseInvoice, PurchaseInvoiceLine, PurchasePayment, ExpenseRecord,
 )
 
 TABLES = (
@@ -19,6 +20,7 @@ TABLES = (
     AppSetting, CustomModelDefinition, CustomFieldDefinition, CustomFieldValue,
     CustomRecord, IdempotencyRecord, ApiSession, StockMovement, SaleReturn, SaleReturnLine,
     FiscalYear, LedgerAccount, JournalEntry, JournalLine, AuditEvent, Stocktake, StocktakeLine,
+    BusinessPartner, PurchaseInvoice, PurchaseInvoiceLine, PurchasePayment, ExpenseRecord,
 )
 
 
