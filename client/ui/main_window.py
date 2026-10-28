@@ -3,14 +3,14 @@ import os
 import uuid
 
 from PySide6.QtCore import Qt, Slot, QSettings
-from PySide6.QtGui import QAction, QIcon, QKeySequence, QShortcut
+from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 try:
     import qtawesome as qta
 except ImportError:  # Keep the interface usable before optional icon assets are installed.
     qta = None
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
-    QPushButton, QStackedWidget, QVBoxLayout, QWidget, QMenu, QToolButton,
+    QPushButton, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 from client.api_client import AccountingApiClient, ApiError
@@ -105,6 +105,9 @@ class AccountingMainWindow(QMainWindow):
         self._callbacks={}
         self._nav={}
         self._nav_actions={}
+        self._workbar_group_buttons={}
+        self._workbar_groups=[]
+        self._active_workbar_group=None
         self._pages={}
         self.company_profile = {}
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -132,6 +135,7 @@ class AccountingMainWindow(QMainWindow):
         self.user_status=QLabel("بدون ورود");user_status= self.user_status
         user_status.setObjectName("PageSubtitle");status_layout.addWidget(user_status)
         main_layout.addWidget(self.status_bar_frame)
+        self.status_bar_frame.hide()
         outer.addWidget(main_area,1)
         self.auth_page=AuthPage(self.mode)
         self.auth_page.api_changed.connect(self._api_changed)
@@ -215,45 +219,132 @@ class AccountingMainWindow(QMainWindow):
         self._nav[key]=(button,admin_only)
 
     def _build_workbar(self):
-        """Top-level work areas with grouped drop-down navigation menus."""
+        """Render grouped navigation in two fixed rows; no floating popup menus."""
         frame = QFrame()
-        frame.setObjectName("Card")
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(10, 6, 10, 6)
-        layout.setSpacing(7)
-        eyebrow = QLabel("محیط کار")
-        eyebrow.setObjectName("Muted")
-        layout.addWidget(eyebrow)
+        frame.setObjectName("Workbar")
+        frame.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        root = QVBoxLayout(frame)
+        root.setContentsMargins(10, 7, 10, 7)
+        root.setSpacing(6)
+
+        primary_row = QFrame(frame)
+        primary_row.setObjectName("WorkbarPrimaryRow")
+        primary_layout = QHBoxLayout(primary_row)
+        primary_layout.setContentsMargins(0, 0, 0, 0)
+        primary_layout.setSpacing(6)
+
         groups = [
-            ("خانه", "⌂", [("dashboard", "نمای کلی")]),
-            ("فروش", "▣", [("sales", "صندوق فروش"), ("receipts", "رسیدها و فاکتورها"), ("returns", "مرجوعی‌ها و استرداد")]),
-            ("کالا و انبار", "▦", [("products", "محصولات"), ("categories", "دسته‌بندی‌ها"), ("warehouse", "اقلام انبار"), ("inventory", "موجودی کالا"), ("stocktakes", "انبارگردانی"), ("kiosk", "مدیریت کیوسک")]),
-            ("حسابداری", "≡", [("purchases", "خریدها، طرف‌حساب و هزینه"), ("checks_in", "چک‌های دریافتی"), ("checks_out", "چک‌های پرداختی"), ("journals", "اسناد حسابداری"), ("fiscal_years", "سال مالی"), ("accounting_reports", "گزارش‌های مالی"), ("audit", "سوابق فعالیت")]),
-            ("مدیریت", "⚙", [("admin", "پنل مدیریت"), ("sessions", "نشست‌ها و فعال‌سازی"), ("users", "کاربران"), ("permissions", "نقش‌ها و مجوزها"), ("schemas", "فیلدهای سفارشی")]),
-            ("قالب و تنظیمات", "⚑", [("invoices", "قالب فاکتور"), ("settings", "تنظیمات برنامه")]),
+            ("home", "خانه", "⌂", [("dashboard", "نمای کلی")]),
+            ("sales", "فروش", "▣", [("sales", "صندوق فروش"), ("receipts", "رسیدها و فاکتورها"), ("returns", "مرجوعی‌ها و استرداد")]),
+            ("inventory", "کالا و انبار", "▦", [("products", "محصولات"), ("categories", "دسته‌بندی‌ها"), ("warehouse", "اقلام انبار"), ("inventory", "موجودی کالا"), ("stocktakes", "انبارگردانی"), ("kiosk", "مدیریت کیوسک")]),
+            ("accounting", "حسابداری", "≡", [("purchases", "خریدها، طرف‌حساب و هزینه"), ("checks_in", "چک‌های دریافتی"), ("checks_out", "چک‌های پرداختی"), ("journals", "اسناد حسابداری"), ("fiscal_years", "سال مالی"), ("accounting_reports", "گزارش‌های مالی"), ("audit", "سوابق فعالیت")]),
+            ("management", "مدیریت", "⚙", [("admin", "پنل مدیریت"), ("sessions", "نشست‌ها و فعال‌سازی"), ("users", "کاربران"), ("permissions", "نقش‌ها و مجوزها"), ("schemas", "فیلدهای سفارشی")]),
+            ("templates", "قالب و تنظیمات", "⚑", [("invoices", "قالب فاکتور"), ("settings", "تنظیمات برنامه")]),
         ]
-        for group_label, glyph, entries in groups:
-            button = QToolButton(frame)
-            button.setText("{}  {}  ▾".format(glyph, group_label))
+        self._workbar_groups = groups
+        for group_id, label, glyph, _entries in groups:
+            button = QPushButton("{}  {}".format(glyph, label), primary_row)
+            button.setObjectName("WorkbarGroupButton")
+            button.setCheckable(True)
+            button.setProperty("active", False)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-            menu = QMenu(button)
-            for key, label in entries:
-                action = QAction(label, menu)
-                action.setCheckable(True)
-                action.triggered.connect(lambda _checked=False, target=key: self.navigate(target))
-                menu.addAction(action)
-                self._nav_actions[key] = action
-            button.setMenu(menu)
-            layout.addWidget(button)
-        layout.addStretch(1)
+            button.setMinimumHeight(38)
+            button.clicked.connect(
+                lambda _checked=False, target=group_id: self._toggle_workbar_group(target)
+            )
+            self._workbar_group_buttons[group_id] = button
+            primary_layout.addWidget(button)
+        primary_layout.addStretch(1)
+        root.addWidget(primary_row)
+
+        self.workbar_submenu_frame = QFrame(frame)
+        self.workbar_submenu_frame.setObjectName("WorkbarSubmenuRow")
+        self.workbar_submenu_frame.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        self.workbar_submenu_layout = QHBoxLayout(self.workbar_submenu_frame)
+        self.workbar_submenu_layout.setContentsMargins(6, 3, 6, 3)
+        self.workbar_submenu_layout.setSpacing(6)
+        self.workbar_submenu_layout.addStretch(1)
+        self.workbar_submenu_frame.hide()
+        root.addWidget(self.workbar_submenu_frame)
         return frame
+
+    def _clear_workbar_submenu(self):
+        """Remove the current second-row items and return to the empty home navigation state."""
+        self._active_workbar_group = None
+        self._nav_actions.clear()
+        for group_button in self._workbar_group_buttons.values():
+            group_button.setChecked(False)
+            group_button.setProperty("active", False)
+            group_button.style().unpolish(group_button)
+            group_button.style().polish(group_button)
+        while self.workbar_submenu_layout.count():
+            item = self.workbar_submenu_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()
+                widget.setParent(None)
+                widget.deleteLater()
+        self.workbar_submenu_frame.hide()
+        self.workbar_submenu_frame.updateGeometry()
+        self.workbar.updateGeometry()
+
+    def _toggle_workbar_group(self, group_id):
+        """Expand a category's entries directly underneath the primary navigation row."""
+        if self._active_workbar_group == group_id:
+            self._clear_workbar_submenu()
+            return
+
+        self._clear_workbar_submenu()
+        group = next(
+            (item for item in self._workbar_groups if item[0] == group_id),
+            None,
+        )
+        if group is None:
+            return
+
+        self._active_workbar_group = group_id
+        for current_id, button in self._workbar_group_buttons.items():
+            active = current_id == group_id
+            button.setChecked(active)
+            button.setProperty("active", active)
+            button.style().unpolish(button)
+            button.style().polish(button)
+
+        _group_id, _label, _glyph, entries = group
+        for key, label in entries:
+            # The hidden legacy navigation buttons are the canonical permission state.
+            legacy = self._nav.get(key)
+            if legacy is not None and legacy[0].isHidden():
+                continue
+
+            button = QPushButton(label, self.workbar_submenu_frame)
+            button.setObjectName("WorkbarItemButton")
+            button.setCheckable(True)
+            button.setMinimumHeight(32)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setProperty("active", False)
+            button.clicked.connect(
+                lambda _checked=False, target=key: self.navigate(target)
+            )
+            self._nav_actions[key] = button
+            self.workbar_submenu_layout.addWidget(button)
+
+        if self._nav_actions:
+            self.workbar_submenu_layout.addStretch(1)
+            self.workbar_submenu_frame.show()
+        else:
+            # If the role has no visible entries in a category, preserve a blank row.
+            self.workbar_submenu_frame.hide()
+        self.workbar_submenu_frame.updateGeometry()
+        self.workbar.updateGeometry()
 
     def _build_topbar(self):
         frame=QFrame();frame.setObjectName("Card")
         layout=QHBoxLayout(frame);layout.setContentsMargins(18,12,18,12)
-        self.breadcrumb=QLabel("نمای کلی");self.breadcrumb.setObjectName("PageTitle")
-        self.page_subtitle=QLabel("مدیریت روزانهٔ حسابداری");self.page_subtitle.setObjectName("PageSubtitle")
+        self.breadcrumb=QLabel("");self.breadcrumb.setObjectName("PageTitle")
+        self.page_subtitle=QLabel("");self.page_subtitle.setObjectName("PageSubtitle")
+        self.breadcrumb.hide()
+        self.page_subtitle.hide()
         text=QVBoxLayout();text.addWidget(self.breadcrumb);text.addWidget(self.page_subtitle)
         layout.addLayout(text,1)
         self.connection_badge=QLabel("● API");self.connection_badge.setObjectName("StatusPill")
@@ -294,6 +385,11 @@ class AccountingMainWindow(QMainWindow):
         self.audit_page=AuditPage(self)
         self.admin_page=AdminOverviewPage(self)
         self.settings_page=SettingsPage(self)
+        # The post-login landing page intentionally contains no greeting, metrics, or user details.
+        self.home_page = QWidget()
+        self.home_page.setObjectName("HomeBlank")
+        self._pages["home"] = self.home_page
+        self.page_stack.addWidget(self.home_page)
         definitions=[
             ("dashboard","نمای کلی",self.dashboard),("sales","ثبت فروش",self.sales_page),
             ("products","محصولات",self.products_page),("categories","دسته‌بندی‌ها",self.categories_page),
@@ -314,6 +410,7 @@ class AccountingMainWindow(QMainWindow):
             if key in self._nav:
                 self._nav[key][0].setVisible(key in {"dashboard","sales","products","receipts"})
         self.page_meta={
+            "home":("", ""),
             "dashboard":("نمای کلی","نمای سریع از فروش و وضعیت عملیات"),
             "sales":("ثبت فروش","ثبت تراکنش از طریق API سرور"),
             "products":("محصولات","مدیریت کاتالوگ محصولات"),
@@ -431,16 +528,8 @@ class AccountingMainWindow(QMainWindow):
         self.settings_page.set_user(user)
         self.dashboard.set_user(user)
         self._apply_theme()
-        sales_allowed = can_access(user, "sales", "create") and can_access(user, "products", "read")
-        start_page = "dashboard" if can_access(user, "reports", "read") else (
-            "sales" if sales_allowed else next(
-                (key for key in ("products", "inventory", "warehouse", "receipts", "invoices", "schemas")
-                 if key in self._nav and not self._nav[key][0].isHidden()),
-                "settings",
-            )
-        )
-        self.navigate(start_page)
-        self.refresh_dashboard_data()
+        self._clear_workbar_submenu()
+        self.navigate("home")
 
     def open_global_search(self):
         if self.current_user is None or self.api is None:
@@ -458,25 +547,48 @@ class AccountingMainWindow(QMainWindow):
         elif hasattr(page, "refresh_products"):
             page.refresh_products()
 
-    def navigate(self,key):
-        if key not in self._pages:return
-        if self.current_user is None:return
-        if key in self._nav and self._nav[key][0].isHidden():return
-        page=self._pages[key]
+    def navigate(self, key):
+        if key not in self._pages:
+            return
+        if self.current_user is None:
+            return
+        if key in self._nav and self._nav[key][0].isHidden():
+            return
+
+        page = self._pages[key]
         self.page_stack.setCurrentWidget(page)
-        title,subtitle=self.page_meta[key]
-        self.breadcrumb.setText(title);self.page_subtitle.setText(subtitle)
-        for nav_key,(button,_admin) in self._nav.items():
-            button.setProperty("active",nav_key==key)
-            button.style().unpolish(button);button.style().polish(button)
+        title, subtitle = self.page_meta[key]
+        is_home = key == "home"
+        self.breadcrumb.setText(title)
+        self.page_subtitle.setText(subtitle)
+        self.breadcrumb.setVisible(not is_home)
+        self.page_subtitle.setVisible(not is_home)
+        self.status_bar_frame.setVisible(not is_home)
+
+        for nav_key, (button, _admin) in self._nav.items():
+            button.setProperty("active", nav_key == key)
+            button.style().unpolish(button)
+            button.style().polish(button)
         for nav_key, action in self._nav_actions.items():
-            action.setChecked(nav_key == key)
-        refresh=getattr(page,"refresh",None)
-        if callable(refresh):refresh()
-        elif hasattr(page,"refresh_products"):page.refresh_products()
-        if key=="admin":page.refresh()
-        if key=="sessions":page.refresh()
-        if key=="schemas":page.refresh_entities()
+            active = nav_key == key
+            action.setChecked(active)
+            action.setProperty("active", active)
+            action.style().unpolish(action)
+            action.style().polish(action)
+
+        # Do not populate the blank landing page with dashboard data.
+        if not is_home:
+            refresh = getattr(page, "refresh", None)
+            if callable(refresh):
+                refresh()
+            elif hasattr(page, "refresh_products"):
+                page.refresh_products()
+            if key == "admin":
+                page.refresh()
+            if key == "sessions":
+                page.refresh()
+            if key == "schemas":
+                page.refresh_entities()
 
     def refresh_dashboard_data(self):
         if self.current_user is None or self.api is None:return

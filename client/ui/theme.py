@@ -104,6 +104,10 @@ def stylesheet(mode="light", design=None):
     QFrame#AuthHero {{ background: {sidebar}; border: 1px solid rgba(255,255,255,0.07); border-radius: 22px; }}
     QFrame#AuthFeature {{ background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; }}
     QFrame#AuthSection {{ background: {surface_alt}; border: 1px solid {border}; border-radius: 14px; }}
+    QFrame#Workbar {{ background: {surface}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
+    QFrame#WorkbarPrimaryRow {{ background: transparent; border: none; }}
+    QFrame#WorkbarSubmenuRow {{ background: {surface_alt}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
+    QWidget#HomeBlank {{ background: {window}; }}
     QFrame#Sidebar {{ background: {sidebar}; border: none; }}
     QLabel#Brand {{ font-size: 20px; font-weight: 800; color: {text}; }}
     QLabel#BrandSub {{ color: {muted}; font-size: 11px; }}
@@ -147,6 +151,12 @@ def stylesheet(mode="light", design=None):
     QPushButton#NavigationButton {{ text-align: right; background: transparent; color: {sidebar_text}; border: none; padding: 12px 14px; border-radius: {corner_radius}px; font-size: {font_size}px; font-weight: 550; }}
     QPushButton#NavigationButton:hover {{ background: rgba(255,255,255,0.08); }}
     QPushButton#NavigationButton[active="true"] {{ background: {primary}; color: #FFFFFF; font-weight: 800; }}
+    QPushButton#WorkbarGroupButton {{ background: transparent; border: 1px solid transparent; padding: 7px 15px; min-height: 34px; font-weight: 750; }}
+    QPushButton#WorkbarGroupButton:hover {{ background: {highlight}; border-color: {border}; }}
+    QPushButton#WorkbarGroupButton[active="true"] {{ background: {primary}; color: #FFFFFF; border-color: {primary}; }}
+    QPushButton#WorkbarItemButton {{ background: transparent; border: 1px solid transparent; padding: 5px 12px; min-height: 30px; font-weight: 650; }}
+    QPushButton#WorkbarItemButton:hover {{ background: {highlight}; border-color: {border}; }}
+    QPushButton#WorkbarItemButton[active="true"] {{ background: {highlight}; color: {primary}; border-color: {border}; font-weight: 800; }}
     QToolButton {{ background: {surface}; color: {text}; border: 1px solid {border}; border-radius: {corner_radius}px; padding: 7px 13px; font-weight: 700; }}
     QToolButton:hover {{ background: {highlight}; border-color: {primary}; }}
     QMenu {{ background: {surface}; color: {text}; border: 1px solid {border}; border-radius: {corner_radius}px; padding: 5px; }}
