@@ -5,7 +5,7 @@ import hmac
 import secrets
 from enum import Enum
 
-from peewee import BooleanField, CharField, DateTimeField, FloatField, ForeignKeyField, IntegerField
+from peewee import BooleanField, CharField, DateTimeField, FloatField, ForeignKeyField, IntegerField, TextField
 
 from accounting_app.config import FIELD_LENGTH
 from accounting_app.database.connection import BaseModel
@@ -85,6 +85,9 @@ class Product(BaseModel):
     image_path = CharField(max_length=FIELD_LENGTH, null=True)
     custom_product = BooleanField(default=False)
     category = ForeignKeyField(Category, backref="products", null=True, on_delete="SET NULL")
+    track_stock = BooleanField(default=False)
+    stock_quantity = FloatField(null=False, default=0)
+    reorder_level = FloatField(null=False, default=0)
 
     def __str__(self):
         return self.name
@@ -124,6 +127,25 @@ class Warehouse(BaseModel):
     price = FloatField(null=False, default=0)
     amount = FloatField(null=False, default=0)
     unit = CharField(choices=[(unit.value, unit.name) for unit in UnitEnum], max_length=10)
+
+
+class StockMovement(BaseModel):
+    """Append-only audit record for inventory adjustments and sale consumption."""
+    product = ForeignKeyField(Product, backref="stock_movements", on_delete="CASCADE")
+    user = ForeignKeyField(User, backref="stock_movements", on_delete="RESTRICT")
+    quantity_change = FloatField()
+    stock_before = FloatField()
+    stock_after = FloatField()
+    reason = CharField(max_length=32)
+    reference_id = CharField(max_length=64, null=True)
+    notes = TextField(null=True)
+
+    class Meta:
+        table_name = "stock_movements"
+        indexes = (
+            (("product", "created_at"), False),
+            (("reference_id",), False),
+        )
 
 
 class CheckIn(BaseModel):
