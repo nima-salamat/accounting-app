@@ -30,7 +30,7 @@ from client.ui.worker import ApiWorker
 
 
 KIOSK_KEYRING_SERVICE = "Accounting App Self-service Kiosk"
-KIOSK_GRANTS = "role:kiosk;products:r;sales:c;invoices:r"
+KIOSK_GRANTS = "role:kiosk;products:r;categories:r;sales:c;receipts:r;invoices:r;kiosk:r"
 
 
 def _clear_layout(layout):
