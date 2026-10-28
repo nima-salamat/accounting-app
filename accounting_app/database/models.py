@@ -95,6 +95,7 @@ class Product(BaseModel):
 
 class Receipt(BaseModel):
     payed = BooleanField(default=False)
+    payment_method = CharField(max_length=24, default="cash")
     total_price = FloatField(null=False, default=0)
     user = ForeignKeyField(User, backref="receipts", on_delete="CASCADE")
     day_receipt_id = IntegerField(null=False)
