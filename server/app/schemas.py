@@ -14,12 +14,33 @@ class StrictModel(BaseModel):
 class LoginRequest(StrictModel):
     username: str = Field(min_length=4, max_length=256)
     password: str = Field(min_length=4, max_length=1024)
+    client_name: str = Field(default="Desktop client", min_length=1, max_length=256)
+
+
+class SessionStatusRequest(StrictModel):
+    ticket: str = Field(min_length=16, max_length=4096)
+
+
+class SessionRevokeRequest(StrictModel):
+    reason: str = Field(default="revoked_by_admin", max_length=256)
+
+
+class LoginResponse(BaseModel):
+    status: str
+    access_token: Optional[str] = None
+    session_ticket: Optional[str] = None
+    token_type: str = "bearer"
+    expires_in: int
+    message: Optional[str] = None
+    user: Optional[dict] = None
 
 
 class TokenResponse(BaseModel):
+    status: str = "active"
     access_token: str
     token_type: str = "bearer"
     expires_in: int
+    user: Optional[dict] = None
 
 
 class SetupRequest(StrictModel):
@@ -35,6 +56,8 @@ class UserOut(BaseModel):
     username: str
     is_admin: bool
     buttons: str
+    is_active: bool = True
+    requires_session_activation: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -44,6 +67,8 @@ class UserCreate(StrictModel):
     password: str = Field(min_length=4, max_length=1024)
     is_admin: bool = False
     buttons: str = Field(default="", max_length=256)
+    is_active: bool = True
+    requires_session_activation: bool = True
 
 
 class UserUpdate(StrictModel):
@@ -51,6 +76,8 @@ class UserUpdate(StrictModel):
     password: Optional[str] = Field(default=None, min_length=4, max_length=1024)
     is_admin: Optional[bool] = None
     buttons: Optional[str] = Field(default=None, max_length=256)
+    is_active: Optional[bool] = None
+    requires_session_activation: Optional[bool] = None
 
 
 class CategoryCreate(StrictModel):

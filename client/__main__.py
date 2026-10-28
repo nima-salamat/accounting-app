@@ -1,5 +1,5 @@
-"""Launch the standalone API-backed desktop client."""
-from client.desktop import main
+"""Launch the API-backed desktop client from the project root."""
+from main import run
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run())

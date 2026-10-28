@@ -1,0 +1,1 @@
+"""API-only PySide6 desktop interface for Accounting App."""

@@ -43,6 +43,9 @@ class AuthManager:
             if not user.check_password(password):
                 self.errors.append("رمز عبور نادرست است.")
                 return False
+            if not user.is_active:
+                self.errors.append("این حساب توسط مدیر غیرفعال شده است.")
+                return False
             if user.password_needs_upgrade():
                 user.set_password(password)
                 user.save(only=[User.password, User.updated_at])

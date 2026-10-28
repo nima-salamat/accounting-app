@@ -317,7 +317,14 @@ def create_user(payload: UserCreate, _admin=Depends(require_admin)):
     with DBManager():
         if UserModel.get_or_none(UserModel.username == username):
             raise HTTPException(status_code=409, detail="این نام کاربری قبلاً ثبت شده است.")
-        record = UserModel(username=username, password="", is_admin=payload.is_admin, buttons=payload.buttons)
+        record = UserModel(
+            username=username,
+            password="",
+            is_admin=payload.is_admin,
+            buttons=payload.buttons,
+            is_active=payload.is_active,
+            requires_session_activation=payload.requires_session_activation,
+        )
         record.set_password(payload.password)
         record.save(force_insert=True)
         return _serialize(record, exclude=("password",))
@@ -337,15 +344,51 @@ def update_user(user_id: UUID, payload: UserUpdate, current_admin=Depends(requir
             )
             if other is not None:
                 raise HTTPException(status_code=409, detail="این نام کاربری قبلاً ثبت شده است.")
-        if values.get("password"):
+        password_changed = bool(values.get("password"))
+        if password_changed:
             record.set_password(values.pop("password"))
         elif "password" in values:
             values.pop("password")
         if values.get("is_admin") is False and record.is_admin:
-            admin_count = UserModel.select().where(UserModel.is_admin == True).count()
-            if admin_count <= 1:
-                raise HTTPException(status_code=409, detail="آخرین مدیر را نمی‌توان از مدیریت خارج کرد.")
-        return _serialize(_save_patch(record, values), exclude=("password",))
+            active_admin_count = UserModel.select().where(
+                (UserModel.is_admin == True) & (UserModel.is_active == True)
+            ).count()
+            if record.is_active and active_admin_count <= 1:
+                raise HTTPException(status_code=409, detail="آخرین مدیر فعال را نمی‌توان از مدیریت خارج کرد.")
+        if values.get("is_active") is False and record.is_active:
+            if record.id == current_admin.id:
+                raise HTTPException(status_code=409, detail="نمی‌توانید حساب فعلی خود را غیرفعال کنید.")
+            if record.is_admin:
+                active_admin_count = UserModel.select().where(
+                    (UserModel.is_admin == True) & (UserModel.is_active == True)
+                ).count()
+                if active_admin_count <= 1:
+                    raise HTTPException(status_code=409, detail="آخرین مدیر فعال را نمی‌توان غیرفعال کرد.")
+        updated = _save_patch(record, values)
+        from datetime import datetime
+        from accounting_app.database.models import ApiSession
+        if values.get("is_active") is False or password_changed:
+            now = datetime.now()
+            ApiSession.update(
+                status="revoked", revoked_at=now,
+                revocation_reason="account_disabled" if values.get("is_active") is False else "password_changed",
+            ).where(
+                (ApiSession.user == updated.id) & ApiSession.status.in_(("active", "pending"))
+            ).execute()
+        elif values.get("requires_session_activation") is False:
+            ApiSession.update(
+                status="active", activated_at=datetime.now(), last_seen_at=datetime.now()
+            ).where(
+                (ApiSession.user == updated.id) & (ApiSession.status == "pending")
+            ).execute()
+        elif values.get("requires_session_activation") is True:
+            ApiSession.update(
+                status="revoked", revoked_at=datetime.now(),
+                revocation_reason="activation_policy_enabled"
+            ).where(
+                (ApiSession.user == updated.id) & (ApiSession.status == "active")
+            ).execute()
+        return _serialize(updated, exclude=("password",))
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -356,8 +399,10 @@ def delete_user(user_id: UUID, current_admin=Depends(require_admin)):
             _not_found("کاربر")
         if record.id == current_admin.id:
             raise HTTPException(status_code=409, detail="نمی‌توانید حساب فعلی خود را حذف کنید.")
-        if record.is_admin and UserModel.select().where(UserModel.is_admin == True).count() <= 1:
-            raise HTTPException(status_code=409, detail="آخرین مدیر را نمی‌توان حذف کرد.")
+        if record.is_admin and record.is_active and UserModel.select().where(
+            (UserModel.is_admin == True) & (UserModel.is_active == True)
+        ).count() <= 1:
+            raise HTTPException(status_code=409, detail="آخرین مدیر فعال را نمی‌توان حذف کرد.")
         cleanup_builtin_extension_values_many("users", [record.id])
         record.delete_instance()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

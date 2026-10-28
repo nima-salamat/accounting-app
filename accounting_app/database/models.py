@@ -5,7 +5,7 @@ import hmac
 import secrets
 from enum import Enum
 
-from peewee import BooleanField, CharField, FloatField, ForeignKeyField, IntegerField
+from peewee import BooleanField, CharField, DateTimeField, FloatField, ForeignKeyField, IntegerField
 
 from accounting_app.config import FIELD_LENGTH
 from accounting_app.database.connection import BaseModel
@@ -21,6 +21,8 @@ class User(BaseModel):
     password = CharField(max_length=FIELD_LENGTH)
     is_admin = BooleanField(default=False)
     buttons = CharField(max_length=FIELD_LENGTH, default="")
+    is_active = BooleanField(default=True)
+    requires_session_activation = BooleanField(default=False)
 
     def set_password(self, password):
         """Store a versioned PBKDF2 hash instead of the raw password."""
@@ -150,3 +152,21 @@ class IdempotencyRecord(BaseModel):
     class Meta:
         table_name = "api_idempotency_records"
         indexes = ((("user", "key"), True),)
+
+
+
+class ApiSession(BaseModel):
+    """Server-controlled login session with explicit approval and revocation state."""
+    user = ForeignKeyField(User, backref="api_sessions", on_delete="CASCADE")
+    status = CharField(max_length=24, default="active")
+    client_name = CharField(max_length=FIELD_LENGTH, default="Desktop client")
+    remote_addr = CharField(max_length=128, null=True)
+    user_agent = CharField(max_length=FIELD_LENGTH, null=True)
+    last_seen_at = DateTimeField(null=True)
+    expires_at = DateTimeField()
+    activated_at = DateTimeField(null=True)
+    revoked_at = DateTimeField(null=True)
+    revocation_reason = CharField(max_length=FIELD_LENGTH, null=True)
+
+    class Meta:
+        table_name = "api_sessions"

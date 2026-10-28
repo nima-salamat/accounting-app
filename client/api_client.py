@@ -135,14 +135,46 @@ class AccountingApiClient:
         self.set_access_token(payload["access_token"])
         return payload.get("user", payload)
 
-    def login(self, username, password):
+    def login(self, username, password, client_name="Desktop client"):
         payload = self._request(
             "POST", "/api/v1/auth/login",
-            json_body={"username": username, "password": password},
+            json_body={"username": username, "password": password, "client_name": client_name},
             authenticated=False,
         )
-        self.set_access_token(payload["access_token"])
-        return self.me()
+        if payload.get("status", "active") == "active" and payload.get("access_token"):
+            self.set_access_token(payload["access_token"])
+            payload["user"] = self.me()
+        return payload
+
+    def check_session_status(self, ticket):
+        payload = self._request("POST", "/api/v1/auth/session-status",
+                                json_body={"ticket": ticket}, authenticated=False)
+        if payload.get("status") == "active" and payload.get("access_token"):
+            self.set_access_token(payload["access_token"])
+        return payload
+
+    def logout(self):
+        try:
+            return self._request("POST", "/api/v1/auth/logout") if self.access_token else {"status": "logged_out"}
+        finally:
+            self.clear_session()
+
+    def admin_overview(self):
+        return self._request("GET", "/api/v1/admin/overview")
+
+    def list_admin_sessions(self, state="all", q=None, limit=200):
+        return self._request("GET", "/api/v1/admin/sessions",
+                             params={"state": state, "q": q, "limit": limit})
+
+    def activate_session(self, session_id):
+        return self._request("POST", "/api/v1/admin/sessions/{}/activate".format(session_id))
+
+    def revoke_session(self, session_id, reason="revoked_by_admin"):
+        return self._request("POST", "/api/v1/admin/sessions/{}/revoke".format(session_id),
+                             json_body={"reason": reason})
+
+    def revoke_all_sessions(self):
+        return self._request("POST", "/api/v1/admin/sessions/revoke-all")
 
     def me(self):
         return self._request("GET", "/api/v1/auth/me")
@@ -206,12 +238,19 @@ class AccountingApiClient:
     def list_users(self):
         return self._request("GET", "/api/v1/users")
 
-    def create_user(self, *, username, password, is_admin=False, buttons=""):
+    def create_user(
+        self, *, username, password, is_admin=False, buttons="",
+        is_active=True, requires_session_activation=True,
+    ):
         return self._request(
             "POST", "/api/v1/users",
             json_body={
-                "username": username, "password": password,
-                "is_admin": is_admin, "buttons": buttons,
+                "username": username,
+                "password": password,
+                "is_admin": is_admin,
+                "buttons": buttons,
+                "is_active": is_active,
+                "requires_session_activation": requires_session_activation,
             },
         )
 
@@ -266,3 +305,49 @@ class AccountingApiClient:
             "PATCH", "/api/v1/schemas/values/{}/{}".format(entity_type, record_id),
             json_body={"values": values},
         )
+
+
+    def update_warehouse(self, record_id, **values):
+        return self._request("PATCH", "/api/v1/warehouses/{}".format(record_id), json_body=values)
+
+    def delete_warehouse(self, record_id):
+        return self._request("DELETE", "/api/v1/warehouses/{}".format(record_id))
+
+    def create_check(self, direction, *, name, check_id, price, date, payed=False):
+        self._validate_check_direction(direction)
+        return self._request("POST", "/api/v1/checks/{}".format(direction),
+            json_body={"name": name, "check_id": check_id, "price": price, "date": date, "payed": bool(payed)})
+
+    def update_check(self, direction, record_id, **values):
+        self._validate_check_direction(direction)
+        return self._request("PATCH", "/api/v1/checks/{}/{}".format(direction, record_id), json_body=values)
+
+    def delete_check(self, direction, record_id):
+        self._validate_check_direction(direction)
+        return self._request("DELETE", "/api/v1/checks/{}/{}".format(direction, record_id))
+
+    @staticmethod
+    def _validate_check_direction(direction):
+        if direction not in ("in", "out"):
+            raise ValueError("direction must be in or out")
+
+    def update_user(self, user_id, **values):
+        return self._request("PATCH", "/api/v1/users/{}".format(user_id), json_body=values)
+
+    def delete_user(self, user_id):
+        return self._request("DELETE", "/api/v1/users/{}".format(user_id))
+
+    def list_schema_records(self, entity_type, limit=200):
+        return self._request("GET", "/api/v1/schemas/records/{}".format(entity_type), params={"limit": limit})
+
+    def create_custom_record(self, entity_type, values):
+        return self._request("POST", "/api/v1/schemas/records/{}".format(entity_type), json_body={"values": values})
+
+    def delete_schema_record(self, entity_type, record_id):
+        return self._request("DELETE", "/api/v1/schemas/records/{}/{}".format(entity_type, record_id))
+
+    def sales_trend(self, days=30):
+        return self._request("GET", "/api/v1/reports/sales-trend", params={"days": days})
+
+    def product_performance(self, limit=20):
+        return self._request("GET", "/api/v1/reports/product-performance", params={"limit": limit})

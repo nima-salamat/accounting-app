@@ -126,6 +126,12 @@ class ApiTests(unittest.TestCase):
         with DBManager():
             self.assertEqual(Receipt.select().count(), 1)
 
+        trend = self.client.get("/api/v1/reports/sales-trend?days=30", headers=headers)
+        self.assertEqual(trend.status_code, 200, trend.text)
+        performance = self.client.get("/api/v1/reports/product-performance", headers=headers)
+        self.assertEqual(performance.status_code, 200, performance.text)
+        self.assertEqual(performance.json()[0]["name"], "کالا")
+
     def test_idempotency_key_cannot_be_reused_for_different_sale(self):
         headers = self.setup_admin()
         product = self.client.post(
@@ -145,7 +151,7 @@ class ApiTests(unittest.TestCase):
         admin_headers = self.setup_admin()
         created = self.client.post(
             "/api/v1/users", headers=admin_headers,
-            json={"username": "cashier", "password": "cashier-password", "is_admin": False},
+            json={"username": "cashier", "password": "cashier-password", "is_admin": False, "requires_session_activation": False},
         )
         self.assertEqual(created.status_code, 201, created.text)
         login = self.client.post(
@@ -160,6 +166,89 @@ class ApiTests(unittest.TestCase):
             json={"name": "نباید ساخته شود", "buy_price": 1, "sell_price": 2},
         )
         self.assertEqual(denied.status_code, 403)
+
+    def test_new_device_waits_for_admin_activation_and_revocation_is_immediate(self):
+        admin_headers = self.setup_admin()
+        created = self.client.post(
+            "/api/v1/users",
+            headers=admin_headers,
+            json={
+                "username": "new_cashier",
+                "password": "new-cashier-password",
+                "is_admin": False,
+                "is_active": True,
+                "requires_session_activation": True,
+            },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        self.assertTrue(created.json()["requires_session_activation"])
+
+        pending = self.client.post(
+            "/api/v1/auth/login",
+            json={
+                "username": "new_cashier",
+                "password": "new-cashier-password",
+                "client_name": "Front desk PC",
+            },
+        )
+        self.assertEqual(pending.status_code, 200, pending.text)
+        self.assertEqual(pending.json()["status"], "pending_activation")
+        self.assertNotIn("access_token", pending.json())
+        ticket = pending.json()["session_ticket"]
+        check = self.client.post("/api/v1/auth/session-status", json={"ticket": ticket})
+        self.assertEqual(check.status_code, 200, check.text)
+        self.assertEqual(check.json()["status"], "pending_activation")
+
+        pending_sessions = self.client.get(
+            "/api/v1/admin/sessions?state=pending", headers=admin_headers
+        )
+        self.assertEqual(pending_sessions.status_code, 200, pending_sessions.text)
+        self.assertEqual(len(pending_sessions.json()), 1)
+        session_id = pending_sessions.json()[0]["id"]
+        self.assertEqual(pending_sessions.json()[0]["client_name"], "Front desk PC")
+
+        activated = self.client.post(
+            "/api/v1/admin/sessions/{}/activate".format(session_id),
+            headers=admin_headers,
+        )
+        self.assertEqual(activated.status_code, 200, activated.text)
+        self.assertEqual(activated.json()["status"], "active")
+        active_status = self.client.post(
+            "/api/v1/auth/session-status", json={"ticket": ticket}
+        )
+        self.assertEqual(active_status.status_code, 200, active_status.text)
+        self.assertEqual(active_status.json()["status"], "active")
+        cashier_headers = {"Authorization": "Bearer " + active_status.json()["access_token"]}
+        self.assertEqual(self.client.get("/api/v1/auth/me", headers=cashier_headers).status_code, 200)
+
+        revoked = self.client.post(
+            "/api/v1/admin/sessions/{}/revoke".format(session_id),
+            headers=admin_headers,
+            json={"reason": "admin_test_revocation"},
+        )
+        self.assertEqual(revoked.status_code, 200, revoked.text)
+        denied = self.client.get("/api/v1/products", headers=cashier_headers)
+        self.assertEqual(denied.status_code, 401)
+
+    def test_inactive_accounts_cannot_login(self):
+        admin_headers = self.setup_admin()
+        created = self.client.post(
+            "/api/v1/users",
+            headers=admin_headers,
+            json={
+                "username": "disabled_user",
+                "password": "disabled-user-password",
+                "is_admin": False,
+                "is_active": False,
+                "requires_session_activation": False,
+            },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        login = self.client.post(
+            "/api/v1/auth/login",
+            json={"username": "disabled_user", "password": "disabled-user-password"},
+        )
+        self.assertEqual(login.status_code, 401)
 
     def test_remote_first_run_requires_a_separate_bootstrap_token(self):
         request = SimpleNamespace(client=SimpleNamespace(host="192.0.2.10"))

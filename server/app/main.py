@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from accounting_app.config import ensure_data_dir
 from manager.db import create_db, initialize_database
 from server.app.api.auth import router as auth_router
+from server.app.api.admin import router as admin_router
 from server.app.api.custom_schemas import router as schema_router
 from server.app.api.reports import router as reports_router
 from server.app.api.resources import router as resources_router
@@ -35,6 +36,7 @@ def health():
 
 
 app.include_router(auth_router, prefix=API_PREFIX)
+app.include_router(admin_router, prefix=API_PREFIX)
 app.include_router(resources_router, prefix=API_PREFIX)
 app.include_router(sales_router, prefix=API_PREFIX)
 app.include_router(reports_router, prefix=API_PREFIX)
