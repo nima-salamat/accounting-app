@@ -435,7 +435,7 @@ class AccountingMainWindow(QMainWindow):
         start_page = "dashboard" if can_access(user, "reports", "read") else (
             "sales" if sales_allowed else next(
                 (key for key in ("products", "inventory", "warehouse", "receipts", "invoices", "schemas")
-                 if key in self._nav and self._nav[key][0].isVisible()),
+                 if key in self._nav and not self._nav[key][0].isHidden()),
                 "settings",
             )
         )
