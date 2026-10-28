@@ -575,17 +575,28 @@ class KioskShopPage(QFrame):
         payment = authorize_payment(amount, reference, settings)
         try:
             receipt = self.api.create_sale(items, paid=True, idempotency_key=reference)
-        except Exception as sale_error:
+        except Exception as first_sale_error:
+            # A socket timeout can happen after the API committed the receipt. Retry the
+            # exact same idempotency key once before voiding a payment that may already
+            # have a valid, paid receipt on the server.
             try:
-                void_payment(amount, reference, payment["transaction_id"], settings)
-            except Exception as void_error:
+                receipt = self.api.create_sale(items, paid=True, idempotency_key=reference)
+            except Exception as retry_error:
+                try:
+                    void_payment(amount, reference, payment["transaction_id"], settings)
+                except Exception as void_error:
+                    raise RuntimeError(
+                        "کارت‌خوان پرداخت را تأیید کرده اما وضعیت فروش/لغو مبهم است. "
+                        "شناسه تراکنش {} و مرجع {} را فوراً با مدیر/پرداخت‌یار بررسی کنید. "
+                        "خطای ثبت: {}؛ خطای لغو: {}".format(
+                            payment["transaction_id"], reference, retry_error, void_error
+                        )
+                    ) from retry_error
                 raise RuntimeError(
-                    "کارت‌خوان پرداخت را تأیید کرده اما ثبت فروش و لغو تراکنش خودکار ناموفق بوده است. "
-                    "شناسه تراکنش {} را فوراً با مدیر/پرداخت‌یار بررسی کنید. جزئیات لغو: {}".format(
-                        payment["transaction_id"], void_error
+                    "فروش تأیید نشد؛ پل پرداخت لغو تراکنش را تأیید کرد. مرجع: {}. علت: {}".format(
+                        reference, retry_error
                     )
-                ) from sale_error
-            raise RuntimeError("فروش ثبت نشد؛ لغو تراکنش در پل پرداخت تأیید شد: {}".format(sale_error)) from sale_error
+                ) from first_sale_error
         return {
             "receipt": receipt,
             "template": self._safe_invoice_template(),
