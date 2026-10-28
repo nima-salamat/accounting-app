@@ -1,7 +1,7 @@
 """Role presets and per-resource CRUD permission matrix for administrators."""
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
+    QComboBox, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget, QCheckBox,
 )
 
@@ -16,6 +16,9 @@ class PermissionsPage(QFrame):
         super().__init__()
         self.window = window
         self.users = []
+        self.user_page = 1
+        self.user_page_size = 15
+        self.user_total = 0
         self.checkboxes = {}
         self._loading = False
         self.setObjectName("Card")
@@ -40,7 +43,15 @@ class PermissionsPage(QFrame):
         root.addLayout(header)
 
         toolbar = QHBoxLayout()
-        toolbar.addWidget(QLabel("کاربر"))
+        toolbar.addWidget(QLabel("یافتن کاربر"))
+        self.user_search = QLineEdit()
+        self.user_search.setPlaceholderText("نام کاربری را جست‌وجو کنید…")
+        self.user_search.setClearButtonEnabled(True)
+        self.user_search.returnPressed.connect(self.refresh)
+        self.search_users_button = QPushButton("جست‌وجو")
+        self.search_users_button.clicked.connect(self.refresh)
+        toolbar.addWidget(self.user_search, 2)
+        toolbar.addWidget(self.search_users_button)
         self.user_combo = QComboBox()
         self.user_combo.setMinimumWidth(220)
         self.user_combo.currentIndexChanged.connect(self._select_user)
@@ -52,6 +63,25 @@ class PermissionsPage(QFrame):
         self.role_combo.currentIndexChanged.connect(self._apply_role)
         toolbar.addWidget(self.role_combo, 1)
         root.addLayout(toolbar)
+
+        user_pager = QHBoxLayout()
+        user_pager.addWidget(QLabel("نتایج در صفحه"))
+        self.user_page_size_combo = QComboBox()
+        for size in (15, 30, 50):
+            self.user_page_size_combo.addItem(str(size), size)
+        self.user_page_size_combo.currentIndexChanged.connect(self._user_page_size_changed)
+        user_pager.addWidget(self.user_page_size_combo)
+        self.user_page_label = QLabel("صفحه ۱ از ۱ · ۰ کاربر")
+        self.user_page_label.setObjectName("PageSubtitle")
+        user_pager.addWidget(self.user_page_label)
+        user_pager.addStretch(1)
+        self.user_previous_button = QPushButton("صفحهٔ قبل")
+        self.user_next_button = QPushButton("صفحهٔ بعد")
+        self.user_previous_button.clicked.connect(self._previous_user_page)
+        self.user_next_button.clicked.connect(self._next_user_page)
+        user_pager.addWidget(self.user_previous_button)
+        user_pager.addWidget(self.user_next_button)
+        root.addLayout(user_pager)
 
         matrix_host = QWidget()
         matrix_host.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -102,35 +132,54 @@ class PermissionsPage(QFrame):
     def refresh(self):
         if not self.window.api or not (self.window.current_user or {}).get("is_admin"):
             return
-        self.window.run_api(self._load_all_users, self._populate_users, busy=self.refresh_button)
+        self.window.run_api(self._load_users_page, self._populate_users, busy=self.refresh_button)
 
-    def _load_all_users(self):
-        users = []
-        page = 1
-        page_size = 200
-        while True:
-            result = self.window.api.list_users_page(page=page, page_size=page_size)
-            batch = list(result.get("items") or [])
-            users.extend(batch)
-            total = int(result.get("total", len(users)))
-            if not batch or len(users) >= total:
-                break
-            page += 1
-        return users
+    def _load_users_page(self):
+        return self.window.api.list_users_page(
+            q=self.user_search.text().strip() or None,
+            page=self.user_page,
+            page_size=self.user_page_size,
+        )
 
-    def _populate_users(self, users):
+    def _populate_users(self, payload):
         selected_id = self.user_combo.currentData()
-        self.users = list(users or [])
+        self.users = list(payload.get("items") or [])
+        self.user_page = int(payload.get("page", self.user_page))
+        self.user_page_size = int(payload.get("page_size", self.user_page_size))
+        self.user_total = int(payload.get("total", len(self.users)))
         self._loading = True
         self.user_combo.clear()
-        self.user_combo.addItem("انتخاب کاربر…", None)
+        self.user_combo.addItem("انتخاب کاربر از نتایج…", None)
         for user in self.users:
-            suffix = " · مدیر" if user.get("is_admin") else ""
-            self.user_combo.addItem(user.get("username", "—") + suffix, user.get("id"))
+            parts = [user.get("username", "—")]
+            parts.append("مدیر" if user.get("is_admin") else "کاربر")
+            parts.append("فعال" if user.get("is_active", True) else "غیرفعال")
+            self.user_combo.addItem(" · ".join(parts), user.get("id"))
         idx = self.user_combo.findData(selected_id) if selected_id else -1
-        self.user_combo.setCurrentIndex(idx if idx >= 0 else (1 if self.users else 0))
+        self.user_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        pages = max(1, (self.user_total + self.user_page_size - 1) // self.user_page_size)
+        self.user_page_label.setText("صفحه {} از {} · {} کاربر".format(self.user_page, pages, self.user_total))
+        self.user_previous_button.setEnabled(self.user_page > 1)
+        self.user_next_button.setEnabled(self.user_page < pages)
         self._loading = False
         self._select_user()
+
+    def _user_page_size_changed(self, *_args):
+        self.user_page_size = int(self.user_page_size_combo.currentData() or 15)
+        self.user_page = 1
+        if self.window.api:
+            self.window.run_api(self._load_users_page, self._populate_users, busy=self.refresh_button)
+
+    def _previous_user_page(self):
+        if self.user_page > 1:
+            self.user_page -= 1
+            self.window.run_api(self._load_users_page, self._populate_users, busy=self.refresh_button)
+
+    def _next_user_page(self):
+        pages = max(1, (self.user_total + self.user_page_size - 1) // self.user_page_size)
+        if self.user_page < pages:
+            self.user_page += 1
+            self.window.run_api(self._load_users_page, self._populate_users, busy=self.refresh_button)
 
     def _selected_user(self):
         uid = self.user_combo.currentData()
