@@ -146,6 +146,8 @@ def create_product(payload: ProductCreate, user=Depends(require_permission("prod
             image_path=payload.image_path,
             custom_product=payload.custom_product,
             category=payload.category_id,
+            track_stock=payload.track_stock,
+            reorder_level=float(payload.reorder_level),
         )
         return _serialize(record)
 
