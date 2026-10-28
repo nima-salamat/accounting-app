@@ -3,6 +3,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from peewee import JOIN
 
 from accounting_app.database.connection import DBManager
 from accounting_app.database.models import Product, StockMovement, User
@@ -62,7 +63,7 @@ def list_stock_movements(
     _user=Depends(require_permission("warehouse", "read")),
 ):
     with DBManager():
-        query = StockMovement.select().join(Product).switch(StockMovement).join(User)
+        query = StockMovement.select().join(Product).switch(StockMovement).join(User, join_type=JOIN.LEFT_OUTER)
         if product_id is not None:
             query = query.where(StockMovement.product == product_id)
         total = query.count()
@@ -74,7 +75,7 @@ def list_stock_movements(
                 "product_id": movement.product_id,
                 "product_name": movement.product.name,
                 "user_id": movement.user_id,
-                "username": movement.user.username,
+                "username": movement.performed_by or (movement.user.username if movement.user_id else "کاربر حذف‌شده"),
                 "quantity_change": movement.quantity_change,
                 "stock_before": movement.stock_before,
                 "stock_after": movement.stock_after,
@@ -124,6 +125,7 @@ def adjust_inventory(
         movement = StockMovement.create(
             product=product.id,
             user=user.id,
+            performed_by=user.username,
             quantity_change=delta,
             stock_before=before,
             stock_after=after,
@@ -135,7 +137,7 @@ def adjust_inventory(
             "product_id": product.id,
             "product_name": product.name,
             "user_id": user.id,
-            "username": user.username,
+            "username": movement.performed_by,
             "quantity_change": movement.quantity_change,
             "stock_before": movement.stock_before,
             "stock_after": movement.stock_after,
