@@ -410,6 +410,7 @@ class ReceiptsPage(QFrame):
         super().__init__()
         self.window, self.records = window, []
         self.current_page, self.page_size = 1, 25
+        self.total_records = 0
         self.base_columns = [
             ("id", "شناسه"), ("day_receipt_id", "شماره روزانه"),
             ("total_price", "مبلغ کل"), ("payed", "پرداخت"), ("created_at", "زمان"),
@@ -459,25 +460,37 @@ class ReceiptsPage(QFrame):
         pager.addWidget(self.next_page_button)
         layout.addLayout(pager)
 
-    def refresh(self):
+    def refresh(self, *_args):
         if self.window.api:
             self.window.run_api(self._load_receipts_payload, self.populate, busy=self.refresh_button)
 
     def _load_receipts_payload(self):
-        records = self.window.api.list_receipts(page_size=200)
+        page_data = self.window.api.list_receipts_page(
+            page=self.current_page, page_size=self.page_size
+        )
+        records = list(page_data.get("items") or [])
         custom = {"fields": [], "values": {}}
         if records and can_access(self.window.current_user, "schemas", "read"):
             custom = self.window.api.get_custom_table_data(
                 "receipts", [record.get("id") for record in records]
             )
-        return {"records": records, "custom": custom or custom}
+        return {
+            "records": records,
+            "total": int(page_data.get("total", len(records))),
+            "page": int(page_data.get("page", self.current_page)),
+            "custom": custom or {"fields": [], "values": {}},
+        }
 
     def populate(self, payload):
         if isinstance(payload, dict) and "records" in payload:
             self.records = list(payload.get("records") or [])
+            self.total_records = int(payload.get("total", len(self.records)))
+            self.current_page = int(payload.get("page", 1))
             custom = payload.get("custom") or {}
         else:
             self.records = list(payload or [])
+            self.total_records = len(self.records)
+            self.current_page = 1
             custom = {}
         self.custom_fields = list(custom.get("fields") or [])
         values_by_id = custom.get("values") or {}
@@ -494,11 +507,11 @@ class ReceiptsPage(QFrame):
         self._render_page()
 
     def _render_page(self):
-        total = len(self.records)
+        total = self.total_records
         pages = max(1, (total + self.page_size - 1) // self.page_size)
         self.current_page = min(max(1, self.current_page), pages)
         start = (self.current_page - 1) * self.page_size
-        visible = self.records[start:start + self.page_size]
+        visible = self.records
         self.table.setRowCount(0)
         for row, record in enumerate(visible):
             self.table.insertRow(row)
@@ -525,18 +538,18 @@ class ReceiptsPage(QFrame):
     def _page_size_changed(self, *_args):
         self.page_size = int(self.page_size_combo.currentData() or 25)
         self.current_page = 1
-        self._render_page()
+        self.refresh()
 
     def previous_page(self):
         if self.current_page > 1:
             self.current_page -= 1
-            self._render_page()
+            self.refresh()
 
     def next_page(self):
-        pages = max(1, (len(self.records) + self.page_size - 1) // self.page_size)
+        pages = max(1, (self.total_records + self.page_size - 1) // self.page_size)
         if self.current_page < pages:
             self.current_page += 1
-            self._render_page()
+            self.refresh()
 
     def selected(self):
         row=self.table.currentRow()
