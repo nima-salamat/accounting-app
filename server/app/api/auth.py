@@ -90,6 +90,8 @@ def setup(payload: SetupRequest, request: Request):
             payload.password,
             payload.password_confirmation,
             payload.schema_rows,
+            payload.company_name,
+            payload.business_profile,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
