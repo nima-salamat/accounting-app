@@ -907,6 +907,7 @@ class KioskShopPage(QFrame):
         if paid:
             auto_print_invoice(receipt, template, self.window)
         self.clear_cart()
+        self.seat_number.setCurrentIndex(0)
         self.window.show_confirmation(receipt, paid, result.get("transaction_id"))
         self.refresh_catalog()
 
