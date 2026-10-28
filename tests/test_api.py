@@ -2,16 +2,21 @@
 import os
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 from pathlib import Path
 
 os.environ.setdefault("ACCOUNTING_APP_SECRET_KEY", "test-signing-key-with-more-than-32-characters")
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from accounting_app.database.connection import DBManager, db, initialize_db
 from accounting_app.database.models import Product, Receipt
 from manager.db import create_db
 from server.app.main import app
+from server.app.api.auth import _authorize_setup
+from server.app.schemas import SetupRequest
 
 
 class ApiTests(unittest.TestCase):
@@ -155,6 +160,30 @@ class ApiTests(unittest.TestCase):
             json={"name": "نباید ساخته شود", "buy_price": 1, "sell_price": 2},
         )
         self.assertEqual(denied.status_code, 403)
+
+    def test_remote_first_run_requires_a_separate_bootstrap_token(self):
+        request = SimpleNamespace(client=SimpleNamespace(host="192.0.2.10"))
+        payload = SetupRequest(
+            username="admin1",
+            password="correct horse",
+            password_confirmation="correct horse",
+        )
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ACCOUNTING_APP_SETUP_TOKEN", None)
+            with self.assertRaises(HTTPException) as denied:
+                _authorize_setup(request, payload)
+            self.assertEqual(denied.exception.status_code, 403)
+
+        with patch.dict(os.environ, {"ACCOUNTING_APP_SETUP_TOKEN": "separate-setup-secret"}):
+            with self.assertRaises(HTTPException):
+                _authorize_setup(request, payload)
+            authorized = SetupRequest(
+                username="admin1",
+                password="correct horse",
+                password_confirmation="correct horse",
+                setup_token="separate-setup-secret",
+            )
+            _authorize_setup(request, authorized)
 
 
 if __name__ == "__main__":

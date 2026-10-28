@@ -1,6 +1,8 @@
 """Small thread-aware HTTP client for the standalone accounting API."""
+import ipaddress
 import threading
 import uuid
+from urllib.parse import urlsplit
 
 import requests
 
@@ -23,12 +25,32 @@ class AccountingApiClient:
     """Client API wrapper. Network operations should be called from a Qt worker thread."""
 
     def __init__(self, base_url="http://127.0.0.1:8000", timeout=(3.05, 30.0)):
-        self.base_url = base_url.rstrip("/")
+        self.base_url = self._validate_base_url(base_url)
         self.timeout = timeout
         self._thread_local = threading.local()
         self._token_lock = threading.RLock()
         self._access_token = None
         self._last_idempotency_key = None
+
+    @staticmethod
+    def _validate_base_url(base_url):
+        parsed = urlsplit(str(base_url).strip())
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            raise ValueError("نشانی API باید یک URL معتبر HTTP یا HTTPS باشد.")
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError("نشانی API نباید اطلاعات ورود، query یا fragment داشته باشد.")
+        if parsed.scheme == "http":
+            try:
+                local_only = ipaddress.ip_address(parsed.hostname).is_loopback
+            except ValueError:
+                local_only = parsed.hostname.lower() == "localhost"
+            if not local_only:
+                raise ValueError("برای سرور راه دور فقط HTTPS مجاز است.")
+        try:
+            parsed.port
+        except ValueError as exc:
+            raise ValueError("شماره پورت نشانی API معتبر نیست.") from exc
+        return parsed.geturl().rstrip("/")
 
     @property
     def access_token(self):
