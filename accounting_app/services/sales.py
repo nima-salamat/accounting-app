@@ -36,7 +36,7 @@ def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None):
             total += Decimal(str(sell_price)) * quantity
         except (InvalidOperation, ValueError) as exc:
             raise ValueError("محاسبه مبلغ فاکتور نامعتبر است.") from exc
-        normalized_items.append((product_id, buy_price, sell_price, quantity))
+        normalized_items.append((product_id, buy_price, sell_price, quantity, str(getattr(product, "name", ""))))
 
     now = datetime.now()
     day_start = datetime.combine(now.date(), time.min)
@@ -64,7 +64,7 @@ def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None):
                 product.stock_quantity = after
                 product.save(only=[Product.stock_quantity, Product.updated_at])
                 StockMovement.create(
-                    product=product.id, user=user.id,
+                    product=product.id, user=user.id, performed_by=user.username,
                     quantity_change=-net_change, stock_before=before, stock_after=after,
                     reason="sale_edit_restore", reference_id=str(receipt.id),
                     notes="برگشت اثر نسخهٔ قبلی رسید برای ویرایش",
@@ -89,7 +89,7 @@ def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None):
             )
 
         # Conditional SQL update protects against two clients selling the same final units.
-        for product_id, _buy_price, _sell_price, quantity in normalized_items:
+        for product_id, _buy_price, _sell_price, quantity, _product_name in normalized_items:
             product = Product.get_by_id(product_id)
             if not product.track_stock:
                 continue
@@ -110,7 +110,7 @@ def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None):
                 )
             updated_product = Product.get_by_id(product_id)
             StockMovement.create(
-                product=product_id, user=user.id,
+                product=product_id, user=user.id, performed_by=user.username,
                 quantity_change=-float(quantity), stock_before=before,
                 stock_after=float(updated_product.stock_quantity),
                 reason="sale_edit_issue" if edit_mode else "sale",
@@ -126,10 +126,11 @@ def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None):
                 "updated_at": now,
                 "receipt": receipt.id,
                 "product": product_id,
+                "product_name": product_name,
                 "buy_price": buy_price,
                 "sell_price": sell_price,
                 "quantity": quantity,
             }
-            for product_id, buy_price, sell_price, quantity in normalized_items
+            for product_id, buy_price, sell_price, quantity, product_name in normalized_items
         ]).execute()
     return receipt
