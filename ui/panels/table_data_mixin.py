@@ -7,6 +7,7 @@ from PySide2.QtWidgets import (
     QAction, QMenu, QMessageBox, QPushButton, QTableWidgetItem,
 )
 
+from ui.thread import TrackingQThread as QThread
 from ui.panels.data_workers import DataLoader
 from ui.panels.date_utils import to_jalali
 from ui.panels.image_widgets import PreviewDialog
