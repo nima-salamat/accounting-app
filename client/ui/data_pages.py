@@ -408,7 +408,7 @@ class ProductsPage(ApiTablePage):
             {"key": "custom_product", "label": "محصول سفارشی", "kind": "bool"},
             {"key": "track_stock", "label": "رهگیری موجودی", "kind": "bool"},
             {"key": "reorder_level", "label": "حد سفارش", "kind": "number", "default": 0, "required": True},
-            {"key": "image_file", "label": "عکس محصول (اختیاری)", "kind": "image"},
+            {"key": "image_file", "display_key": "image_path", "label": "عکس محصول (اختیاری)", "kind": "image"},
         ]
         super().__init__(window, "محصولات", "نام، قیمت‌ها و دسته‌بندی کالاها.",
             [("id","شناسه"),("name","نام محصول"),("image_path","تصویر"),
