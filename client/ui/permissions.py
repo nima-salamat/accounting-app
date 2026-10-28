@@ -12,6 +12,11 @@ RESOURCE_LABELS = {
     "reports": "گزارش‌ها",
     "schemas": "مدل‌ها و فیلدهای سفارشی",
     "invoices": "قالب فاکتور",
+    "returns": "مرجوعی و استرداد",
+    "journals": "اسناد و دفاتر حسابداری",
+    "fiscal_years": "سال مالی",
+    "audit": "سوابق فعالیت کارکنان",
+    "pos_devices": "دستگاه‌های صندوق",
 }
 ACTION_LABELS = (("r", "مشاهده"), ("c", "ایجاد"), ("u", "ویرایش"), ("d", "حذف"))
 
@@ -25,14 +30,17 @@ ROLE_GRANTS = {
     "inventory": {
         "products": "ru", "categories": "r", "warehouse": "rcud",
         "checks_in": "r", "checks_out": "r", "sales": "c",
-        "receipts": "r", "reports": "r", "invoices": "r",
+        "receipts": "r", "reports": "r", "invoices": "r", "returns": "rc",
     },
     "accountant": {
         "products": "rcud", "categories": "rcud", "warehouse": "rcud",
         "checks_in": "rcud", "checks_out": "rcud", "sales": "cu",
         "receipts": "rcud", "reports": "r", "schemas": "r", "invoices": "ru",
+        "returns": "rcud", "journals": "rcud", "fiscal_years": "ru", "audit": "r",
+        "pos_devices": "r",
     },
     "viewer": {resource: "r" for resource in RESOURCE_LABELS},
+    "kiosk": {"products": "r", "sales": "c", "invoices": "r"},
     "custom": {},
 }
 ROLE_LABELS = {
@@ -41,6 +49,7 @@ ROLE_LABELS = {
     "accountant": "حسابدار",
     "viewer": "فقط مشاهده",
     "custom": "سفارشی",
+    "kiosk": "کیوسک خودخدمت",
 }
 
 
