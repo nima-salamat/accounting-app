@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 
 from client.ui.forms import RecordDialog
 from client.ui.permissions import can_access
+from client.ui.invoice_dialog import InvoiceDialog
 
 
 def _table(parent, headers, hidden_first=False):
@@ -404,7 +405,10 @@ class PurchaseInvoicesTab(QFrame):
         self.total = 0
         self.setObjectName("Card")
         root = QVBoxLayout(self)
-        header = QHBoxLayout()
+        header = QVBoxLayout()
+        header.setSpacing(8)
+        filter_row = QHBoxLayout()
+        action_row = QHBoxLayout()
         self.search = QLineEdit()
         self.search.setPlaceholderText("شماره فاکتور یا نام تأمین‌کننده…")
         self.search.returnPressed.connect(self.refresh)
@@ -421,10 +425,18 @@ class PurchaseInvoicesTab(QFrame):
         self.create_button.clicked.connect(self.create_invoice)
         self.detail_button = QPushButton("جزئیات")
         self.detail_button.clicked.connect(self.show_detail)
+        self.print_button = QPushButton("چاپ سند")
+        self.print_button.clicked.connect(self.print_document)
         self.payment_button = QPushButton("ثبت پرداخت")
         self.payment_button.clicked.connect(self.record_payment)
-        for widget in (self.search, self.status_filter, self.refresh_button, self.create_button, self.detail_button, self.payment_button):
-            header.addWidget(widget)
+        filter_row.addWidget(self.search, 1)
+        filter_row.addWidget(self.status_filter)
+        filter_row.addWidget(self.refresh_button)
+        action_row.addStretch(1)
+        for widget in (self.create_button, self.detail_button, self.print_button, self.payment_button):
+            action_row.addWidget(widget)
+        header.addLayout(filter_row)
+        header.addLayout(action_row)
         root.addLayout(header)
         self.table = _table(self, ["شناسه", "شماره فاکتور", "تأمین‌کننده", "تاریخ", "جمع", "پرداخت‌شده", "مانده", "وضعیت"], True)
         root.addWidget(self.table, 1)
@@ -439,6 +451,7 @@ class PurchaseInvoicesTab(QFrame):
     def set_permissions(self, user):
         self.refresh_button.setVisible(can_access(user, "purchase_invoices", "read"))
         self.detail_button.setVisible(can_access(user, "purchase_invoices", "read"))
+        self.print_button.setVisible(can_access(user, "purchase_invoices", "read"))
         self.create_button.setVisible(can_access(user, "purchase_invoices", "create"))
         self.payment_button.setVisible(can_access(user, "purchase_invoices", "create"))
 
@@ -512,6 +525,47 @@ class PurchaseInvoicesTab(QFrame):
         page = getattr(self.window, "accounting_reports_page", None)
         if page:
             page.refresh()
+
+    def print_document(self):
+        item = self._selected()
+        if not item:
+            self.window.show_error("ابتدا یک فاکتور خرید را انتخاب کنید.")
+            return
+        self.window.run_api(
+            lambda: self.window.api.get_purchase_invoice(item["id"]),
+            self._load_purchase_for_print,
+        )
+
+    def _load_purchase_for_print(self, invoice):
+        receipt = {
+            "id": invoice.get("id"),
+            "day_receipt_id": invoice.get("invoice_number") or str(invoice.get("id") or "")[:8],
+            "created_at": invoice.get("invoice_date"),
+            "payed": invoice.get("status") == "paid",
+            "total_price": invoice.get("total_amount", 0),
+            "items": [
+                {
+                    "product_name": line.get("product_name") or line.get("description") or "کالا",
+                    "quantity": line.get("quantity", 0),
+                    "sell_price": line.get("unit_cost", 0),
+                }
+                for line in invoice.get("items") or []
+            ],
+            "seat_number": invoice.get("supplier_name") or "",
+        }
+        self.window.run_api(
+            lambda: self.window.api.get_invoice_template(kind="purchase_slip"),
+            lambda template: self._show_purchase_print_preview(receipt, template),
+        )
+
+    def _show_purchase_print_preview(self, receipt, template):
+        template = dict(template or {})
+        for element in template.get("elements") or []:
+            if element.get("type") == "seat_number":
+                element["label"] = "تأمین‌کننده"
+            elif element.get("type") == "payment_status":
+                element["label"] = "وضعیت تسویه"
+        InvoiceDialog(receipt, template, self).exec()
 
     def show_detail(self):
         item = self._selected()

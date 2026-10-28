@@ -9,7 +9,7 @@ try:
 except ImportError:  # Keep the interface usable before optional icon assets are installed.
     qta = None
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
+    QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
     QPushButton, QStackedWidget, QVBoxLayout, QWidget,
 )
 
@@ -62,9 +62,10 @@ class AdminOverviewPage(QFrame):
             c.addWidget(title_label);c.addWidget(value)
             self.metric_labels[key]=value;self.metric_layout.addWidget(card,1)
         layout.addLayout(self.metric_layout)
-        card=QFrame();card.setObjectName("Card");actions=QVBoxLayout(card)
-        actions.setContentsMargins(18,18,18,18);actions.setSpacing(12)
-        a=QLabel("کارهای مدیریتی");a.setObjectName("PageTitle");actions.addWidget(a)
+        card=QFrame();card.setObjectName("Card");actions_root=QVBoxLayout(card)
+        actions_root.setContentsMargins(18,18,18,18);actions_root.setSpacing(12)
+        a=QLabel("دسترسی سریع مدیریت");a.setObjectName("PageTitle");actions_root.addWidget(a)
+        actions=QGridLayout();actions.setHorizontalSpacing(10);actions.setVerticalSpacing(10)
         self.sessions_button=QPushButton("مدیریت نشست‌ها و درخواست‌های ورود  →")
         self.sessions_button.setObjectName("PrimaryButton")
         self.sessions_button.clicked.connect(lambda:window.navigate("sessions"))
@@ -74,7 +75,13 @@ class AdminOverviewPage(QFrame):
         self.schemas_button.clicked.connect(lambda:window.navigate("schemas"))
         self.kiosk_button=QPushButton("فعال‌سازی و تنظیم محصولات کیوسک  →")
         self.kiosk_button.clicked.connect(lambda:window.navigate("kiosk"))
-        actions.addWidget(self.sessions_button);actions.addWidget(self.users_button);actions.addWidget(self.schemas_button);actions.addWidget(self.kiosk_button)
+        for button in (self.sessions_button, self.users_button, self.schemas_button, self.kiosk_button):
+            button.setMinimumHeight(46)
+        actions.addWidget(self.sessions_button, 0, 0)
+        actions.addWidget(self.users_button, 0, 1)
+        actions.addWidget(self.schemas_button, 1, 0)
+        actions.addWidget(self.kiosk_button, 1, 1)
+        actions_root.addLayout(actions)
         layout.addWidget(card)
         note=QLabel("حساب جدیدی که گزینهٔ «تأیید مدیر برای هر نشست» دارد، تا فعال‌سازی در بخش نشست‌ها نمی‌تواند به endpointهای محافظت‌شده دسترسی پیدا کند.")
         note.setObjectName("StatusPill");note.setWordWrap(True);layout.addWidget(note);layout.addStretch(1)
@@ -113,17 +120,17 @@ class AccountingMainWindow(QMainWindow):
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
         self.root=QWidget(self);self.root.setObjectName("AppRoot")
-        outer=QVBoxLayout(self.root);outer.setContentsMargins(14,14,14,14);outer.setSpacing(10)
+        outer=QVBoxLayout(self.root);outer.setContentsMargins(10,10,10,10);outer.setSpacing(6)
         # Retain the legacy navigation widgets as permission state, but expose navigation
         # through the compact, grouped workbar instead of a long, crowded sidebar.
         self.sidebar=self._build_sidebar()
         self.sidebar.hide()
         main_area=QWidget()
-        main_layout=QVBoxLayout(main_area);main_layout.setContentsMargins(0,0,0,0);main_layout.setSpacing(10)
+        main_layout=QVBoxLayout(main_area);main_layout.setContentsMargins(0,0,0,0);main_layout.setSpacing(6)
+        self.topbar=self._build_topbar()
         self.workbar=self._build_workbar()
         main_layout.addWidget(self.workbar)
-        self.topbar=self._build_topbar()
-        main_layout.addWidget(self.topbar)
+        self.topbar.hide()
         self.page_stack=QStackedWidget()
         main_layout.addWidget(self.page_stack,1)
         self.status_bar_frame=QFrame();self.status_bar_frame.setObjectName("Card")
@@ -224,8 +231,8 @@ class AccountingMainWindow(QMainWindow):
         frame.setObjectName("Workbar")
         frame.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         root = QVBoxLayout(frame)
-        root.setContentsMargins(10, 7, 10, 7)
-        root.setSpacing(6)
+        root.setContentsMargins(8, 4, 8, 4)
+        root.setSpacing(3)
 
         primary_row = QFrame(frame)
         primary_row.setObjectName("WorkbarPrimaryRow")
@@ -248,13 +255,31 @@ class AccountingMainWindow(QMainWindow):
             button.setCheckable(True)
             button.setProperty("active", False)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setMinimumHeight(38)
+            button.setMinimumHeight(32)
             button.clicked.connect(
                 lambda _checked=False, target=group_id: self._toggle_workbar_group(target)
             )
             self._workbar_group_buttons[group_id] = button
             primary_layout.addWidget(button)
         primary_layout.addStretch(1)
+        # Merge global actions into the navigation row instead of drawing a second, bulky header.
+        topbar_layout = self.topbar.layout()
+        for widget in (self.connection_badge, self.theme_button, self.search_button, self.logout_button):
+            topbar_layout.removeWidget(widget)
+            widget.setParent(primary_row)
+            widget.setObjectName("CompactActionButton")
+            widget.setMinimumHeight(28)
+            widget.setMaximumHeight(34)
+            widget.setToolTip({
+                self.connection_badge: "وضعیت اتصال به API",
+                self.theme_button: "تغییر تم روشن / تاریک",
+                self.search_button: "جست‌وجوی سریع (Ctrl+K)",
+                self.logout_button: "خروج از حساب",
+            }[widget])
+            primary_layout.addWidget(widget)
+        self.theme_button.setText("☾" if self.mode == "light" else "☀")
+        self.search_button.setText("⌕")
+        self.connection_badge.setText("● API")
         root.addWidget(primary_row)
 
         self.workbar_submenu_frame = QFrame(frame)
@@ -339,8 +364,8 @@ class AccountingMainWindow(QMainWindow):
         self.workbar.updateGeometry()
 
     def _build_topbar(self):
-        frame=QFrame();frame.setObjectName("Card")
-        layout=QHBoxLayout(frame);layout.setContentsMargins(18,12,18,12)
+        frame=QFrame(self.root);frame.setObjectName("Card")
+        layout=QHBoxLayout(frame);layout.setContentsMargins(8,4,8,4)
         self.breadcrumb=QLabel("");self.breadcrumb.setObjectName("PageTitle")
         self.page_subtitle=QLabel("");self.page_subtitle.setObjectName("PageSubtitle")
         self.breadcrumb.hide()
@@ -616,7 +641,8 @@ class AccountingMainWindow(QMainWindow):
     def _apply_theme(self):
         self.setStyleSheet(stylesheet(self.mode))
         if hasattr(self,"theme_button"):
-            self.theme_button.setText("☀ تم روشن" if self.mode=="dark" else "☾ تم تاریک")
+            self.theme_button.setText("☀" if self.mode=="dark" else "☾")
+            self.theme_button.setToolTip("تغییر تم روشن / تاریک")
 
     def connect_to_api(self,url):
         try:

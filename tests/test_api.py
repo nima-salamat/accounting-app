@@ -320,6 +320,30 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(fetched.json()["elements"], saved.json()["elements"])
         self.assertTrue(fetched.json()["show_border"])
 
+    def test_invoice_templates_are_independent_for_each_print_workflow(self):
+        headers = self.setup_admin()
+        default_invoice = self.client.get("/api/v1/invoices/template", headers=headers)
+        pos_default = self.client.get("/api/v1/invoices/template?kind=pos_receipt", headers=headers)
+        kiosk_default = self.client.get("/api/v1/invoices/template?kind=kiosk_receipt", headers=headers)
+        self.assertEqual(default_invoice.status_code, 200, default_invoice.text)
+        self.assertEqual(pos_default.status_code, 200, pos_default.text)
+        self.assertEqual(kiosk_default.status_code, 200, kiosk_default.text)
+        original_invoice_name = default_invoice.json()["company_name"]
+        self.assertEqual(default_invoice.json()["paper_size"], "A4")
+        self.assertEqual(pos_default.json()["paper_size"], "receipt80")
+        self.assertEqual(kiosk_default.json()["paper_size"], "receipt80")
+
+        saved_pos = self.client.put(
+            "/api/v1/invoices/template?kind=pos_receipt", headers=headers,
+            json={"company_name": "رسید صندوق مستقل", "paper_size": "receipt80",
+                  "orientation": "portrait", "margin_mm": 4},
+        )
+        self.assertEqual(saved_pos.status_code, 200, saved_pos.text)
+        fetched_pos = self.client.get("/api/v1/invoices/template?kind=pos_receipt", headers=headers)
+        fetched_invoice = self.client.get("/api/v1/invoices/template", headers=headers)
+        self.assertEqual(fetched_pos.json()["company_name"], "رسید صندوق مستقل")
+        self.assertEqual(fetched_invoice.json()["company_name"], original_invoice_name)
+
     def test_inactive_accounts_cannot_login(self):
         admin_headers = self.setup_admin()
         created = self.client.post(

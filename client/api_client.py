@@ -670,11 +670,18 @@ class AccountingApiClient:
         """Update shared UI design tokens; the API restricts this to administrators."""
         return self._request("PUT", "/api/v1/appearance-settings", json_body=values)
 
-    def get_invoice_template(self):
-        return self._request("GET", "/api/v1/invoices/template")
+    def get_invoice_template(self, *, kind="invoice"):
+        return self._request(
+            "GET", "/api/v1/invoices/template",
+            params={"kind": kind},
+        )
 
-    def save_invoice_template(self, **values):
-        return self._request("PUT", "/api/v1/invoices/template", json_body=values)
+    def save_invoice_template(self, *, kind="invoice", **values):
+        return self._request(
+            "PUT", "/api/v1/invoices/template",
+            params={"kind": kind},
+            json_body=values,
+        )
 
     def update_warehouse(self, record_id, **values):
         return self._request("PATCH", "/api/v1/warehouses/{}".format(record_id), json_body=values)

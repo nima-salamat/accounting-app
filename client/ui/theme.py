@@ -2,6 +2,9 @@
 from copy import deepcopy
 import re
 
+from PySide6.QtCore import QEvent, QObject
+from PySide6.QtWidgets import QApplication, QAbstractSpinBox
+
 LIGHT = {
     "window": "#F3F6FB", "surface": "#FFFFFF", "surface_alt": "#F7F9FC",
     "text": "#172337", "muted": "#718096", "border": "#DEE6F0",
@@ -31,6 +34,33 @@ DEFAULT_DESIGN = {
     "section_spacing": 12,
 }
 _CURRENT_DESIGN = dict(DEFAULT_DESIGN)
+_SPINBOX_WHEEL_GUARD = None
+
+
+class _NoSpinboxWheelChanges(QObject):
+    """Prevent accidental quantity/price changes when scrolling a form or page."""
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.Wheel:
+            widget = watched
+            while widget is not None:
+                if isinstance(widget, QAbstractSpinBox):
+                    event.accept()
+                    return True
+                widget = widget.parentWidget() if hasattr(widget, "parentWidget") else None
+        return False
+
+
+def install_spinbox_wheel_guard(app=None):
+    """Install one application-wide guard for every QSpinBox/QDoubleSpinBox."""
+    global _SPINBOX_WHEEL_GUARD
+    app = app or QApplication.instance()
+    if app is None:
+        return None
+    if _SPINBOX_WHEEL_GUARD is None:
+        _SPINBOX_WHEEL_GUARD = _NoSpinboxWheelChanges(app)
+        app.installEventFilter(_SPINBOX_WHEEL_GUARD)
+    return _SPINBOX_WHEEL_GUARD
 
 
 def normalize_design_config(values=None):
@@ -77,10 +107,12 @@ def get_design_config():
 
 def stylesheet(mode="light", design=None):
     """Build a consistent light/dark stylesheet using normalized central design tokens."""
+    install_spinbox_wheel_guard()
     colors = dict(DARK if mode == "dark" else LIGHT)
     d = normalize_design_config(_CURRENT_DESIGN if design is None else design)
     density_factor = {"compact": 0.82, "comfortable": 1.0, "spacious": 1.18}[d["density"]]
     colors.update({
+        "control_content_height": max(18, round(d["control_height"] - 2 * d["control_padding"] - 2)),
         "font_family": d["font_family"],
         "font_size": d["font_size"],
         "heading_size": round(d["font_size"] * 1.72 * d["heading_scale"]),
@@ -127,7 +159,7 @@ def stylesheet(mode="light", design=None):
     QPushButton#AuthLoginButton {{ background: {primary}; color: white; border: 1px solid {primary}; border-radius: {corner_radius}px; padding: 10px 16px; font-size: {auth_button_size}px; font-weight: 850; }}
     QPushButton#AuthLoginButton:hover {{ background: {primary_hover}; }}
     QPushButton#AuthConnectButton {{ min-width: 78px; background: {surface}; }}
-    QLineEdit#AuthInput {{ min-height: 44px; padding: 10px 12px; }}
+    QLineEdit#AuthInput {{ min-height: 26px; padding: 6px 12px; }}
     QCheckBox#AuthRemember {{ font-weight: 650; padding: 3px 0; }}
     QLabel#MetricValue {{ font-size: {metric_size}px; font-weight: 800; }}
     QLabel#MetricLabel {{ font-size: {font_size}px; color: {muted}; }}
@@ -144,6 +176,7 @@ def stylesheet(mode="light", design=None):
     QPushButton:pressed {{ padding-top: {control_padding}px; padding-bottom: {control_padding}px; }}
     QPushButton:focus {{ border: 2px solid {primary}; }}
     QPushButton:disabled {{ color: {muted}; background: {surface_alt}; }}
+    QPushButton#CompactActionButton {{ min-height: 24px; padding: 3px 8px; border-radius: {corner_radius}px; }}
     QPushButton#PrimaryButton {{ background: {primary}; color: #FFFFFF; border: 1px solid {primary}; }}
     QPushButton#PrimaryButton:hover {{ background: {primary_hover}; }}
     QPushButton#DangerButton {{ color: {danger}; border-color: {danger}; }}
@@ -164,7 +197,7 @@ def stylesheet(mode="light", design=None):
     QMenu::item:selected {{ background: {highlight}; color: {primary}; }}
     QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit, QDateTimeEdit, QTextEdit, QTextBrowser {{
         background: {surface}; color: {text}; border: 1px solid {border}; border-radius: {corner_radius}px;
-        padding: {control_padding}px {horizontal_padding}px; min-height: {control_height}px;
+        padding: {control_padding}px {horizontal_padding}px; min-height: {control_content_height}px;
         selection-background-color: {primary};
     }}
     QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTextEdit:focus {{ border: 1px solid {primary}; }}

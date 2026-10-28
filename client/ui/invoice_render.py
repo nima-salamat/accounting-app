@@ -80,7 +80,7 @@ DEFAULT_TEMPLATE = {
     "font_family": "Vazirmatn", "font_size": 11, "header_font_size": 23,
     "line_height": 1.8, "text_direction": "rtl",
     "margin_mm": 12, "accent_color": "#3157A4", "show_border": True,
-    "frame_border_color": "#CBD5E1",
+    "frame_border_color": "#CBD5E1", "roll_height_mm": None,
     "layout_order": ["company", "metadata", "items", "totals", "footer"],
     "block_settings": {
         "company": {"column": "full", "align": "right"},
@@ -101,11 +101,17 @@ def _text(value):
     return escape("" if value is None else str(value))
 
 
+def _fa_digits(value):
+    return str(value).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
+
+
 def _money(value):
     try:
-        return "{:,.2f}".format(float(value or 0))
+        number = float(value or 0)
+        formatted = "{:,.0f}".format(number) if number.is_integer() else "{:,.2f}".format(number).rstrip("0").rstrip(".")
+        return _fa_digits(formatted)
     except (TypeError, ValueError):
-        return "0.00"
+        return "۰"
 
 
 def _valid_color(value, fallback):
@@ -123,6 +129,11 @@ def page_dimensions(template=None):
     width, height = PAPER_DIMENSIONS_MM[paper]
     if config.get("orientation") == "landscape" and paper not in ("receipt80", "receipt58"):
         width, height = height, width
+    if paper in ("receipt80", "receipt58") and config.get("roll_height_mm"):
+        try:
+            height = max(height, min(4000.0, float(config["roll_height_mm"])))
+        except (TypeError, ValueError):
+            pass
     return float(width), float(height)
 
 
@@ -206,6 +217,11 @@ def _template_config(template=None):
     config["accent_color"] = _valid_color(config.get("accent_color"), DEFAULT_TEMPLATE["accent_color"])
     config["frame_border_color"] = _valid_color(config.get("frame_border_color"), DEFAULT_TEMPLATE["frame_border_color"])
     config["show_border"] = bool(config.get("show_border", True))
+    if config.get("roll_height_mm") is not None:
+        try:
+            config["roll_height_mm"] = max(1.0, min(4000.0, float(config["roll_height_mm"])))
+        except (TypeError, ValueError):
+            config["roll_height_mm"] = None
     config["elements"] = normalize_elements(config.get("elements"), config)
     config["block_settings"] = dict(DEFAULT_TEMPLATE["block_settings"])
     config["block_settings"].update(config.get("block_settings") or {})
@@ -221,9 +237,10 @@ def _receipt_number(receipt):
 def _receipt_date(receipt):
     value = str(receipt.get("created_at") or "")
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M")
+        formatted = datetime.fromisoformat(value.replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M")
+        return _fa_digits(formatted)
     except (ValueError, TypeError):
-        return value[:32] or "—"
+        return _fa_digits(value[:32] or "—")
 
 
 def _payment_label(receipt):
@@ -253,7 +270,7 @@ def _text_for_element(element, receipt, config):
     kind = element["type"]
     label = element.get("label") or ""
     if kind == "invoice_number":
-        return "{}: {}".format(label or "شماره فاکتور", _receipt_number(receipt))
+        return "{}: {}".format(label or "شماره فاکتور", _fa_digits(_receipt_number(receipt)))
     if kind == "invoice_date":
         return "{}: {}".format(label or "تاریخ", _receipt_date(receipt))
     if kind == "payment_status":
@@ -267,11 +284,11 @@ def _text_for_element(element, receipt, config):
     if kind == "text":
         text = element.get("text") or label
         replacements = {
-            "{{invoice_number}}": _receipt_number(receipt),
+            "{{invoice_number}}": _fa_digits(_receipt_number(receipt)),
             "{{date}}": _receipt_date(receipt),
             "{{total}}": _money(receipt.get("total_price")),
             "{{payment_status}}": _payment_label(receipt),
-            "{{seat_number}}": str(receipt.get("seat_number") or "—"),
+            "{{seat_number}}": _fa_digits(receipt.get("seat_number") or "—"),
             "{{company_name}}": str(config.get("company_name") or ""),
         }
         for token, value in replacements.items():
@@ -314,6 +331,8 @@ def draw_invoice_element(painter, rect, element, receipt=None, template=None, *,
         return
     rect = QRectF(rect)
     kind = element.get("type")
+    if not editor and not receipt.get("_is_final_page", True) and kind in ("totals", "footer"):
+        return
     font_family = config["font_family"]
     accent = config["accent_color"]
     frame_color = config["frame_border_color"]
@@ -364,24 +383,27 @@ def draw_invoice_element(painter, rect, element, receipt=None, template=None, *,
         has_more = len(items) > len(selected_items)
         headers = ["#", "شرح کالا", "تعداد", "قیمت واحد", "جمع"]
         ratios = [0.08, 0.39, 0.14, 0.19, 0.20]
-        x = content_rect.x()
-        header_rect = QRectF(x, content_rect.y(), content_rect.width(), row_h)
+        header_rect = QRectF(content_rect.x(), content_rect.y(), content_rect.width(), row_h)
         painter.setPen(QPen(QColor(frame_color), 0.25))
         painter.setBrush(QBrush(QColor(accent)))
         painter.drawRect(header_rect)
+        cursor = header_rect.right()
         for col, (header, ratio) in enumerate(zip(headers, ratios)):
-            cell = QRectF(x, header_rect.y(), content_rect.width() * ratio, row_h)
+            cell_width = content_rect.width() * ratio
+            cell_x = cursor - cell_width
+            cell = QRectF(cell_x, header_rect.y(), cell_width, row_h)
             if col:
                 painter.setPen(QPen(QColor(frame_color), 0.2))
                 painter.drawLine(cell.topLeft(), cell.bottomLeft())
             _draw_text(painter, cell.adjusted(0.6, 0, -0.4, 0), header,
                        font=_font(font_family, min(font_size, 8), bold=True),
                        color="#FFFFFF", align="center" if col in (0, 2, 3, 4) else "right", direction=direction)
-            x += cell.width()
+            cursor = cell_x
         row_h = min(row_h, max(0.1, (content_rect.height() - header_rect.height()) / max(1, len(selected_items) + int(has_more))))
+        row_start = int(receipt.get("_row_start", 0) or 0)
         for row_index, item in enumerate(selected_items):
             y = header_rect.bottom() + row_index * row_h
-            x = content_rect.x()
+            cursor = content_rect.right()
             name = item.get("product_name") or item.get("name") or "کالای حذف‌شده"
             quantity = item.get("quantity", 0)
             price = item.get("sell_price", item.get("price", 0))
@@ -389,23 +411,28 @@ def draw_invoice_element(painter, rect, element, receipt=None, template=None, *,
                 line_total = float(quantity or 0) * float(price or 0)
             except (TypeError, ValueError):
                 line_total = 0
-            values = [str(row_index + 1), str(name), str(quantity), _money(price), _money(line_total)]
+            values = [
+                _fa_digits(row_start + row_index + 1), str(name), _fa_digits(quantity),
+                _money(price), _money(line_total),
+            ]
             painter.setPen(QPen(QColor(frame_color), 0.2))
             painter.setBrush(QBrush(QColor("#FFFFFF" if row_index % 2 == 0 else "#F8FAFC")))
             painter.drawRect(QRectF(content_rect.x(), y, content_rect.width(), row_h))
             for col, (value, ratio) in enumerate(zip(values, ratios)):
-                cell = QRectF(x, y, content_rect.width() * ratio, row_h)
+                cell_width = content_rect.width() * ratio
+                cell_x = cursor - cell_width
+                cell = QRectF(cell_x, y, cell_width, row_h)
                 if col:
                     painter.setPen(QPen(QColor(frame_color), 0.2))
                     painter.drawLine(cell.topLeft(), cell.bottomLeft())
                 _draw_text(painter, cell.adjusted(0.7, 0, -0.5, 0), value,
                            font=_font(font_family, min(font_size, 8)),
                            color="#172337", align="right" if col == 1 else "center", direction=direction)
-                x += cell.width()
+                cursor = cell_x
         if has_more:
             y = header_rect.bottom() + len(selected_items) * row_h
             _draw_text(painter, QRectF(content_rect.x(), y, content_rect.width(), row_h),
-                       "… ادامه اقلام در فاکتور", font=_font(font_family, 7),
+                       "… ادامه اقلام در صفحه بعد", font=_font(font_family, 7),
                        color="#64748B", align="center", direction=direction)
         painter.setPen(QPen(QColor(frame_color), 0.3))
         painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -428,6 +455,68 @@ def draw_invoice_element(painter, rect, element, receipt=None, template=None, *,
         _draw_text(painter, content_rect, display, font=_font(font_family, font_size, bold=bold),
                    color=color, align=align, direction=direction)
     painter.restore()
+
+
+def prepare_print_template(template=None, receipt=None):
+    """Expand thermal-roll layouts for all items without converting the roll to multiple pages."""
+    config = _template_config(template)
+    if config["paper_size"] not in ("receipt80", "receipt58"):
+        return config
+    receipt = receipt or {}
+    elements = config["elements"]
+    table = next((item for item in elements if item["type"] == "items_table" and item.get("visible", True)), None)
+    if table is not None:
+        old_height = float(table["h_mm"])
+        item_count = len(receipt.get("items") or [])
+        wanted_height = max(old_height, (item_count + 1) * 4.7)
+        extra = wanted_height - old_height
+        old_bottom = float(table["y_mm"]) + old_height
+        table["h_mm"] = wanted_height
+        if extra > 0:
+            for element in elements:
+                if element is table:
+                    continue
+                if element["type"] in ("totals", "footer") and float(element["y_mm"]) >= old_bottom - 0.5:
+                    element["y_mm"] = float(element["y_mm"]) + extra
+    width, base_height = PAPER_DIMENSIONS_MM[config["paper_size"]]
+    bottom = max((float(item["y_mm"]) + float(item["h_mm"]) for item in elements if item.get("visible", True)), default=base_height)
+    try:
+        margin = max(3.0, min(20.0, float(config.get("margin_mm", 4))))
+    except (TypeError, ValueError):
+        margin = 4.0
+    config["roll_height_mm"] = max(float(base_height), bottom + margin)
+    return config
+
+
+def prepare_invoice_pages(receipt, template=None):
+    """Return (receipt slice, template) pairs for each physical print page."""
+    source = dict(receipt or {})
+    config = _template_config(template)
+    if config["paper_size"] in ("receipt80", "receipt58"):
+        prepared = prepare_print_template(config, source)
+        source["_row_start"] = 0
+        source["_is_final_page"] = True
+        return [(source, prepared)]
+
+    items = list(source.get("items") or [])
+    table = next((item for item in config["elements"] if item["type"] == "items_table" and item.get("visible", True)), None)
+    if table is None or len(items) < 2:
+        source["_row_start"] = 0
+        source["_is_final_page"] = True
+        return [(source, config)]
+    # Match the renderer's minimum row height so a page never silently drops trailing items.
+    capacity = max(1, int(float(table["h_mm"]) / 4.2) - 1)
+    chunks = [items[index:index + capacity] for index in range(0, len(items), capacity)] or [[]]
+    pages = []
+    for page_index, chunk in enumerate(chunks):
+        current = dict(source)
+        current["items"] = chunk
+        current["_row_start"] = page_index * capacity
+        current["_is_final_page"] = page_index == len(chunks) - 1
+        current["_page_index"] = page_index
+        current["_page_count"] = len(chunks)
+        pages.append((current, config))
+    return pages
 
 
 def draw_invoice_page(painter, target_rect, receipt=None, template=None, *, editor=False, selected_id=None):
@@ -464,6 +553,8 @@ def draw_invoice_page(painter, target_rect, receipt=None, template=None, *, edit
 
 def _element_html(element, receipt, config):
     kind = element["type"]
+    if not receipt.get("_is_final_page", True) and kind in ("totals", "footer"):
+        return ""
     if not element.get("visible", True):
         return ""
     x, y, w, h = (element["x_mm"], element["y_mm"], element["w_mm"], element["h_mm"])
@@ -486,8 +577,8 @@ def _element_html(element, receipt, config):
             except (TypeError, ValueError):
                 total = 0
             rows.append("<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
-                index, _text(item.get("product_name") or item.get("name") or "کالای حذف‌شده"),
-                _text(quantity), _money(price), _money(total),
+                _fa_digits(index), _text(item.get("product_name") or item.get("name") or "کالای حذف‌شده"),
+                _fa_digits(quantity), _money(price), _money(total),
             ))
         return "<div style='{}'><table class='items'><thead><tr><th>#</th><th>شرح کالا</th><th>تعداد</th><th>قیمت واحد</th><th>جمع</th></tr></thead><tbody>{}</tbody></table></div>".format(style, "".join(rows))
     if kind == "company":
@@ -503,8 +594,8 @@ def _element_html(element, receipt, config):
 
 def render_invoice_html(receipt, template=None):
     """Safe browser HTML representation of the same element positions used by canvas/printing."""
-    config = _template_config(template)
     receipt = receipt or {}
+    config = prepare_print_template(template, receipt) if str((template or {}).get("paper_size", "A4")) in ("receipt", "receipt80", "receipt58") else _template_config(template)
     width, height = page_dimensions(config)
     border = "1px solid {}".format(config["frame_border_color"]) if config["show_border"] else "none"
     elements_html = "".join(_element_html(element, receipt, config) for element in config["elements"])

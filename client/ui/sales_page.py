@@ -207,7 +207,7 @@ class SalesPage(QFrame):
             receipts_page.refresh()
         if self.window.api:
             self.window.run_api(
-                self.window.api.get_invoice_template,
+                lambda: self.window.api.get_invoice_template(kind="pos_receipt"),
                 lambda template: self._present_invoice(receipt, template),
                 failure=lambda _error: self._present_invoice(receipt, DEFAULT_TEMPLATE),
             )

@@ -39,16 +39,94 @@ ELEMENT_LABELS = {
     "text": "متن آزاد",
 }
 PRESETS = [
-    ("formal", "فاکتور رسمی A4"),
-    ("minimal", "فاکتور مینیمال A4"),
-    ("a5", "فاکتور فروشگاهی A5"),
-    ("thermal80", "رسید حرارتی ۸۰ میلی‌متر"),
-    ("cafe", "قالب کافه با شماره میز"),
+    ("formal", "فاکتور فارسی · A4"),
+    ("minimal", "فاکتور مینیمال · A4"),
+    ("a5", "فاکتور فروشگاهی · A5"),
+    ("thermal80", "رسید صندوق · رول ۸۰"),
+    ("thermal58", "رسید جمع‌وجور · رول ۵۸"),
+    ("cafe", "رسید کافه و شماره میز"),
+    ("return", "رسید مرجوعی · A5"),
+]
+
+TEMPLATE_KINDS = [
+    ("invoice", "فاکتور فروش"),
+    ("pos_receipt", "رسید صندوق / POS"),
+    ("kiosk_receipt", "رسید کیوسک"),
+    ("return_slip", "رسید مرجوعی"),
+    ("purchase_slip", "سند خرید"),
 ]
 
 
 class _DesignerScene(QGraphicsScene):
     elementMoved = Signal(object)
+
+
+class _PanZoomGraphicsView(QGraphicsView):
+    """Canvas with wheel zoom and middle-button drag panning."""
+
+    zoomChanged = Signal(float)
+
+    def __init__(self, scene, parent=None):
+        super().__init__(scene, parent)
+        self._zoom = 1.0
+        self._user_zoomed = False
+        self._pan_position = None
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        self.setDragMode(QGraphicsView.DragMode.NoDrag)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def fit_page(self, rect):
+        self.resetTransform()
+        self.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
+        self._zoom = 1.0
+        self._user_zoomed = False
+        self.zoomChanged.emit(self._zoom)
+
+    def zoom_by(self, factor):
+        new_zoom = max(0.2, min(5.0, self._zoom * float(factor)))
+        if abs(new_zoom - self._zoom) < 0.0001:
+            return
+        ratio = new_zoom / self._zoom
+        self.scale(ratio, ratio)
+        self._zoom = new_zoom
+        self._user_zoomed = True
+        self.zoomChanged.emit(self._zoom)
+
+    def wheelEvent(self, event):
+        delta = event.angleDelta().y()
+        if not delta:
+            event.ignore()
+            return
+        self.zoom_by(1.15 ** (delta / 120.0))
+        event.accept()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self._pan_position = event.position().toPoint()
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._pan_position is not None:
+            current = event.position().toPoint()
+            delta = current - self._pan_position
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
+            self._pan_position = current
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.MiddleButton and self._pan_position is not None:
+            self._pan_position = None
+            self.unsetCursor()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
 
 class _DesignerElementItem(QGraphicsRectItem):
@@ -99,6 +177,7 @@ class InvoiceTemplatesPage(QFrame):
         super().__init__()
         self.window = window
         self._loading = False
+        self._template_kind = "invoice"
         self._elements = []
         self._items_by_id = {}
         self._selected_id = None
@@ -136,9 +215,16 @@ class InvoiceTemplatesPage(QFrame):
 
         toolbar = QFrame()
         toolbar.setObjectName("Card")
-        toolbar_layout = QHBoxLayout(toolbar)
-        toolbar_layout.setContentsMargins(10, 8, 10, 8)
-        toolbar_layout.setSpacing(8)
+        toolbar_layout = QVBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(10, 7, 10, 7)
+        toolbar_layout.setSpacing(4)
+        toolbar_top = QHBoxLayout()
+        toolbar_top.setSpacing(7)
+        toolbar_bottom = QHBoxLayout()
+        toolbar_bottom.setSpacing(7)
+        self.document_kind = QComboBox()
+        for key, label in TEMPLATE_KINDS:
+            self.document_kind.addItem(label, key)
         self.preset = QComboBox()
         for key, label in PRESETS:
             self.preset.addItem(label, key)
@@ -168,19 +254,24 @@ class InvoiceTemplatesPage(QFrame):
         self.border_swatch = QLabel()
         self.border_swatch.setFixedWidth(24)
         self.border_swatch.setMinimumHeight(22)
-        toolbar_layout.addWidget(QLabel("قالب"))
-        toolbar_layout.addWidget(self.preset, 1)
-        toolbar_layout.addWidget(self.apply_preset_button)
-        toolbar_layout.addWidget(QLabel("کاغذ"))
-        toolbar_layout.addWidget(self.paper_size)
-        toolbar_layout.addWidget(self.orientation)
-        toolbar_layout.addWidget(QLabel("حاشیه"))
-        toolbar_layout.addWidget(self.margin_mm)
-        toolbar_layout.addWidget(self.show_border)
-        toolbar_layout.addWidget(self.accent_button)
-        toolbar_layout.addWidget(self.accent_swatch)
-        toolbar_layout.addWidget(self.border_button)
-        toolbar_layout.addWidget(self.border_swatch)
+        toolbar_top.addWidget(QLabel("نوع برگه"))
+        toolbar_top.addWidget(self.document_kind, 1)
+        toolbar_top.addWidget(QLabel("قالب آماده"))
+        toolbar_top.addWidget(self.preset, 1)
+        toolbar_top.addWidget(self.apply_preset_button)
+        toolbar_top.addWidget(QLabel("کاغذ"))
+        toolbar_top.addWidget(self.paper_size)
+        toolbar_top.addWidget(self.orientation)
+        toolbar_top.addWidget(QLabel("حاشیه"))
+        toolbar_top.addWidget(self.margin_mm)
+        toolbar_bottom.addWidget(self.show_border)
+        toolbar_bottom.addWidget(self.accent_button)
+        toolbar_bottom.addWidget(self.accent_swatch)
+        toolbar_bottom.addWidget(self.border_button)
+        toolbar_bottom.addWidget(self.border_swatch)
+        toolbar_bottom.addStretch(1)
+        toolbar_layout.addLayout(toolbar_top)
+        toolbar_layout.addLayout(toolbar_bottom)
         root.addWidget(toolbar)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -286,10 +377,29 @@ class InvoiceTemplatesPage(QFrame):
         self.page_info = QLabel("A4 · عمودی · ۲۱۰ × ۲۹۷ میلی‌متر")
         self.page_info.setObjectName("StatusPill")
         self.page_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        canvas_layout.addWidget(self.page_info)
+        view_toolbar = QHBoxLayout()
+        view_toolbar.setSpacing(5)
+        view_toolbar.addWidget(self.page_info, 1)
+        self.zoom_out_button = QPushButton("−")
+        self.zoom_out_button.setToolTip("کوچک‌نمایی")
+        self.zoom_out_button.setObjectName("CompactActionButton")
+        self.zoom_in_button = QPushButton("+")
+        self.zoom_in_button.setToolTip("بزرگ‌نمایی")
+        self.zoom_in_button.setObjectName("CompactActionButton")
+        self.zoom_label = QLabel("۱۰۰٪")
+        self.zoom_label.setMinimumWidth(52)
+        self.zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.fit_button = QPushButton("برازش صفحه")
+        self.fit_button.setToolTip("نمایش تمام برگه")
+        self.fit_button.setObjectName("CompactActionButton")
+        view_toolbar.addWidget(self.zoom_out_button)
+        view_toolbar.addWidget(self.zoom_label)
+        view_toolbar.addWidget(self.zoom_in_button)
+        view_toolbar.addWidget(self.fit_button)
+        canvas_layout.addLayout(view_toolbar)
         self.scene = _DesignerScene(self)
         self.scene.elementMoved.connect(self._element_moved)
-        self.canvas = QGraphicsView(self.scene)
+        self.canvas = _PanZoomGraphicsView(self.scene)
         self.canvas.setObjectName("InvoiceDesignerCanvas")
         self.canvas.setBackgroundBrush(QBrush(QColor("#E9EDF4")))
         self.canvas.setFrameShape(QFrame.Shape.NoFrame)
@@ -301,7 +411,7 @@ class InvoiceTemplatesPage(QFrame):
         self.scene.selectionChanged.connect(self._canvas_selection_changed)
         canvas_layout.addWidget(self.canvas, 1)
         self.canvas_help = QLabel(
-            "راهنما: کادرها را با ماوس بکشید. مختصات و اندازه را هم می‌توانید در بخش ویژگی‌ها دقیق وارد کنید."
+            "برای زوم از چرخ موس، برای جابه‌جایی برگه دکمهٔ وسط موس را نگه دارید و بکشید؛ «برازش صفحه» نمای کامل را برمی‌گرداند."
         )
         self.canvas_help.setObjectName("PageSubtitle")
         self.canvas_help.setWordWrap(True)
@@ -368,6 +478,11 @@ class InvoiceTemplatesPage(QFrame):
         self.footer.textChanged.connect(self._global_setting_changed)
         self.font_family.currentTextChanged.connect(self._global_setting_changed)
         self.global_font_size.valueChanged.connect(self._global_setting_changed)
+        self.document_kind.currentIndexChanged.connect(self._document_kind_changed)
+        self.zoom_out_button.clicked.connect(lambda: self.canvas.zoom_by(1 / 1.2))
+        self.zoom_in_button.clicked.connect(lambda: self.canvas.zoom_by(1.2))
+        self.fit_button.clicked.connect(lambda: self._fit_page(force=True))
+        self.canvas.zoomChanged.connect(self._zoom_label_changed)
 
         self._load_template(deepcopy(DEFAULT_TEMPLATE))
         self.set_permissions(window.current_user)
@@ -389,8 +504,9 @@ class InvoiceTemplatesPage(QFrame):
 
     def refresh(self):
         if self.window.api and can_access(self.window.current_user, "invoices", "read"):
+            kind = self._template_kind
             self.window.run_api(
-                self.window.api.get_invoice_template,
+                lambda: self.window.api.get_invoice_template(kind=kind),
                 self._load_template,
                 failure=lambda error: self.window.show_error(error),
                 busy=self.refresh_button,
@@ -503,12 +619,73 @@ class InvoiceTemplatesPage(QFrame):
             self._items_by_id[element["id"]] = item
         self.scene.update()
         self._update_page_info()
-        self._fit_page()
+        self._fit_page(force=True)
 
-    def _fit_page(self):
+    def _fit_page(self, force=False):
         if self.scene.sceneRect().isEmpty():
             return
-        self.canvas.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        if force or not self.canvas._user_zoomed:
+            self.canvas.fit_page(self.scene.sceneRect())
+
+    def _zoom_label_changed(self, zoom):
+        percent = int(round(float(zoom) * 100))
+        self.zoom_label.setText("{}٪".format(str(percent).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))))
+
+    def _document_kind_changed(self, *_args):
+        kind = self.document_kind.currentData() or "invoice"
+        if kind == self._template_kind:
+            return
+        self._template_kind = kind
+        if self.window.api is None:
+            self._load_template(self._local_default_for_kind(kind))
+            return
+        self.document_kind.setEnabled(False)
+        self.window.run_api(
+            lambda: self.window.api.get_invoice_template(kind=kind),
+            lambda values, requested=kind: self._load_template(values) if requested == self._template_kind else None,
+            failure=lambda error: self.window.show_error(error),
+            busy=self.document_kind,
+        )
+
+    @staticmethod
+    def _local_default_for_kind(kind):
+        values = deepcopy(DEFAULT_TEMPLATE)
+        paper = "A4"
+        margin = 12
+        if kind in ("pos_receipt", "kiosk_receipt"):
+            paper, margin = "receipt80", 4
+            values["accent_color"] = "#0F766E" if kind == "pos_receipt" else "#3157A4"
+            values["font_size"] = 9
+            values["footer"] = "از خرید شما سپاسگزاریم."
+        elif kind == "return_slip":
+            paper, margin = "A5", 8
+            values["accent_color"] = "#B45309"
+            values["footer"] = "کالای مرجوعی بررسی و ثبت شد."
+        elif kind == "purchase_slip":
+            paper, margin = "A4", 12
+            values["accent_color"] = "#475569"
+            values["footer"] = "سند خرید را بررسی و نگهداری کنید."
+        values["paper_size"] = paper
+        values["orientation"] = "portrait"
+        values["margin_mm"] = margin
+        values["elements"] = default_elements_for_paper(paper, "portrait", margin)
+        if kind == "return_slip":
+            for element in values["elements"]:
+                if element["type"] == "invoice_number":
+                    element["label"] = "شماره رسید مرجوعی"
+                elif element["type"] == "invoice_date":
+                    element["label"] = "تاریخ مرجوعی"
+                elif element["type"] in ("seat_number", "payment_status"):
+                    element["visible"] = False
+        elif kind == "purchase_slip":
+            for element in values["elements"]:
+                if element["type"] == "invoice_number":
+                    element["label"] = "شماره سند خرید"
+                elif element["type"] == "seat_number":
+                    element["label"] = "تأمین‌کننده"
+                elif element["type"] == "payment_status":
+                    element["label"] = "وضعیت تسویه"
+        return values
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -816,7 +993,11 @@ class InvoiceTemplatesPage(QFrame):
         elif preset == "a5":
             values.update({"paper_size": "A5", "orientation": "portrait", "accent_color": "#0F766E", "show_border": True})
         elif preset == "thermal80":
-            values.update({"paper_size": "receipt80", "orientation": "portrait", "accent_color": "#111827", "show_border": True, "margin_mm": 4})
+            values.update({"paper_size": "receipt80", "orientation": "portrait", "accent_color": "#111827", "show_border": True, "margin_mm": 4, "font_size": 9})
+        elif preset == "thermal58":
+            values.update({"paper_size": "receipt58", "orientation": "portrait", "accent_color": "#111827", "show_border": True, "margin_mm": 3, "font_size": 8})
+        elif preset == "return":
+            values.update({"paper_size": "A5", "orientation": "portrait", "accent_color": "#B45309", "show_border": True, "margin_mm": 8})
         elif preset == "cafe":
             values.update({"paper_size": "A5", "orientation": "portrait", "accent_color": "#7C3AED", "show_border": True})
         else:
@@ -840,7 +1021,7 @@ class InvoiceTemplatesPage(QFrame):
             self.window.show_error("اتصال سرور برقرار نیست.")
             return
         self.window.run_api(
-            lambda: self.window.api.save_invoice_template(**values),
+            lambda: self.window.api.save_invoice_template(kind=self._template_kind, **values),
             self._saved,
             failure=lambda error: self.window.show_error(error),
             busy=self.save_button,
@@ -848,5 +1029,6 @@ class InvoiceTemplatesPage(QFrame):
 
     def _saved(self, values):
         self._load_template(values)
-        self.window.set_status("قالب فاکتور و موقعیت المان‌ها روی سرور ذخیره شد.")
-        QMessageBox.information(self, "ذخیره شد", "چیدمان جدید در پیش‌نمایش، PDF و چاپ استفاده می‌شود.")
+        label = dict(TEMPLATE_KINDS).get(self._template_kind, "قالب برگه")
+        self.window.set_status("قالب «{}» روی سرور ذخیره شد.".format(label))
+        QMessageBox.information(self, "ذخیره شد", "قالب «{}» مستقل ذخیره شد و در پیش‌نمایش و چاپ استفاده می‌شود.".format(label))
