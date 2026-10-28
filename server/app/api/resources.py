@@ -16,6 +16,7 @@ from accounting_app.database.models import (
 )
 from accounting_app.services.schema_registry import cleanup_builtin_extension_values_many
 from server.app.dependencies import get_current_user, require_admin
+from server.app.permissions import require_permission
 from server.app.schemas import (
     CategoryCreate, CategoryOut, CategoryUpdate,
     CheckCreate, CheckOut, CheckUpdate,
@@ -78,7 +79,7 @@ def list_categories(
     q: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=200),
-    _user=Depends(get_current_user),
+    user=Depends(require_permission("categories", "read")),
 ):
     with DBManager():
         query = CategoryModel.select()
@@ -88,14 +89,14 @@ def list_categories(
 
 
 @router.post("/categories", response_model=CategoryOut, status_code=status.HTTP_201_CREATED)
-def create_category(payload: CategoryCreate, _admin=Depends(require_admin)):
+def create_category(payload: CategoryCreate, user=Depends(require_permission("categories", "create"))):
     with DBManager():
         record = CategoryModel.create(name=_clean_name(payload.name))
         return _serialize(record)
 
 
 @router.patch("/categories/{category_id}", response_model=CategoryOut)
-def update_category(category_id: UUID, payload: CategoryUpdate, _admin=Depends(require_admin)):
+def update_category(category_id: UUID, payload: CategoryUpdate, user=Depends(require_permission("categories", "update"))):
     with DBManager():
         record = CategoryModel.get_or_none(CategoryModel.id == category_id)
         if record is None:
@@ -107,7 +108,7 @@ def update_category(category_id: UUID, payload: CategoryUpdate, _admin=Depends(r
 
 
 @router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_category(category_id: UUID, _admin=Depends(require_admin)):
+def delete_category(category_id: UUID, user=Depends(require_permission("categories", "delete"))):
     with DBManager():
         record = CategoryModel.get_or_none(CategoryModel.id == category_id)
         if record is None:
@@ -123,7 +124,7 @@ def list_products(
     category_id: Optional[UUID] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=200),
-    _user=Depends(get_current_user),
+    user=Depends(require_permission("products", "read")),
 ):
     with DBManager():
         query = ProductModel.select()
@@ -135,7 +136,7 @@ def list_products(
 
 
 @router.post("/products", response_model=ProductOut, status_code=status.HTTP_201_CREATED)
-def create_product(payload: ProductCreate, _admin=Depends(require_admin)):
+def create_product(payload: ProductCreate, user=Depends(require_permission("products", "create"))):
     with DBManager():
         _check_category(payload.category_id)
         record = ProductModel.create(
@@ -150,7 +151,7 @@ def create_product(payload: ProductCreate, _admin=Depends(require_admin)):
 
 
 @router.patch("/products/{product_id}", response_model=ProductOut)
-def update_product(product_id: UUID, payload: ProductUpdate, _admin=Depends(require_admin)):
+def update_product(product_id: UUID, payload: ProductUpdate, user=Depends(require_permission("products", "update"))):
     with DBManager():
         record = ProductModel.get_or_none(ProductModel.id == product_id)
         if record is None:
@@ -162,7 +163,7 @@ def update_product(product_id: UUID, payload: ProductUpdate, _admin=Depends(requ
 
 
 @router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_product(product_id: UUID, _admin=Depends(require_admin)):
+def delete_product(product_id: UUID, user=Depends(require_permission("products", "delete"))):
     with DBManager():
         record = ProductModel.get_or_none(ProductModel.id == product_id)
         if record is None:
@@ -173,13 +174,13 @@ def delete_product(product_id: UUID, _admin=Depends(require_admin)):
 
 
 @router.get("/warehouses", response_model=List[WarehouseOut])
-def list_warehouses(_user=Depends(get_current_user)):
+def list_warehouses(user=Depends(require_permission("warehouse", "read"))):
     with DBManager():
         return [_serialize(item) for item in WarehouseModel.select().order_by(WarehouseModel.name)]
 
 
 @router.post("/warehouses", response_model=WarehouseOut, status_code=status.HTTP_201_CREATED)
-def create_warehouse(payload: WarehouseCreate, _admin=Depends(require_admin)):
+def create_warehouse(payload: WarehouseCreate, user=Depends(require_permission("warehouse", "create"))):
     if payload.unit not in ("kg", "m", "l", "pcs"):
         raise HTTPException(status_code=422, detail="واحد انبار معتبر نیست.")
     with DBManager():
@@ -191,7 +192,7 @@ def create_warehouse(payload: WarehouseCreate, _admin=Depends(require_admin)):
 
 
 @router.patch("/warehouses/{record_id}", response_model=WarehouseOut)
-def update_warehouse(record_id: UUID, payload: WarehouseUpdate, _admin=Depends(require_admin)):
+def update_warehouse(record_id: UUID, payload: WarehouseUpdate, user=Depends(require_permission("warehouse", "update"))):
     with DBManager():
         record = WarehouseModel.get_or_none(WarehouseModel.id == record_id)
         if record is None:
@@ -203,7 +204,7 @@ def update_warehouse(record_id: UUID, payload: WarehouseUpdate, _admin=Depends(r
 
 
 @router.delete("/warehouses/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_warehouse(record_id: UUID, _admin=Depends(require_admin)):
+def delete_warehouse(record_id: UUID, user=Depends(require_permission("warehouse", "delete"))):
     with DBManager():
         record = WarehouseModel.get_or_none(WarehouseModel.id == record_id)
         if record is None:
@@ -262,46 +263,46 @@ def _delete_check(model, entity, record_id):
 @router.get("/checks/in", response_model=List[CheckOut])
 def list_check_ins(
     q: Optional[str] = None, page: int = Query(1, ge=1),
-    page_size: int = Query(100, ge=1, le=200), _user=Depends(get_current_user),
+    page_size: int = Query(100, ge=1, le=200), user=Depends(require_permission("checks_in", "read")),
 ):
     return _list_checks(CheckInModel, "check_ins", q, page, page_size)
 
 
 @router.post("/checks/in", response_model=CheckOut, status_code=status.HTTP_201_CREATED)
-def create_check_in(payload: CheckCreate, _admin=Depends(require_admin)):
+def create_check_in(payload: CheckCreate, user=Depends(require_permission("checks_in", "create"))):
     return _create_check(CheckInModel, payload, "check_ins")
 
 
 @router.patch("/checks/in/{record_id}", response_model=CheckOut)
-def update_check_in(record_id: UUID, payload: CheckUpdate, _admin=Depends(require_admin)):
+def update_check_in(record_id: UUID, payload: CheckUpdate, user=Depends(require_permission("checks_in", "update"))):
     return _update_check(CheckInModel, record_id, payload)
 
 
 @router.delete("/checks/in/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_check_in(record_id: UUID, _admin=Depends(require_admin)):
+def delete_check_in(record_id: UUID, user=Depends(require_permission("checks_in", "delete"))):
     return _delete_check(CheckInModel, "check_ins", record_id)
 
 
 @router.get("/checks/out", response_model=List[CheckOut])
 def list_check_outs(
     q: Optional[str] = None, page: int = Query(1, ge=1),
-    page_size: int = Query(100, ge=1, le=200), _user=Depends(get_current_user),
+    page_size: int = Query(100, ge=1, le=200), user=Depends(require_permission("checks_out", "read")),
 ):
     return _list_checks(CheckOutModel, "check_outs", q, page, page_size)
 
 
 @router.post("/checks/out", response_model=CheckOut, status_code=status.HTTP_201_CREATED)
-def create_check_out(payload: CheckCreate, _admin=Depends(require_admin)):
+def create_check_out(payload: CheckCreate, user=Depends(require_permission("checks_out", "create"))):
     return _create_check(CheckOutModel, payload, "check_outs")
 
 
 @router.patch("/checks/out/{record_id}", response_model=CheckOut)
-def update_check_out(record_id: UUID, payload: CheckUpdate, _admin=Depends(require_admin)):
+def update_check_out(record_id: UUID, payload: CheckUpdate, user=Depends(require_permission("checks_out", "update"))):
     return _update_check(CheckOutModel, record_id, payload)
 
 
 @router.delete("/checks/out/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_check_out(record_id: UUID, _admin=Depends(require_admin)):
+def delete_check_out(record_id: UUID, user=Depends(require_permission("checks_out", "delete"))):
     return _delete_check(CheckOutModel, "check_outs", record_id)
 
 
