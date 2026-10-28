@@ -29,6 +29,7 @@ def create_tables(database=None):
     _migrate_existing_user_table(target)
     _migrate_existing_product_table(target)
     _migrate_existing_receipt_product_table(target)
+    _migrate_existing_sale_return_line_table(target)
 
 
 def _migrate_existing_user_table(database):
@@ -78,3 +79,13 @@ def _migrate_existing_receipt_product_table(database):
             table, Product._meta.table_name, Product._meta.table_name, table
         )
     )
+
+
+def _migrate_existing_sale_return_line_table(database):
+    """Add unit-cost snapshot for returns without losing existing return records."""
+    table = SaleReturnLine._meta.table_name
+    columns = {column.name for column in database.get_columns(table)}
+    if "unit_cost" not in columns:
+        database.execute_sql(
+            'ALTER TABLE "{}" ADD COLUMN "unit_cost" DECIMAL(16, 2) NOT NULL DEFAULT 0'.format(table)
+        )
