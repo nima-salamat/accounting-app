@@ -205,6 +205,7 @@ def update_sale(
         if not user.is_admin and receipt.user_id != user.id:
             raise HTTPException(status_code=403, detail="اجازه ویرایش این رسید را ندارید.")
         product_ids = [item.product_id for item in payload.items]
+        validate_kiosk_seat(user, payload.seat_number)
         products = {
             product.id: product
             for product in Product.select().where(Product.id.in_(product_ids))
@@ -222,6 +223,8 @@ def update_sale(
             )
         except (InsufficientStockError, FiscalPeriodClosedError) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        updated.seat_number = payload.seat_number.strip() if payload.seat_number else None
+        updated.save(only=[Receipt.seat_number, Receipt.updated_at])
         return _receipt_detail(updated)
 
 
