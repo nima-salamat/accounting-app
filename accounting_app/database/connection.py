@@ -1,7 +1,7 @@
 """SQLite connection lifecycle and transaction management."""
 from datetime import datetime
 from pathlib import Path
-from threading import RLock
+from threading import RLock, local
 import uuid
 
 from peewee import DatabaseProxy, DateTimeField, Model, SqliteDatabase, UUIDField
@@ -12,6 +12,7 @@ db = DatabaseProxy()
 _real_database = None
 _database_path = None
 _initialization_lock = RLock()
+_transaction_state = local()
 
 
 class DB:
@@ -71,19 +72,32 @@ class BaseModel(Model):
 
 
 class DBManager:
-    """Manage a transaction and close only a connection opened by this context."""
+    """Provide atomic scopes with thread-local nesting and predictable cleanup.
+
+    Nested contexts create savepoints, while the outermost managed scope closes
+    the thread's SQLite connection even if a preceding ORM query auto-opened it.
+    """
 
     def __init__(self):
-        self._opened_here = False
+        self._depth = 0
+        self._outermost = False
         self._transaction = None
 
     def __enter__(self):
         initialize_db()
-        self._opened_here = db.is_closed()
-        if self._opened_here:
+        self._depth = getattr(_transaction_state, "depth", 0)
+        self._outermost = self._depth == 0
+        if db.is_closed():
             db.connect(reuse_if_open=True)
+        _transaction_state.depth = self._depth + 1
         self._transaction = db.atomic()
-        self._transaction.__enter__()
+        try:
+            self._transaction.__enter__()
+        except Exception:
+            _transaction_state.depth = self._depth
+            if self._outermost and not db.is_closed():
+                db.close()
+            raise
         return db
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -92,5 +106,6 @@ class DBManager:
                 return self._transaction.__exit__(exc_type, exc_value, traceback)
             return False
         finally:
-            if self._opened_here and not db.is_closed():
+            _transaction_state.depth = self._depth
+            if self._outermost and not db.is_closed():
                 db.close()

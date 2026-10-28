@@ -70,6 +70,17 @@ class DatabaseAuthTests(unittest.TestCase):
         self.assertIsNone(manager.user.username)
         self.assertEqual(len(manager.errors), 1)
 
+    def test_nested_transactions_use_savepoints_and_close_connection(self):
+        with DBManager():
+            User.create(username="outer", password="unused")
+            with DBManager():
+                User.create(username="inner", password="unused")
+            self.assertFalse(db.is_closed())
+        self.assertTrue(db.is_closed())
+        with DBManager():
+            self.assertIsNotNone(User.get_or_none(User.username == "outer"))
+            self.assertIsNotNone(User.get_or_none(User.username == "inner"))
+
     def test_failed_transaction_rolls_back(self):
         with self.assertRaises(RuntimeError):
             with DBManager():
