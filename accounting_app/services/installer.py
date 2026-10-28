@@ -54,6 +54,21 @@ def complete_initial_setup(username, password, password_confirmation, schema_row
         else:
             company_setting.value = serialized_profile
             company_setting.save(only=[AppSetting.value, AppSetting.updated_at])
+        invoice_setting = AppSetting.get_or_none(AppSetting.key == "invoice_template")
+        if invoice_setting is None:
+            invoice_template = {
+                "company_name": profile["company_name"],
+                "legal_id": "",
+                "address": "",
+                "phone": "",
+                "footer": "از خرید شما سپاسگزاریم.",
+                "paper_size": "A4",
+                "accent_color": "#3157A4",
+            }
+            AppSetting.create(
+                key="invoice_template",
+                value=__import__("json").dumps(invoice_template, ensure_ascii=False, separators=(",", ":")),
+            )
         if setting is None:
             AppSetting.create(key=SETUP_COMPLETE_KEY, value="1")
         else:
