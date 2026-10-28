@@ -92,6 +92,7 @@ def setup(payload: SetupRequest, request: Request):
             payload.schema_rows,
             payload.company_name,
             payload.business_profile,
+            payload.product_buy_price_required,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
