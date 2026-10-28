@@ -73,11 +73,14 @@ class POSWindow(QMainWindow):
     def _authenticated(self, user):
         self.current_user = user
         self.api = self.auth_page.api
-        if not can_access(user, "sales", "create"):
+        if not (
+            can_access(user, "sales", "create")
+            and can_access(user, "products", "read")
+        ):
             self.stack.setCurrentWidget(self.auth_page)
             QMessageBox.warning(
                 self, "دسترسی صندوق فروش",
-                "این حساب مجوز ثبت فروش ندارد. از مدیر بخواهید مجوز «فروش / ایجاد» را فعال کند.",
+                "برای صندوق، مجوزهای «فروش / ایجاد» و «محصولات / مشاهده» لازم هستند.",
             )
             return
         self.stack.setCurrentIndex(1)
