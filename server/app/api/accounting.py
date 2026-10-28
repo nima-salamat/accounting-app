@@ -133,6 +133,91 @@ def create_fiscal_year(payload: FiscalYearCreate, user=Depends(require_permissio
         return _fiscal_payload(year)
 
 
+def _create_fiscal_closing_journal(year, user):
+    """Close revenue/expense balances into retained earnings with a balanced entry."""
+    _seed_chart()
+    accounts = list(LedgerAccount.select().where(
+        LedgerAccount.is_active == True,
+        LedgerAccount.account_type.in_(("income", "expense")),
+    ).order_by(LedgerAccount.code))
+    closing_lines = []
+    debit_total = Decimal("0")
+    credit_total = Decimal("0")
+    for account in accounts:
+        totals = (
+            JournalLine.select(
+                fn.COALESCE(fn.SUM(JournalLine.debit), 0).alias("debit"),
+                fn.COALESCE(fn.SUM(JournalLine.credit), 0).alias("credit"),
+            )
+            .join(JournalEntry)
+            .where(
+                (JournalLine.account == account.id)
+                & (JournalEntry.entry_date >= year.start_date)
+                & (JournalEntry.entry_date <= year.end_date)
+                & (JournalEntry.status == "posted")
+                & (JournalEntry.is_year_closing == False)
+            )
+            .dicts()
+            .get()
+        )
+        debit = Decimal(str((totals or {}).get("debit") or 0)).quantize(Decimal("0.01"))
+        credit = Decimal(str((totals or {}).get("credit") or 0)).quantize(Decimal("0.01"))
+        balance = credit - debit if account.account_type == "income" else debit - credit
+        if balance == 0:
+            continue
+        if account.account_type == "income":
+            line_debit, line_credit = (balance, Decimal("0")) if balance > 0 else (Decimal("0"), -balance)
+        else:
+            line_debit, line_credit = (Decimal("0"), balance) if balance > 0 else (-balance, Decimal("0"))
+        closing_lines.append({
+            "account": account,
+            "debit": line_debit,
+            "credit": line_credit,
+        })
+        debit_total += line_debit
+        credit_total += line_credit
+
+    if not closing_lines:
+        return None
+    retained = LedgerAccount.get_or_none(LedgerAccount.code == "3100")
+    if retained is None:
+        retained = LedgerAccount.create(
+            code="3100", name="سود و زیان انباشته",
+            account_type="equity", description="سود/زیان دوره‌های قبل",
+        )
+    difference = debit_total - credit_total
+    if difference > 0:
+        closing_lines.append({"account": retained, "debit": Decimal("0"), "credit": difference})
+        credit_total += difference
+    elif difference < 0:
+        closing_lines.append({"account": retained, "debit": -difference, "credit": Decimal("0")})
+        debit_total += -difference
+    if debit_total != credit_total:
+        raise HTTPException(status_code=409, detail="سند بستن سال مالی متوازن نشد.")
+
+    entry = JournalEntry.create(
+        entry_number="CLOSE-{}".format(str(year.id).replace("-", "")[:16].upper()),
+        entry_date=year.end_date,
+        description="سند بستن درآمد و هزینهٔ سال مالی {}".format(year.name),
+        reference="FISCAL-CLOSE:{}".format(year.id),
+        status="posted",
+        created_by=user.id,
+        created_by_name=user.username,
+        debit_total=debit_total,
+        credit_total=credit_total,
+        is_year_closing=True,
+    )
+    for line in closing_lines:
+        JournalLine.create(
+            entry=entry.id,
+            account=line["account"].id,
+            description="بستن سال مالی {}".format(year.name),
+            debit=line["debit"],
+            credit=line["credit"],
+        )
+    return entry
+
+
 @router.post("/fiscal-years/{year_id}/close")
 def close_fiscal_year(year_id: UUID, user=Depends(require_permission("fiscal_years", "update"))):
     with DBManager():
@@ -152,6 +237,9 @@ def close_fiscal_year(year_id: UUID, user=Depends(require_permission("fiscal_yea
         ]
         if unbalanced:
             raise HTTPException(status_code=409, detail="اسناد نامتوازن وجود دارد؛ سال مالی بسته نشد.")
+        if journal_query.where(JournalEntry.is_year_closing == True).exists():
+            raise HTTPException(status_code=409, detail="این سال مالی قبلاً سند بستن دارد؛ برای رفع تعارض، از پنل حسابداری بررسی کنید.")
+        closing_entry = _create_fiscal_closing_journal(year, user)
         receipts = Receipt.select().where(
             (Receipt.created_at >= datetime.combine(year.start_date, datetime.min.time()))
             & (Receipt.created_at <= datetime.combine(year.end_date, datetime.max.time()))
@@ -167,10 +255,15 @@ def close_fiscal_year(year_id: UUID, user=Depends(require_permission("fiscal_yea
         ])
         record_audit(
             user, "fiscal_year.closed", "fiscal_years", year.id,
-            {"name": year.name, "unpaid_receipts": unpaid_count, "receipt_count": sales_count},
+            {
+                "name": year.name, "unpaid_receipts": unpaid_count, "receipt_count": sales_count,
+                "closing_entry_id": str(closing_entry.id) if closing_entry else None,
+                "closing_entry_number": closing_entry.entry_number if closing_entry else None,
+            },
         )
         return {
             "year": _fiscal_payload(year),
+            "closing_entry": _entry_payload(closing_entry) if closing_entry else None,
             "checklist": {
                 "posted_journals_balanced": True,
                 "receipt_count": sales_count,
