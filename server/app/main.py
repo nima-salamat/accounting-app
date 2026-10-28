@@ -16,6 +16,7 @@ from server.app.api.inventory import router as inventory_router
 from server.app.api.returns import router as returns_router
 from server.app.api.accounting import router as accounting_router
 from server.app.api.stocktakes import router as stocktakes_router
+from server.app.api.purchases import router as purchases_router
 from server.app.config import API_PREFIX
 
 
@@ -51,3 +52,4 @@ app.include_router(inventory_router, prefix=API_PREFIX)
 app.include_router(returns_router, prefix=API_PREFIX)
 app.include_router(accounting_router, prefix=API_PREFIX)
 app.include_router(stocktakes_router, prefix=API_PREFIX)
+app.include_router(purchases_router, prefix=API_PREFIX)
