@@ -1,5 +1,8 @@
 """API-driven point-of-sale screen with search, quantity selection, and idempotent checkout."""
 from PySide6.QtCore import Qt
+from client.ui.invoice_dialog import InvoiceDialog
+from client.ui.invoice_render import DEFAULT_TEMPLATE
+
 from PySide6.QtWidgets import (
     QCheckBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
     QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout,
@@ -95,9 +98,27 @@ class SalesPage(QFrame):
 
     def _sale_created(self,receipt):
         self.paid.setChecked(False)
-        for row in range(self.table.rowCount()):self.table.cellWidget(row,3).setValue(0)
-        QMessageBox.information(self,"فروش ثبت شد",
-            "شماره رسید روزانه: {}\nمبلغ نهایی: {:,.2f}".format(receipt["day_receipt_id"],float(receipt["total_price"])))
-        self.window.set_status("فروش با موفقیت ثبت شد.")
-        self.refresh_products();self.window.refresh_dashboard_data()
-        self.window.receipts_page.refresh()
+        for row in range(self.table.rowCount()):
+            widget = self.table.cellWidget(row,3)
+            if widget:
+                widget.setValue(0)
+        self.window.set_status(
+            "فروش شمارهٔ {} با مبلغ {:,.2f} ثبت شد.".format(
+                receipt.get("day_receipt_id", "—"), float(receipt.get("total_price") or 0)
+            )
+        )
+        self.refresh_products()
+        refresh_dashboard = getattr(self.window, "refresh_dashboard_data", None)
+        if callable(refresh_dashboard):
+            refresh_dashboard()
+        receipts_page = getattr(self.window, "receipts_page", None)
+        if receipts_page is not None:
+            receipts_page.refresh()
+        if self.window.api:
+            self.window.run_api(
+                self.window.api.get_invoice_template,
+                lambda template: InvoiceDialog(receipt, template, self.window).exec(),
+                failure=lambda _error: InvoiceDialog(receipt, DEFAULT_TEMPLATE, self.window).exec(),
+            )
+        else:
+            InvoiceDialog(receipt, DEFAULT_TEMPLATE, self.window).exec()
