@@ -158,18 +158,20 @@ class TableDataMixin:
         dlg.exec_()
 
     def load_data(self):
+        self._load_generation = getattr(self, "_load_generation", 0) + 1
+        request_id = self._load_generation
         loader = DataLoader(
             self.model, self.search_input.text(), list(self.sort_fields), self.page_size, self.current_page,
             self.cb_enable_date.isChecked(), self.dt_from_date.text(), self.dt_from_time.text(),
-            self.dt_to_date.text(), self.dt_to_time.text(), dict(self.lbl2fld), list(self._searchable)
+            self.dt_to_date.text(), self.dt_to_time.text(), dict(self.lbl2fld), list(self._searchable),
+            request_id=request_id,
         )
         self.loader = loader
         thread = QThread(self)
         loader.moveToThread(thread)
         thread.started.connect(loader.load_data, Qt.QueuedConnection)
-        loader.data_loaded.connect(self._on_data_loaded, Qt.QueuedConnection)
-        loader.page_changed.connect(self._on_page_changed, Qt.QueuedConnection)
-        loader.error.connect(self._on_load_error, Qt.QueuedConnection)
+        loader.result_ready.connect(self._on_query_result, Qt.QueuedConnection)
+        loader.failure.connect(self._on_query_error, Qt.QueuedConnection)
         loader.finished.connect(thread.quit)
         loader.finished.connect(loader.deleteLater)
         thread.finished.connect(thread.deleteLater)
@@ -178,9 +180,17 @@ class TableDataMixin:
         self.sort_field_combo.setEnabled(False)
         self.data_table.setEnabled(False)
 
-    def _on_page_changed(self, page):
+    def _on_query_result(self, data, total_rows, page, request_id):
+        if request_id != getattr(self, "_load_generation", 0):
+            return
         self.current_page = max(1, int(page))
         self.page_input.setText(str(self.current_page))
+        self._on_data_loaded(data, total_rows)
+
+    def _on_query_error(self, message, request_id):
+        if request_id != getattr(self, "_load_generation", 0):
+            return
+        self._on_load_error(message)
 
     def _on_data_loaded(self, data, total_rows):
         self.data = data
