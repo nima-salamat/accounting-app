@@ -7,8 +7,10 @@ from accounting_app.database.models import JournalEntry, JournalLine, LedgerAcco
 
 DEFAULT_SALE_ACCOUNTS = (
     ("1000", "صندوق نقدی", "asset", "وجوه نقد و تسویه پرداخت"),
+    ("1010", "بانک و تسویه کارت‌خوان", "asset", "وجوه بانکی و تسویه پرداخت"),
     ("1100", "حساب‌های دریافتنی", "asset", "مطالبات از مشتریان"),
     ("1200", "موجودی کالا", "asset", "حساب کنترل موجودی رهگیری‌شده"),
+    ("2200", "اعتبار فروشگاه", "liability", "اعتبار قابل استفاده توسط مشتریان"),
     ("4000", "درآمد فروش", "income", "درآمد عملیاتی"),
     ("5000", "بهای تمام‌شده کالای فروش‌رفته", "expense", "بهای کالاهای دارای رهگیری موجودی"),
 )
@@ -27,7 +29,7 @@ def _account(code, name, account_type, description):
     return item
 
 
-def post_sale_journal(receipt, user, items, total, paid, *, reference_id=None):
+def post_sale_journal(receipt, user, items, total, paid, *, payment_method="cash", reference_id=None):
     """Post or refresh the balanced ledger entry for a receipt inside its transaction.
 
     Items are tuples: (product_id, buy_price, sell_price, quantity, product_name, tracked_stock).
@@ -81,11 +83,22 @@ def post_sale_journal(receipt, user, items, total, paid, *, reference_id=None):
                 JournalEntry.is_year_closing, JournalEntry.updated_at,
             ])
 
-        receivable_or_cash = accounts["1000"] if paid else accounts["1100"]
+        if not paid:
+            settlement_account = accounts["1100"]
+            settlement_description = "مطالبهٔ فروش پرداخت‌نشده"
+        elif payment_method == "card" or payment_method == "bank_transfer":
+            settlement_account = accounts["1010"]
+            settlement_description = "تسویهٔ بانکی / کارت‌خوان"
+        elif payment_method == "store_credit":
+            settlement_account = accounts["2200"]
+            settlement_description = "استفاده از اعتبار فروشگاه"
+        else:
+            settlement_account = accounts["1000"]
+            settlement_description = "دریافت نقدی فروش"
         JournalLine.create(
             entry=entry.id,
-            account=receivable_or_cash.id,
-            description="دریافت وجه فروش" if paid else "مطالبهٔ فروش پرداخت‌نشده",
+            account=settlement_account.id,
+            description=settlement_description,
             debit=revenue,
             credit=Decimal("0"),
         )
