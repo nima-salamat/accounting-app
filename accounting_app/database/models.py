@@ -171,6 +171,7 @@ class SaleReturnLine(BaseModel):
     product_name = CharField(max_length=FIELD_LENGTH, default="")
     quantity = IntegerField()
     unit_price = DecimalField(max_digits=16, decimal_places=2, auto_round=True, default=0)
+    unit_cost = DecimalField(max_digits=16, decimal_places=2, auto_round=True, default=0)
     line_total = DecimalField(max_digits=16, decimal_places=2, auto_round=True, default=0)
 
     class Meta:
