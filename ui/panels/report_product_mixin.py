@@ -214,23 +214,14 @@ class ReportProductMixin:
         table.setColumnCount(6)
         table.setHorizontalHeaderLabels(["محصول", "تعداد", "مبلغ فروش", "مبلغ خرید", "سود", "زمان فاکتور"])
 
-        def query_func():
-            
-            try:
-                start_j = f"{dt_from_date.text()} {dt_from_time.text()}:00".replace("/", "-")
-                end_j = f"{dt_to_date.text()} {dt_to_time.text()}:00".replace("/", "-")
+        def query_func(snapshot):
+            start_j = "{} {}:00".format(snapshot["from_date"], snapshot["from_time"]).replace("/", "-")
+            end_j = "{} {}:00".format(snapshot["to_date"], snapshot["to_time"]).replace("/", "-")
+            start = from_jalali(start_j, is_datetime=True)
+            end = from_jalali(end_j, is_datetime=True)
+            if start > end:
+                raise ValueError("زمان شروع نباید از زمان پایان بزرگ‌تر باشد.")
 
-                start = from_jalali(start_j, is_datetime=True)
-                end = from_jalali(end_j, is_datetime=True)
-
-            except ValueError:
-                dlg = QDialog(self)
-                dlg.setWindowTitle("خطا")
-                lbl = QLabel("فرمت تاریخ یا زمان نادرست است.", dlg)
-                QVBoxLayout(dlg).addWidget(lbl)
-                dlg.exec_()
-                return
-            
             coalesced_name = fn.COALESCE(Product.name, 'سایر')
 
             q = (
@@ -287,7 +278,13 @@ class ReportProductMixin:
             w.df = df
 
         def run_worker():
-            self._summary_worker = ReportWorker(query_func)
+            snapshot = {
+                "from_date": dt_from_date.text(),
+                "from_time": dt_from_time.text(),
+                "to_date": dt_to_date.text(),
+                "to_time": dt_to_time.text(),
+            }
+            self._summary_worker = ReportWorker(lambda: query_func(snapshot))
             self._summary_worker.dataReady.connect(on_data_ready)
             self._summary_worker.error.connect(
                 lambda message: QMessageBox.warning(self, "خطا در گزارش محصولات", message)
