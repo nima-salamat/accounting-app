@@ -366,3 +366,22 @@ def delete_custom_record(entity_type, record_id):
             (CustomRecord.entity_type == entity_type)
             & (CustomRecord.id == record_id)
         ).execute()
+
+
+def entity_key_for_model(model):
+    """Resolve a built-in Peewee model class to its stable extension key."""
+    for entity_key, (_label, model_class) in BUILTIN_ENTITIES.items():
+        if model_class is model:
+            return entity_key
+    return None
+
+
+def cleanup_builtin_extension_values(entity_type, record_id):
+    """Remove extension values when their owning built-in record is deleted."""
+    if entity_type not in BUILTIN_ENTITIES:
+        raise ValueError("مدل اصلی معتبر نیست.")
+    with DBManager():
+        return CustomFieldValue.delete().where(
+            (CustomFieldValue.entity_type == entity_type)
+            & (CustomFieldValue.record_id == str(record_id))
+        ).execute()
