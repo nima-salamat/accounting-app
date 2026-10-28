@@ -270,7 +270,7 @@ def _text_for_element(element, receipt, config):
     kind = element["type"]
     label = element.get("label") or ""
     if kind == "invoice_number":
-        return "{}: {}".format(label or "شماره فاکتور", _receipt_number(receipt))
+        return "{}: {}".format(label or "شماره فاکتور", _fa_digits(_receipt_number(receipt)))
     if kind == "invoice_date":
         return "{}: {}".format(label or "تاریخ", _receipt_date(receipt))
     if kind == "payment_status":
@@ -284,11 +284,11 @@ def _text_for_element(element, receipt, config):
     if kind == "text":
         text = element.get("text") or label
         replacements = {
-            "{{invoice_number}}": _receipt_number(receipt),
+            "{{invoice_number}}": _fa_digits(_receipt_number(receipt)),
             "{{date}}": _receipt_date(receipt),
             "{{total}}": _money(receipt.get("total_price")),
             "{{payment_status}}": _payment_label(receipt),
-            "{{seat_number}}": str(receipt.get("seat_number") or "—"),
+            "{{seat_number}}": _fa_digits(receipt.get("seat_number") or "—"),
             "{{company_name}}": str(config.get("company_name") or ""),
         }
         for token, value in replacements.items():
@@ -331,6 +331,8 @@ def draw_invoice_element(painter, rect, element, receipt=None, template=None, *,
         return
     rect = QRectF(rect)
     kind = element.get("type")
+    if not editor and not receipt.get("_is_final_page", True) and kind in ("totals", "footer"):
+        return
     font_family = config["font_family"]
     accent = config["accent_color"]
     frame_color = config["frame_border_color"]
@@ -551,8 +553,8 @@ def draw_invoice_page(painter, target_rect, receipt=None, template=None, *, edit
 
 def _element_html(element, receipt, config):
     kind = element["type"]
-    if not editor and not receipt.get("_is_final_page", True) and element["type"] in ("totals", "footer"):
-        return
+    if not receipt.get("_is_final_page", True) and kind in ("totals", "footer"):
+        return ""
     if not element.get("visible", True):
         return ""
     x, y, w, h = (element["x_mm"], element["y_mm"], element["w_mm"], element["h_mm"])
@@ -575,8 +577,8 @@ def _element_html(element, receipt, config):
             except (TypeError, ValueError):
                 total = 0
             rows.append("<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
-                index, _text(item.get("product_name") or item.get("name") or "کالای حذف‌شده"),
-                _text(quantity), _money(price), _money(total),
+                _fa_digits(index), _text(item.get("product_name") or item.get("name") or "کالای حذف‌شده"),
+                _fa_digits(quantity), _money(price), _money(total),
             ))
         return "<div style='{}'><table class='items'><thead><tr><th>#</th><th>شرح کالا</th><th>تعداد</th><th>قیمت واحد</th><th>جمع</th></tr></thead><tbody>{}</tbody></table></div>".format(style, "".join(rows))
     if kind == "company":
