@@ -11,6 +11,7 @@ from collections import defaultdict
 from datetime import datetime, date
 from db.models import Product, Receipt, ReceiptProduct, Category
 from accounting_app.services.sales import record_sale
+from manager.db import DBManager
 from ui.base_panel import RecordDialog, RecordAdder, QDialog, to_jalali
 from functools import partial
 from PySide2.QtCore import QVariantAnimation
@@ -22,21 +23,37 @@ QThread = TrackingQThread
 
 class CategoryProductFetcher(QThread):
     data_fetched = Signal(list, list)
+    error = Signal(str)
 
     def run(self):
-        products = list(Product.select().where(Product.custom_product==False).prefetch(Category))
-        categories = list(Category.select())
-        self.data_fetched.emit(products, categories)
+        try:
+            with DBManager():
+                products = list(
+                    Product.select()
+                    .where(Product.custom_product == False)
+                    .prefetch(Category)
+                )
+                categories = list(Category.select())
+            self.data_fetched.emit(products, categories)
+        except Exception as exc:
+            self.error.emit(str(exc))
 
 class ReceiptFetcher(QThread):
     receipts_fetched = Signal(list)
+    error = Signal(str)
 
     def run(self):
-        receipts = list(Receipt.select().order_by(Receipt.created_at.desc()).limit(25))
-        self.receipts_fetched.emit(receipts)
+        try:
+            with DBManager():
+                receipts = list(
+                    Receipt.select().order_by(Receipt.created_at.desc()).limit(25)
+                )
+            self.receipts_fetched.emit(receipts)
+        except Exception as exc:
+            self.error.emit(str(exc))
 
 class CheckoutWorker(QThread):
-    finished = Signal(bool, str)
+    checkout_done = Signal(bool, str)
 
     def __init__(self, cart, user, payed: bool, edit_mode: bool = False, receipt_to_delete=None):
         super().__init__()
@@ -55,9 +72,9 @@ class CheckoutWorker(QThread):
                 edit_mode=self.edit_mode,
                 receipt_to_edit=self.receipt_to_delete,
             )
-            self.finished.emit(True, "فروش با موفقیت ثبت شد.")
+            self.checkout_done.emit(True, "فروش با موفقیت ثبت شد.")
         except ValueError as exc:
-            self.finished.emit(False, str(exc))
+            self.checkout_done.emit(False, str(exc))
         except Exception:
             import logging
             logging.exception("Unable to persist checkout")
