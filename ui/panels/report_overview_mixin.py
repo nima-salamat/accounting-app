@@ -118,29 +118,20 @@ class ReportOverviewMixin:
         lo.addWidget(canvas)
         self._add_export_chart_btn(lo, fig)
 
-        def query_func():
-            try:
-                
-                start_j = f"{dt_from_date.text()} {dt_from_time.text()}:00".replace("/", "-")
-                end_j = f"{dt_to_date.text()} {dt_to_time.text()}:00".replace("/", "-")
+        def query_func(snapshot):
+            start_j = "{} {}:00".format(snapshot["from_date"], snapshot["from_time"]).replace("/", "-")
+            end_j = "{} {}:00".format(snapshot["to_date"], snapshot["to_time"]).replace("/", "-")
+            start = from_jalali(start_j, is_datetime=True)
+            end = from_jalali(end_j, is_datetime=True)
+            if start > end:
+                raise ValueError("زمان شروع نباید از زمان پایان بزرگ‌تر باشد.")
 
-                start = from_jalali(start_j, is_datetime=True)
-                end = from_jalali(end_j, is_datetime=True)
-
-            except ValueError:
-                dlg = QDialog(self)
-                dlg.setWindowTitle("خطا")
-                lbl = QLabel("فرمت تاریخ یا زمان نادرست است.", dlg)
-                QVBoxLayout(dlg).addWidget(lbl)
-                dlg.exec_()
-                return
-        
             fmt_map = {
                 "ساعت": "%Y-%m-%d %H",
-                "روز":   "%Y-%m-%d",
-                "ماه":   "%Y-%m"
+                "روز": "%Y-%m-%d",
+                "ماه": "%Y-%m"
             }
-            fmt = fmt_map[cb.currentText()]
+            fmt = fmt_map[snapshot["granularity"]]
 
             cache_key = f"sales_time_{fmt}_{start}_{end}"
             if cache_key in cache:
@@ -172,8 +163,15 @@ class ReportOverviewMixin:
             w.df = df
 
         def load():
+            snapshot = {
+                "from_date": dt_from_date.text(),
+                "from_time": dt_from_time.text(),
+                "to_date": dt_to_date.text(),
+                "to_time": dt_to_time.text(),
+                "granularity": cb.currentText(),
+            }
             btn_load.setEnabled(False)
-            self._sales_time_worker = QueryWorker(query_func)
+            self._sales_time_worker = QueryWorker(lambda: query_func(snapshot))
             self._sales_time_worker.dataReady.connect(lambda df: (on_data_ready(df), btn_load.setEnabled(True)))
             self._sales_time_worker.error.connect(
                 lambda message: (QMessageBox.warning(self, "خطا در گزارش", message), btn_load.setEnabled(True))
@@ -268,40 +266,35 @@ class ReportOverviewMixin:
             dlg.exec_()
 
   
-        def query_func():
-            try:
-                start_j = f"{dt_from_date.text()} {dt_from_time.text()}:00".replace("/", "-")
-                end_j = f"{dt_to_date.text()} {dt_to_time.text()}:00".replace("/", "-")
-                start = from_jalali(start_j, is_datetime=True)
-                end = from_jalali(end_j, is_datetime=True)
-            except Exception as e:
-                dlg = QDialog(self)
-                dlg.setWindowTitle("خطا در تبدیل تاریخ")
-                QVBoxLayout(dlg).addWidget(QLabel(f"فرمت تاریخ یا زمان نادرست است.\n{e}", dlg))
-                dlg.exec_()
-                return pd.DataFrame()
+        def query_func(snapshot):
+            start_j = "{} {}:00".format(snapshot["from_date"], snapshot["from_time"]).replace("/", "-")
+            end_j = "{} {}:00".format(snapshot["to_date"], snapshot["to_time"]).replace("/", "-")
+            start = from_jalali(start_j, is_datetime=True)
+            end = from_jalali(end_j, is_datetime=True)
+            if start > end:
+                raise ValueError("زمان شروع نباید از زمان پایان بزرگ‌تر باشد.")
 
             q = ReceiptProduct.select(
                     ReceiptProduct.product,
                     fn.SUM(ReceiptProduct.quantity).alias('sold'),
                     fn.SUM(ReceiptProduct.quantity * getattr(
                         ReceiptProduct,
-                        'sell_price' if price_cb.currentText() == 'قیمت فروش' else 'buy_price'
+                        'sell_price' if snapshot['price'] == 'قیمت فروش' else 'buy_price'
                     )).alias('amount')
                 ).join(Receipt).where(Receipt.created_at >= start,
     Receipt.created_at <= end)
 
-            if payed_cb.currentText() == 'پرداخت شده':
+            if snapshot['payed'] == 'پرداخت شده':
                 q = q.where(Receipt.payed == True)
-            elif payed_cb.currentText() == 'پرداخت نشده':
+            elif snapshot['payed'] == 'پرداخت نشده':
                 q = q.where(Receipt.payed == False)
 
-            if user_cb.currentIndex() > 0:
-                usr = User.get(User.username == user_cb.currentText())
+            if snapshot['user'] != 'همه کاربران':
+                usr = User.get(User.username == snapshot['user'])
                 q = q.where(Receipt.user == usr)
 
-            if cat_cb.currentIndex() > 0:
-                cat = Category.get(Category.name == cat_cb.currentText())
+            if snapshot['category'] != 'همه دسته‌ها':
+                cat = Category.get(Category.name == snapshot['category'])
                 q = q.join(Product, on=(ReceiptProduct.product == Product.id)).where(Product.category == cat)
 
             q = q.group_by(ReceiptProduct.product).order_by(fn.SUM(ReceiptProduct.quantity).desc())
@@ -332,8 +325,18 @@ class ReportOverviewMixin:
 
 
         def load():
+            snapshot = {
+                "from_date": dt_from_date.text(),
+                "from_time": dt_from_time.text(),
+                "to_date": dt_to_date.text(),
+                "to_time": dt_to_time.text(),
+                "payed": payed_cb.currentText(),
+                "user": user_cb.currentText(),
+                "category": cat_cb.currentText(),
+                "price": price_cb.currentText(),
+            }
             btn_bar.setEnabled(False)
-            self._sales_product_worker = QueryWorker(query_func)
+            self._sales_product_worker = QueryWorker(lambda: query_func(snapshot))
             self._sales_product_worker.dataReady.connect(lambda df: (on_data_ready(df), btn_bar.setEnabled(True)))
             self._sales_product_worker.error.connect(
                 lambda message: (QMessageBox.warning(self, "خطا در گزارش", message), btn_bar.setEnabled(True))
