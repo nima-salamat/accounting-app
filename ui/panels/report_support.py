@@ -1,5 +1,6 @@
 """Shared report helpers, caches and reusable background workers."""
 import sys
+from threading import RLock
 import pandas as pd
 from datetime import datetime, timedelta
 from PySide2.QtWidgets import (
@@ -209,6 +210,7 @@ class DataLoader(QThread):
 
 # Cache setup
 cache = cachetools.TTLCache(maxsize=100, ttl=300)  # 5-minute cache
+cache_lock = RLock()
 
 # -------------------------------------------------------------------------
 def wrap_scrollable(inner: QWidget) -> QWidget:
