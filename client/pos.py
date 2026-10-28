@@ -2,7 +2,7 @@
 import os
 import uuid
 
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Qt, Slot, QSettings
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
     QPushButton, QStackedWidget, QVBoxLayout, QWidget,
@@ -24,7 +24,10 @@ class POSWindow(QMainWindow):
         self.setWindowTitle("Accounting App · صندوق فروش")
         self.resize(1180, 780)
         self.setMinimumSize(880, 620)
-        self.mode = os.environ.get("ACCOUNTING_APP_THEME", "light").lower()
+        self.local_settings = QSettings("AccountingApp", "POSClient")
+        self.mode = str(self.local_settings.value(
+            "theme_mode", os.environ.get("ACCOUNTING_APP_THEME", "light")
+        )).lower()
         if self.mode not in ("light", "dark"):
             self.mode = "light"
         self.api = None
@@ -168,6 +171,8 @@ class POSWindow(QMainWindow):
             return
         self.mode = mode
         os.environ["ACCOUNTING_APP_THEME"] = mode
+        self.local_settings.setValue("theme_mode", mode)
+        self.local_settings.sync()
         self.setStyleSheet(stylesheet(mode))
         self.auth_page.set_mode(mode)
 
