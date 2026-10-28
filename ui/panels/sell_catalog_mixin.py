@@ -95,7 +95,11 @@ class SellCatalogMixin:
     def refresh_products(self):
         self.fetcher = CategoryProductFetcher()
         self.fetcher.data_fetched.connect(self.on_data_fetched)
+        self.fetcher.error.connect(self._on_product_fetch_error)
         self.fetcher.start()
+
+    def _on_product_fetch_error(self, message):
+        QMessageBox.warning(self, "خطا در دریافت محصولات", message)
 
     def toggle_animations(self, state: int):
         self._parent._parent._parent.DISABLE_ANIMATIONS = bool(state)
