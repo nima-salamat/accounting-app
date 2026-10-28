@@ -199,8 +199,10 @@ class InventoryPage(QFrame):
         layout.addLayout(bar)
         if kind == "stock":
             self.stock_page_label, self.stock_previous, self.stock_next = label, previous, next_button
+            self.stock_page_size_combo = size_combo
         else:
             self.movement_page_label, self.movement_previous, self.movement_next = label, previous, next_button
+            self.movement_page_size_combo = size_combo
         return bar
 
     def set_permissions(self, user):
@@ -296,6 +298,16 @@ class InventoryPage(QFrame):
 
     def _set_page_size(self, combo):
         self.page_size = int(combo.currentData() or 25)
+        for other in (
+            getattr(self, "stock_page_size_combo", None),
+            getattr(self, "movement_page_size_combo", None),
+        ):
+            if other is not None and other is not combo:
+                other.blockSignals(True)
+                index = other.findData(self.page_size)
+                if index >= 0:
+                    other.setCurrentIndex(index)
+                other.blockSignals(False)
         self.stock_page = self.movement_page = 1
         self.refresh()
 
