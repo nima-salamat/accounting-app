@@ -18,7 +18,7 @@ ACTION_LABELS = (("r", "مشاهده"), ("c", "ایجاد"), ("u", "ویرایش
 LEGACY_CASHIER = {
     "products": "r", "categories": "r", "warehouse": "r",
     "checks_in": "r", "checks_out": "r", "sales": "c",
-    "receipts": "rud", "reports": "r", "invoices": "r",
+    "receipts": "r", "reports": "r", "invoices": "r",
 }
 ROLE_GRANTS = {
     "cashier": dict(LEGACY_CASHIER),
