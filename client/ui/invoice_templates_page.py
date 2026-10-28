@@ -530,6 +530,11 @@ class InvoiceTemplatesPage(QFrame):
 
     def _update_page_info(self):
         width, height = page_dimensions(self._values())
+        if hasattr(self, "x_mm"):
+            self.x_mm.setRange(0, max(0, int(width) - 3))
+            self.y_mm.setRange(0, max(0, int(height) - 3))
+            self.w_mm.setRange(3, max(3, int(width)))
+            self.h_mm.setRange(3, max(3, int(height)))
         paper = self.paper_size.currentData() or "A4"
         orientation = self.orientation.currentData() or "portrait"
         is_thermal = paper in ("receipt80", "receipt58")
@@ -560,10 +565,12 @@ class InvoiceTemplatesPage(QFrame):
         scale_y = new_height / old_height if old_height else 1
         self._loading = True
         for element in self._elements:
-            element["x_mm"] = max(0, min(600, float(element["x_mm"]) * scale_x))
-            element["y_mm"] = max(0, min(600, float(element["y_mm"]) * scale_y))
-            element["w_mm"] = max(3, min(600, float(element["w_mm"]) * scale_x))
-            element["h_mm"] = max(3, min(600, float(element["h_mm"]) * scale_y))
+            element_w = max(3.0, min(new_width, float(element["w_mm"]) * scale_x))
+            element_h = max(3.0, min(new_height, float(element["h_mm"]) * scale_y))
+            element["w_mm"] = element_w
+            element["h_mm"] = element_h
+            element["x_mm"] = max(0.0, min(new_width - element_w, float(element["x_mm"]) * scale_x))
+            element["y_mm"] = max(0.0, min(new_height - element_h, float(element["y_mm"]) * scale_y))
         self._loading = False
         self._last_page_size = (new_width, new_height)
         self._rebuild_canvas()
@@ -647,11 +654,22 @@ class InvoiceTemplatesPage(QFrame):
         for control in controls:
             control.setEnabled(bool(element))
         if element:
+            width, height = page_dimensions(self._values())
+            element_width = max(3.0, min(width, float(element["w_mm"])))
+            element_height = max(3.0, min(height, float(element["h_mm"])))
+            element["w_mm"] = element_width
+            element["h_mm"] = element_height
+            element["x_mm"] = max(0.0, min(width - element_width, float(element["x_mm"])))
+            element["y_mm"] = max(0.0, min(height - element_height, float(element["y_mm"])))
             self.element_label.setText(element.get("text") if element["type"] == "text" else element.get("label", ""))
-            self.x_mm.setValue(round(element["x_mm"]))
-            self.y_mm.setValue(round(element["y_mm"]))
+            self.w_mm.setRange(3, max(3, int(width)))
+            self.h_mm.setRange(3, max(3, int(height)))
             self.w_mm.setValue(round(element["w_mm"]))
             self.h_mm.setValue(round(element["h_mm"]))
+            self.x_mm.setRange(0, max(0, int(width - element["w_mm"])))
+            self.y_mm.setRange(0, max(0, int(height - element["h_mm"])))
+            self.x_mm.setValue(round(element["x_mm"]))
+            self.y_mm.setValue(round(element["y_mm"]))
             self.element_font_size.setValue(int(element.get("font_size", 9)))
             idx = self.element_align.findData(element.get("align", "right"))
             self.element_align.setCurrentIndex(max(0, idx))
@@ -672,10 +690,11 @@ class InvoiceTemplatesPage(QFrame):
             element["label"] = element["text"][:80]
         else:
             element["label"] = self.element_label.text()[:80]
-        element["x_mm"] = float(self.x_mm.value())
-        element["y_mm"] = float(self.y_mm.value())
-        element["w_mm"] = float(self.w_mm.value())
-        element["h_mm"] = float(self.h_mm.value())
+        width, height = page_dimensions(self._values())
+        element["w_mm"] = max(3.0, min(width, float(self.w_mm.value())))
+        element["h_mm"] = max(3.0, min(height, float(self.h_mm.value())))
+        element["x_mm"] = max(0.0, min(width - element["w_mm"], float(self.x_mm.value())))
+        element["y_mm"] = max(0.0, min(height - element["h_mm"], float(self.y_mm.value())))
         element["font_size"] = self.element_font_size.value()
         element["align"] = self.element_align.currentData() or "right"
         element["bold"] = self.element_bold.isChecked()
