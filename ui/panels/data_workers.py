@@ -40,51 +40,63 @@ class DataLoader(QObject):
     @Slot()
     def load_data(self):
         try:
-            qs = self.model.select()
-            if self.search_text:
-                conds = []
-                for part in self.search_text.split(","):
-                    if ":" in part:
-                        k, v = part.split(":", 1)
-                        k, v = k.strip(), v.strip()
-                        if k in self.lbl2fld:
-                            k = self.lbl2fld[k]
-                        if k in self._searchable:
-                            fld = self.model._meta.fields[k]
-                            if isinstance(fld, BooleanField):
-                                if v in ["هست", "آره", "اره", "yes", "True", "true", "شده", "است", "می باشد", "میباشد"]:
-                                    conds.append(fld == True)
-                                elif v in ["نیست", "نه", "no", "False", "false", "نشده", "نمی باشد", "نمیباشد"]:
-                                    conds.append(fld == False)
-                            else:
-                                conds.append(fld.contains(v) if isinstance(fld, (CharField, TextField)) else fld == v)
-                if conds:
-                    qs = qs.where(reduce(operator.and_, conds))
-            if self.cb_enable_date and hasattr(self.model, 'created_at'):
-                start_date = self.dt_from_date.strip()
-                start_time = self.dt_from_time.strip()
-                end_date = self.dt_to_date.strip()
-                end_time = self.dt_to_time.strip()
-                if start_date and start_time and end_date and end_time:
-                    try:
-                        start_dt = parse_jalali_datetime(start_date, start_time)
-                        end_dt = parse_jalali_datetime(end_date, end_time)
+            with DBManager():
+                page_size = max(1, int(self.page_size))
+                current_page = max(1, int(self.current_page))
+                qs = self.model.select()
+                fields = self.model._meta.fields
+                searchable = set(self._searchable)
+
+                if self.search_text:
+                    conditions = []
+                    for part in self.search_text.split(","):
+                        if ":" not in part:
+                            continue
+                        key, value = (item.strip() for item in part.split(":", 1))
+                        key = self.lbl2fld.get(key, key)
+                        if key not in searchable or key not in fields:
+                            continue
+                        field = fields[key]
+                        if isinstance(field, BooleanField):
+                            if value in ("هست", "آره", "اره", "yes", "True", "true", "شده", "است", "می باشد", "میباشد"):
+                                conditions.append(field == True)
+                            elif value in ("نیست", "نه", "no", "False", "false", "نشده", "نمی باشد", "نمیباشد"):
+                                conditions.append(field == False)
+                        elif isinstance(field, (CharField, TextField)):
+                            conditions.append(field.contains(value))
+                        else:
+                            conditions.append(field == value)
+                    if conditions:
+                        qs = qs.where(reduce(operator.and_, conditions))
+
+                if self.cb_enable_date and hasattr(self.model, "created_at"):
+                    values = (
+                        self.dt_from_date.strip(), self.dt_from_time.strip(),
+                        self.dt_to_date.strip(), self.dt_to_time.strip(),
+                    )
+                    if all(values):
+                        start_dt = parse_jalali_datetime(values[0], values[1])
+                        end_dt = parse_jalali_datetime(values[2], values[3])
+                        if start_dt > end_dt:
+                            raise ValueError("زمان شروع نباید از زمان پایان بزرگ‌تر باشد.")
                         qs = qs.where(self.model.created_at.between(start_dt, end_dt))
-                    except ValueError as e:
-                        self.error.emit(str(e))
-                        return
-            if self.sort_fields:
+
                 order_by = []
-                for field, asc in self.sort_fields:
-                    fld = getattr(self.model, field)
-                    order_by.append(fld.asc() if asc else fld.desc())
-                qs = qs.order_by(*order_by)
-            total_rows = qs.count()
-            offset = (self.current_page - 1) * self.page_size
-            data = list(qs.limit(self.page_size).offset(offset))
+                for field_name, ascending in self.sort_fields or ():
+                    if field_name not in fields:
+                        continue
+                    field = fields[field_name]
+                    order_by.append(field.asc() if ascending else field.desc())
+                if order_by:
+                    qs = qs.order_by(*order_by)
+
+                total_rows = qs.count()
+                max_page = max(1, (total_rows - 1) // page_size + 1)
+                current_page = min(current_page, max_page)
+                data = list(qs.limit(page_size).offset((current_page - 1) * page_size))
             self.data_loaded.emit(data, total_rows)
-        except Exception as e:
-            self.error.emit(str(e))
+        except Exception as exc:
+            self.error.emit(str(exc))
 
 class RecordAdder(QObject):
     # now carries the created model instance
@@ -236,11 +248,13 @@ class Exporter(QObject):
                         row.append(val)
                     writer.writerow(row)
 
-                sum_row = ["مجموع"]
-                for key in self.display_fields[1:]:
-                    if key in self.numeric_fields:
+                sum_row = []
+                for index, key in enumerate(self.display_fields):
+                    if index == 0:
+                        sum_row.append("مجموع")
+                    elif key in self.numeric_fields:
                         total = sum(float(getattr(rec, key) or 0) for rec in self.data)
-                        sum_row.append(f"{total:.2f}")
+                        sum_row.append("{:.2f}".format(total))
                     else:
                         sum_row.append("")
                 writer.writerow(sum_row)
