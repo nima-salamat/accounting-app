@@ -32,14 +32,6 @@ class UserManagement(TableManagement):
         
 
 
-from PySide2.QtWidgets import (
-    QWidget, QLabel, QLineEdit, QPushButton, QMessageBox,
-    QVBoxLayout, QHBoxLayout, QFormLayout, QCheckBox, QFrame, QToolButton, QStyle
-)
-from PySide2.QtGui import QFont
-from PySide2.QtCore import Qt
-from peewee import IntegrityError
-
 class UserPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
