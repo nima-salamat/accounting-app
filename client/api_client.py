@@ -77,7 +77,7 @@ class AccountingApiClient:
             self._thread_local.session = session
         return session
 
-    def _request(self, method, path, *, json_body=None, params=None, headers=None, authenticated=True):
+    def _request(self, method, path, *, json_body=None, params=None, headers=None, authenticated=True, include_headers=False):
         request_headers = {"Accept": "application/json"}
         if headers:
             request_headers.update(headers)
@@ -98,7 +98,7 @@ class AccountingApiClient:
             raise ApiError(0, "اتصال به سرور برقرار نشد؛ نشانی و وضعیت شبکه را بررسی کنید.", method, path) from exc
 
         if response.status_code == 204:
-            return None
+            return {"data": None, "headers": dict(response.headers)} if include_headers else None
         try:
             payload = response.json()
         except ValueError:
@@ -115,7 +115,26 @@ class AccountingApiClient:
             if response.status_code == 401:
                 self.clear_session()
             raise ApiError(response.status_code, str(detail), method, path)
+        if include_headers:
+            return {"data": payload, "headers": dict(response.headers)}
         return payload
+
+    def _request_page(self, method, path, *, page, page_size, params=None):
+        query = dict(params or {})
+        query.update({"page": page, "page_size": page_size})
+        result = self._request(method, path, params=query, include_headers=True)
+        items = result["data"] or []
+        headers = result["headers"]
+        try:
+            total = int(headers.get("X-Total-Count", len(items)))
+        except (TypeError, ValueError):
+            total = len(items)
+        return {
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total": max(0, total),
+        }
 
     def setup_status(self):
         return self._request("GET", "/api/v1/setup/status", authenticated=False)
