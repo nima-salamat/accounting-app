@@ -166,7 +166,6 @@ class Calculator(QWidget):
         top_bar.mousePressEvent = self._press
         top_bar.mouseMoveEvent = self._move
 
-    # ... other methods remain unchanged ...
 
     def _toggle_history(self):
         if self.toggle_history_btn.isChecked():
