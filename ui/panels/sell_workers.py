@@ -25,6 +25,10 @@ class CategoryProductFetcher(QThread):
     data_fetched = Signal(list, list)
     error = Signal(str)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.finished.connect(self.deleteLater)
+
     def run(self):
         try:
             with DBManager():
@@ -42,6 +46,10 @@ class ReceiptFetcher(QThread):
     receipts_fetched = Signal(list)
     error = Signal(str)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.finished.connect(self.deleteLater)
+
     def run(self):
         try:
             with DBManager():
@@ -57,6 +65,7 @@ class CheckoutWorker(QThread):
 
     def __init__(self, cart, user, payed: bool, edit_mode: bool = False, receipt_to_delete=None):
         super().__init__()
+        self.finished.connect(self.deleteLater)
         self.cart = cart
         self.user = user
         self.payed = payed
