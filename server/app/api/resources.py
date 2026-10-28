@@ -342,9 +342,22 @@ def delete_check_out(record_id: UUID, user=Depends(require_permission("checks_ou
 
 
 @router.get("/users", response_model=List[UserOut])
-def list_users(_admin=Depends(require_admin)):
+def list_users(
+    response: Response,
+    q: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=200),
+    _admin=Depends(require_admin),
+):
     with DBManager():
-        return [_serialize(item, exclude=("password",)) for item in UserModel.select().order_by(UserModel.username)]
+        query = UserModel.select()
+        if q and q.strip():
+            query = query.where(UserModel.username.contains(q.strip()))
+        total = query.count()
+        response.headers["X-Total-Count"] = str(total)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
+        return [_serialize(item, exclude=("password",)) for item in query.order_by(UserModel.username).paginate(page, page_size)]
 
 
 @router.post("/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
