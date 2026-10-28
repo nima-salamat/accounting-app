@@ -172,9 +172,15 @@ def apply_stocktake(
                 if not product.track_stock:
                     raise HTTPException(status_code=409, detail="رهگیری موجودی یکی از کالاها غیرفعال شده است.")
                 current = float(product.stock_quantity or 0)
+                expected = float(line.expected_quantity)
                 target = float(line.counted_quantity)
                 if target < 0:
                     raise HTTPException(status_code=422, detail="موجودی شمارش‌شده نمی‌تواند منفی باشد.")
+                if abs(current - expected) > 1e-9:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="موجودی «{}» پس از شروع شمارش تغییر کرده است؛ این برگه را اعمال نکنید. شمارش تازه‌ای بسازید یا پس از بررسی مدیریتی دوباره شمارش کنید.".format(product.name),
+                    )
                 delta = round(target - current, 4)
                 if abs(delta) > 1e-9:
                     updated = Product.update(
@@ -195,9 +201,9 @@ def apply_stocktake(
                         reason="stocktake", reference_id=str(take.id),
                         notes="تطبیق شمارش فیزیکی موجودی",
                     )
-                line.expected_quantity = current
-                line.difference = round(target - current, 4)
-                line.save(only=[StocktakeLine.expected_quantity, StocktakeLine.difference, StocktakeLine.updated_at])
+                # Preserve the original system snapshot so the variance remains auditable.
+                line.difference = round(target - expected, 4)
+                line.save(only=[StocktakeLine.difference, StocktakeLine.updated_at])
                 applied.append({
                     "product_id": str(product.id),
                     "product_name": product.name,
