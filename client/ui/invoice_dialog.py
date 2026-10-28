@@ -7,6 +7,8 @@ from PySide6.QtWidgets import (
 )
 
 from client.ui.invoice_render import render_invoice_html
+from client.ui.device_settings import device_settings
+from PySide6.QtGui import QTextDocument
 
 
 class InvoiceDialog(QDialog):
@@ -55,7 +57,33 @@ class InvoiceDialog(QDialog):
 
     def print_invoice(self):
         printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        settings = device_settings()
+        printer_name = settings.get("printer_name")
+        if printer_name:
+            printer.setPrinterName(printer_name)
+            if not printer.isValid():
+                QMessageBox.warning(self, "چاپگر در دسترس نیست", "چاپگر انتخاب‌شده در تنظیمات صندوق در دسترس نیست.")
+                return
         dialog = QPrintDialog(printer, self)
         dialog.setWindowTitle("چاپ فاکتور")
         if dialog.exec() == QPrintDialog.DialogCode.Accepted:
             self.preview.document().print_(printer)
+
+
+
+def auto_print_invoice(receipt, template=None, parent=None):
+    """Send the invoice to the configured OS print queue when automatic printing is enabled."""
+    settings = device_settings()
+    if not settings.get("auto_print"):
+        return False
+    printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+    name = settings.get("printer_name")
+    if name:
+        printer.setPrinterName(name)
+        if not printer.isValid():
+            QMessageBox.warning(parent, "چاپگر در دسترس نیست", "چاپ خودکار فعال است، اما چاپگر تنظیم‌شده پیدا نشد.")
+            return False
+    document = QTextDocument()
+    document.setHtml(render_invoice_html(receipt, template))
+    document.print_(printer)
+    return True
