@@ -38,22 +38,42 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           python - <<'PY'
+          from types import SimpleNamespace
           from PySide6.QtWidgets import QApplication
           from client.api_client import AccountingApiClient
+          from client.kiosk import KioskWindow
+          from client.ui.dashboard_page import DashboardPage
           from client.ui.forms import RecordDialog
+          from client.ui.kiosk_settings_page import KioskSettingsPage
+          from client.ui.sales_page import SalesPage
           from client.ui.setup_wizard import SetupWizard
 
           app = QApplication([])
           api = AccountingApiClient("http://127.0.0.1:8000")
           wizard = SetupWizard(api, mode="dark")
           dialog = RecordDialog("Test form", [{"key": "name", "label": "Name", "required": True}])
-          assert wizard.pages.count() == 3
           dialog.inputs["name"].setText("Smoke test")
           assert dialog.values() == {"name": "Smoke test"}
-          wizard.close()
-          dialog.close()
+          assert wizard.pages.count() == 3
+
+          dummy = SimpleNamespace(
+              api=None, current_user={"username": "smoke", "is_admin": True, "buttons": ""},
+              company_profile={}, navigate=lambda _key: None,
+              run_api=lambda *_args, **_kwargs: None,
+          )
+          sales = SalesPage(dummy)
+          sales.set_business_profile({"business_profile": "cafe", "cafe_seat_selection": True})
+          sales.set_permissions(dummy.current_user)
+          assert sales.seat_row.isVisible() is False or sales.seat_row.isHidden()
+          dashboard = DashboardPage(dummy)
+          dashboard.set_user(dummy.current_user)
+          kiosk_settings = KioskSettingsPage(dummy)
+          kiosk = KioskWindow()
+          assert kiosk.stack.currentWidget() in (kiosk.setup_page, kiosk.connection_page)
+          for widget in (kiosk, kiosk_settings, dashboard, sales, wizard, dialog):
+              widget.close()
           app.processEvents()
-          print("New client widget construction OK")
+          print("API-backed client and kiosk widget construction OK")
           PY
       - name: Reject legacy Qt 5 imports and APIs
         run: |
