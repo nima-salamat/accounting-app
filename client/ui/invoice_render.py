@@ -60,7 +60,7 @@ def _template_config(template):
     except (TypeError, ValueError):
         config["margin_mm"] = DEFAULT_TEMPLATE["margin_mm"]
     font_family = str(config.get("font_family") or DEFAULT_TEMPLATE["font_family"]).strip()
-    if not re.fullmatch(r"[\\w .()\\-]{1,80}", font_family, flags=re.UNICODE):
+    if not re.fullmatch(r"[\w .()\-]{1,80}", font_family, flags=re.UNICODE):
         font_family = DEFAULT_TEMPLATE["font_family"]
     config["font_family"] = font_family
     for key, fallback, minimum, maximum in (("font_size", 11, 8, 18), ("header_font_size", 23, 14, 32)):

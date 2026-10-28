@@ -60,7 +60,7 @@ class InvoiceTemplateInput(BaseModel):
     phone: str = Field(default="", max_length=80)
     seat_number_label: str = Field(default="شماره صندلی / میز", max_length=80)
     footer: str = Field(default="از خرید شما سپاسگزاریم.", max_length=500)
-    font_family: str = Field(default="Vazirmatn", min_length=1, max_length=80, pattern=r"^[\\w .()\\-]{1,80}$")
+    font_family: str = Field(default="Vazirmatn", min_length=1, max_length=80, pattern=r"^[\w .()\-]{1,80}$")
     font_size: int = Field(default=11, ge=8, le=18)
     header_font_size: int = Field(default=23, ge=14, le=32)
     line_height: float = Field(default=1.8, ge=1.2, le=2.4)

@@ -56,7 +56,7 @@ class SetupRequest(StrictModel):
 
 class AppearanceSettingsUpdate(StrictModel):
     """Shared application-wide typography and control density settings."""
-    font_family: str = Field(default="Vazirmatn", min_length=1, max_length=64, pattern=r"^[\\w .()\\-]{1,64}$")
+    font_family: str = Field(default="Vazirmatn", min_length=1, max_length=64, pattern=r"^[\w .()\-]{1,64}$")
     font_size: int = Field(default=13, ge=10, le=18)
     heading_scale: float = Field(default=1.0, ge=0.9, le=1.5)
     density: Literal["compact", "comfortable", "spacious"] = "comfortable"

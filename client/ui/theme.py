@@ -38,7 +38,7 @@ def normalize_design_config(values=None):
     source = values if isinstance(values, dict) else {}
     result = dict(DEFAULT_DESIGN)
     family = str(source.get("font_family") or result["font_family"]).strip()
-    if not re.fullmatch(r"[\\w .()\\-]{1,64}", family, flags=re.UNICODE):
+    if not re.fullmatch(r"[\w .()\-]{1,64}", family, flags=re.UNICODE):
         family = result["font_family"]
     result["font_family"] = family
     try:
