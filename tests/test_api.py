@@ -576,6 +576,135 @@ class ApiTests(unittest.TestCase):
             for item in journals.json()
         ))
 
+    def test_kiosk_allowlist_seat_requirement_and_recent_receipts(self):
+        admin_headers = self.setup_admin()
+        allowed_response = self.client.post(
+            "/api/v1/products", headers=admin_headers,
+            json={"name": "محصول کیوسک مجاز", "sell_price": 25, "track_stock": False},
+        )
+        denied_response = self.client.post(
+            "/api/v1/products", headers=admin_headers,
+            json={"name": "محصول غیرمجاز", "sell_price": 40, "track_stock": False},
+        )
+        self.assertEqual(allowed_response.status_code, 201, allowed_response.text)
+        self.assertEqual(denied_response.status_code, 201, denied_response.text)
+        allowed_id = allowed_response.json()["id"]
+        denied_id = denied_response.json()["id"]
+
+        saved = self.client.put(
+            "/api/v1/kiosk/settings",
+            headers=admin_headers,
+            json={
+                "active": True,
+                "allowed_product_ids": [allowed_id],
+                "receipt_history_hours": 48,
+                "cafe_seat_selection": True,
+                "allow_unpaid_orders": True,
+            },
+        )
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json()["allowed_product_ids"], [allowed_id])
+
+        kiosk_user = self.client.post(
+            "/api/v1/users", headers=admin_headers,
+            json={
+                "username": "kiosk_test",
+                "password": "kiosk-test-password",
+                "is_admin": False,
+                "buttons": "role:kiosk;products:r;categories:r;sales:c;receipts:r;invoices:r;kiosk:r",
+                "is_active": True,
+                "requires_session_activation": False,
+            },
+        )
+        self.assertEqual(kiosk_user.status_code, 201, kiosk_user.text)
+        login = self.client.post(
+            "/api/v1/auth/login",
+            json={"username": "kiosk_test", "password": "kiosk-test-password"},
+        )
+        self.assertEqual(login.status_code, 200, login.text)
+        kiosk_headers = {"Authorization": "Bearer " + login.json()["access_token"]}
+
+        catalog = self.client.get("/api/v1/products?page=1&page_size=100", headers=kiosk_headers)
+        self.assertEqual(catalog.status_code, 200, catalog.text)
+        self.assertEqual([item["id"] for item in catalog.json()], [allowed_id])
+        config = self.client.get("/api/v1/kiosk/config", headers=kiosk_headers)
+        self.assertEqual(config.status_code, 200, config.text)
+        self.assertTrue(config.json()["active"])
+
+        missing_seat = self.client.post(
+            "/api/v1/sales/quote", headers=kiosk_headers,
+            json={"items": [{"product_id": allowed_id, "quantity": 1}], "paid": False},
+        )
+        self.assertEqual(missing_seat.status_code, 422, missing_seat.text)
+        valid_quote = self.client.post(
+            "/api/v1/sales/quote", headers=kiosk_headers,
+            json={
+                "items": [{"product_id": allowed_id, "quantity": 1}],
+                "paid": False, "seat_number": "4",
+            },
+        )
+        self.assertEqual(valid_quote.status_code, 200, valid_quote.text)
+
+        forbidden_quote = self.client.post(
+            "/api/v1/sales/quote", headers=kiosk_headers,
+            json={
+                "items": [{"product_id": denied_id, "quantity": 1}],
+                "paid": False, "seat_number": "4",
+            },
+        )
+        self.assertEqual(forbidden_quote.status_code, 403, forbidden_quote.text)
+
+        sale = self.client.post(
+            "/api/v1/sales",
+            headers=dict(kiosk_headers, **{"Idempotency-Key": "kiosk-seat-sale-001"}),
+            json={
+                "items": [{"product_id": allowed_id, "quantity": 1}],
+                "paid": False, "seat_number": "4",
+            },
+        )
+        self.assertEqual(sale.status_code, 201, sale.text)
+        self.assertEqual(sale.json()["seat_number"], "4")
+
+        recent = self.client.get(
+            "/api/v1/sales/recent-receipts?page=1&page_size=25", headers=kiosk_headers
+        )
+        self.assertEqual(recent.status_code, 200, recent.text)
+        self.assertGreaterEqual(int(recent.headers.get("X-Total-Count", "0")), 1)
+        self.assertEqual(recent.json()[0]["seat_number"], "4")
+        self.assertFalse(recent.json()[0]["payed"])
+
+    def test_product_creator_can_upload_image_without_update_permission(self):
+        admin_headers = self.setup_admin()
+        created_user = self.client.post(
+            "/api/v1/users", headers=admin_headers,
+            json={
+                "username": "image_creator",
+                "password": "image-creator-password",
+                "is_admin": False,
+                "buttons": "role:custom;products:c",
+                "is_active": True,
+                "requires_session_activation": False,
+            },
+        )
+        self.assertEqual(created_user.status_code, 201, created_user.text)
+        login = self.client.post(
+            "/api/v1/auth/login",
+            json={"username": "image_creator", "password": "image-creator-password"},
+        )
+        self.assertEqual(login.status_code, 200, login.text)
+        creator_headers = {"Authorization": "Bearer " + login.json()["access_token"]}
+        product = self.client.post(
+            "/api/v1/products", headers=creator_headers,
+            json={"name": "تصویر بدون مجوز ویرایش", "sell_price": 10},
+        )
+        self.assertEqual(product.status_code, 201, product.text)
+        uploaded = self.client.post(
+            "/api/v1/products/{}/image".format(product.json()["id"]),
+            headers=creator_headers,
+            files={"file": ("item.png", b"\x89PNG\r\n\x1a\\n", "image/png")},
+        )
+        self.assertEqual(uploaded.status_code, 200, uploaded.text)
+
     def test_custom_fields_are_returned_as_table_columns_in_batches(self):
         admin_headers = self.setup_admin()
         product_response = self.client.post(
