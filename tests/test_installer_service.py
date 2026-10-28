@@ -11,7 +11,8 @@ from accounting_app.database.schema import create_tables
 from accounting_app.services.authentication import AuthManager
 from accounting_app.services.installer import complete_initial_setup, is_setup_required
 from accounting_app.services.schema_registry import (
-    cleanup_builtin_extension_values, get_entity_values, register_field, save_entity_values,
+    cleanup_builtin_extension_values, cleanup_builtin_extension_values_many,
+    get_entity_values, register_field, save_entity_values,
 )
 from manager.db import create_admin
 
@@ -182,6 +183,30 @@ class InstallerAndSchemaRegistryTests(unittest.TestCase):
         self.assertEqual(get_entity_values("products", product_id), {"warranty_months": 24})
         cleanup_builtin_extension_values("products", product_id)
         self.assertEqual(get_entity_values("products", product_id), {})
+
+    def test_batch_cleanup_removes_only_selected_records(self):
+        complete_initial_setup(
+            "alice", "password123", "password123",
+            [{
+                "model_key": "products", "model_label": "",
+                "field_key": "external_sku", "field_label": "کد خارجی",
+                "field_type": "text", "is_required": False,
+            }],
+        )
+        with DBManager():
+            products = [
+                Product.create(name="کالا {}".format(index), buy_price=1, sell_price=2)
+                for index in range(3)
+            ]
+        ids = [str(product.id) for product in products]
+        for product_id, value in zip(ids, ("A", "B", "C")):
+            save_entity_values("products", product_id, {"external_sku": value})
+
+        deleted = cleanup_builtin_extension_values_many("products", ids[:2])
+        self.assertEqual(deleted, 2)
+        self.assertEqual(get_entity_values("products", ids[0]), {})
+        self.assertEqual(get_entity_values("products", ids[1]), {})
+        self.assertEqual(get_entity_values("products", ids[2]), {"external_sku": "C"})
 
 
 if __name__ == "__main__":
