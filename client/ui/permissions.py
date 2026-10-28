@@ -20,6 +20,7 @@ RESOURCE_LABELS = {
     "partners": "مشتریان و تأمین‌کنندگان",
     "purchase_invoices": "فاکتورهای خرید",
     "expenses": "هزینه‌ها و پرداخت‌ها",
+    "kiosk": "مدیریت کیوسک",
 }
 ACTION_LABELS = (("r", "مشاهده"), ("c", "ایجاد"), ("u", "ویرایش"), ("d", "حذف"))
 
@@ -43,7 +44,7 @@ ROLE_GRANTS = {
         "pos_devices": "r", "partners": "rcud", "purchase_invoices": "rcud", "expenses": "rcud",
     },
     "viewer": {resource: "r" for resource in RESOURCE_LABELS},
-    "kiosk": {"products": "r", "sales": "c", "invoices": "r"},
+    "kiosk": {"products": "r", "categories": "r", "sales": "c", "receipts": "r", "invoices": "r", "kiosk": "r"},
     "custom": {},
 }
 ROLE_LABELS = {
