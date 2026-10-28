@@ -80,7 +80,7 @@ class InvoiceElementInput(BaseModel):
 
 
 class InvoiceTemplateInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_default=True)
     company_name: str = Field(default="نام کسب‌وکار", min_length=1, max_length=160)
     legal_id: str = Field(default="", max_length=80)
     address: str = Field(default="", max_length=500)
