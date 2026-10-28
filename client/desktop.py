@@ -282,6 +282,10 @@ class AccountingClientWindow(QMainWindow):
         return AccountingApiClient(url)
 
     def check_server(self):
+        if self.pages.currentWidget() is self.main_screen:
+            if self.api is not None:
+                self.api.clear_session()
+            self.pages.setCurrentWidget(self.auth_screen)
         try:
             self.api = self._new_client()
         except ValueError as exc:
@@ -296,7 +300,9 @@ class AccountingClientWindow(QMainWindow):
         )
 
     def _on_setup_status(self, result):
-        if result.get("setup_required"):
+        setup_required = bool(result.get("setup_required"))
+        self.show_setup_button.setVisible(setup_required)
+        if setup_required:
             self.auth_forms.setCurrentWidget(self.setup_form)
             self.status_label.setText("سرور آماده است؛ ابتدا مدیر اولیه را بسازید.")
         else:
@@ -354,10 +360,6 @@ class AccountingClientWindow(QMainWindow):
                 break
         if worker is not None:
             worker.deleteLater()
-
-    def _on_connection_error(self, error):
-        self.status_label.setText("اتصال برقرار نشد: {}".format(error))
-        self.show_error(error)
 
     def login(self):
         try:
@@ -581,6 +583,12 @@ class AccountingClientWindow(QMainWindow):
 
     def show_error(self, error):
         text = str(error)
+        if getattr(error, "status_code", None) == 401 and self.pages.currentWidget() is self.main_screen:
+            if self.api is not None:
+                self.api.clear_session()
+            self.pages.setCurrentWidget(self.auth_screen)
+            self.auth_forms.setCurrentWidget(self.login_form)
+            self.status_label.setText("نشست پایان یافته است؛ دوباره وارد شوید.")
         QMessageBox.warning(self, "خطا", text)
 
     def closeEvent(self, event):
