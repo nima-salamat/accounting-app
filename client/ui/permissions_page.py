@@ -102,7 +102,21 @@ class PermissionsPage(QFrame):
     def refresh(self):
         if not self.window.api or not (self.window.current_user or {}).get("is_admin"):
             return
-        self.window.run_api(self.window.api.list_users, self._populate_users, busy=self.refresh_button)
+        self.window.run_api(self._load_all_users, self._populate_users, busy=self.refresh_button)
+
+    def _load_all_users(self):
+        users = []
+        page = 1
+        page_size = 200
+        while True:
+            result = self.window.api.list_users_page(page=page, page_size=page_size)
+            batch = list(result.get("items") or [])
+            users.extend(batch)
+            total = int(result.get("total", len(users)))
+            if not batch or len(users) >= total:
+                break
+            page += 1
+        return users
 
     def _populate_users(self, users):
         selected_id = self.user_combo.currentData()
