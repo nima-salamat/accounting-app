@@ -286,7 +286,7 @@ class AccountingApiClient:
             raise ApiError(response.status_code, str(detail), "GET", "/products/{}/image".format(product_id))
         return response.content
 
-    def create_product(self, *, name, buy_price, sell_price, category_id=None,
+    def create_product(self, *, name, sell_price, buy_price=None, category_id=None,
                        image_path=None, custom_product=False, track_stock=False, reorder_level=0):
         return self._request(
             "POST", "/api/v1/products",
