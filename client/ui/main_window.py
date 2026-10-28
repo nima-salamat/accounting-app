@@ -25,6 +25,7 @@ from client.ui.sales_page import SalesPage
 from client.ui.settings_page import SettingsPage
 from client.ui.permissions_page import PermissionsPage
 from client.ui.invoice_templates_page import InvoiceTemplatesPage
+from client.ui.inventory_page import InventoryPage
 from client.ui.permissions import can_access
 from client.ui.theme import stylesheet
 from client.ui.worker import ApiWorker
@@ -142,7 +143,7 @@ class AccountingMainWindow(QMainWindow):
         nav_specs=[
             ("dashboard","نمای کلی","◫",False),("sales","صندوق فروش","＋",False),
             ("products","محصولات","▦",False),("categories","دسته‌بندی‌ها","◇",False),
-            ("warehouse","انبار","▤",False),("checks_in","چک‌های دریافتی","↙",False),
+            ("warehouse","اقلام انبار","▤",False),("inventory","موجودی کالا","▧",False),("checks_in","چک‌های دریافتی","↙",False),
             ("checks_out","چک‌های پرداختی","↗",False),("receipts","رسیدها و فاکتورها","▧",False),
         ]
         for key,label,icon,admin in nav_specs:self._make_nav(layout,key,label,icon,admin)
@@ -165,7 +166,7 @@ class AccountingMainWindow(QMainWindow):
         icon_names = {
             "dashboard":"fa5s.chart-pie", "sales":"fa5s.cash-register",
             "products":"fa5s.boxes", "categories":"fa5s.tags",
-            "warehouse":"fa5s.warehouse", "checks_in":"fa5s.file-import",
+            "warehouse":"fa5s.warehouse", "inventory":"fa5s.boxes-stacked", "checks_in":"fa5s.file-import",
             "checks_out":"fa5s.file-export", "receipts":"fa5s.receipt",
             "admin":"fa5s.chart-line", "sessions":"fa5s.laptop",
             "users":"fa5s.users", "permissions":"fa5s.user-shield",
@@ -210,6 +211,7 @@ class AccountingMainWindow(QMainWindow):
         self.products_page=ProductsPage(self)
         self.categories_page=CategoriesPage(self)
         self.warehouse_page=WarehousePage(self)
+        self.inventory_page=InventoryPage(self)
         self.checks_in_page=ChecksPage(self,"in")
         self.checks_out_page=ChecksPage(self,"out")
         self.receipts_page=ReceiptsPage(self)
@@ -223,7 +225,7 @@ class AccountingMainWindow(QMainWindow):
         definitions=[
             ("dashboard","نمای کلی",self.dashboard),("sales","ثبت فروش",self.sales_page),
             ("products","محصولات",self.products_page),("categories","دسته‌بندی‌ها",self.categories_page),
-            ("warehouse","انبار",self.warehouse_page),("checks_in","چک‌های دریافتی",self.checks_in_page),
+            ("warehouse","اقلام انبار",self.warehouse_page),("inventory","موجودی کالا",self.inventory_page),("checks_in","چک‌های دریافتی",self.checks_in_page),
             ("checks_out","چک‌های پرداختی",self.checks_out_page),("receipts","رسیدها",self.receipts_page),
             ("admin","پنل مدیریت",self.admin_page),("sessions","نشست‌ها و فعال‌سازی",self.sessions_page),
             ("users","کاربران و دسترسی‌ها",self.users_page),("permissions","نقش‌ها و مجوزها",self.permissions_page),
@@ -239,7 +241,8 @@ class AccountingMainWindow(QMainWindow):
             "sales":("ثبت فروش","ثبت تراکنش از طریق API سرور"),
             "products":("محصولات","مدیریت کاتالوگ محصولات"),
             "categories":("دسته‌بندی‌ها","سازمان‌دهی کالاها"),
-            "warehouse":("انبار","مقادیر و ارزش موجودی"),
+            "warehouse":("اقلام انبار","مدیریت اقلام و مواد انبار"),
+            "inventory":("موجودی کالا","رهگیری موجودی، حد سفارش و سوابق ورود و خروج"),
             "checks_in":("چک‌های دریافتی","مدیریت چک‌های دریافتی"),
             "checks_out":("چک‌های پرداختی","مدیریت چک‌های پرداختی"),
             "receipts":("رسیدها","جست‌وجو، جزئیات و خروجی رسیدها"),
@@ -270,7 +273,8 @@ class AccountingMainWindow(QMainWindow):
         nav_permissions = {
             "dashboard": ("reports", "read"), "sales": ("sales", "create"),
             "products": ("products", "read"), "categories": ("categories", "read"),
-            "warehouse": ("warehouse", "read"), "checks_in": ("checks_in", "read"),
+            "warehouse": ("warehouse", "read"), "inventory": ("warehouse", "read"),
+            "checks_in": ("checks_in", "read"),
             "checks_out": ("checks_out", "read"), "receipts": ("receipts", "read"),
             "invoices": ("invoices", "read"),
         }
@@ -291,6 +295,7 @@ class AccountingMainWindow(QMainWindow):
         self.users_page.set_admin(admin)
         self.permissions_page.set_permissions(user)
         self.invoice_templates_page.set_permissions(user)
+        self.inventory_page.set_permissions(user)
         self.settings_button.setVisible(True)
         self.dashboard.set_user(user)
         self._apply_theme()
