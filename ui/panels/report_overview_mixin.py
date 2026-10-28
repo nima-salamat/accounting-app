@@ -144,7 +144,6 @@ class ReportOverviewMixin:
                 .group_by(SQL('t')).order_by(SQL('t')))
             
             df = pd.DataFrame([{"زمان":to_jalali(r.t), "تعداد":r.cnt} for r in qs])
-            print(df)
             cache[cache_key] = df
             return df
 
