@@ -27,6 +27,9 @@ JalaliDate = jdatetime.date
 from datetime import datetime, date, timedelta
 from ui.thread import TrackingQThread
 from manager.db import DBManager
+from accounting_app.services.schema_registry import (
+    cleanup_builtin_extension_values, entity_key_for_model,
+)
 QThread = TrackingQThread
 # Helper function to normalize paths
 def _normalize_path(path_or_url: str) -> str:
@@ -254,6 +257,9 @@ class RecordDeleter(QObject):
                     if getattr(record, field, None)
                 ]
                 self.model.delete().where(self.model._meta.primary_key == self.pk_val).execute()
+                entity_key = entity_key_for_model(self.model)
+                if entity_key:
+                    cleanup_builtin_extension_values(entity_key, self.pk_val)
             # Commit database deletion before removing associated files.
             for image_path in image_paths:
                 if os.path.isfile(image_path):
