@@ -64,7 +64,7 @@ def _migrate_existing_receipt_product_table(database):
     columns = {column.name for column in database.get_columns(table)}
     if "product_name" not in columns:
         database.execute_sql(
-            'ALTER TABLE "{}" ADD COLUMN "product_name" VARCHAR({}) NOT NULL DEFAULT ""'.format(
+            'ALTER TABLE "{}" ADD COLUMN "product_name" VARCHAR({}) NOT NULL DEFAULT \'\''.format(
                 table, FIELD_LENGTH
             )
         )
