@@ -162,6 +162,20 @@ class SchemaPage(QFrame):
         lay.addWidget(self.create_record_button);lay.addWidget(self.delete_record_button);lay.addWidget(self.save_values_button);layout.addLayout(lay)
         self.editor=QTextEdit();self.editor.setPlaceholderText('{"reference_code": "ABC-123"}');layout.addWidget(self.editor,1)
 
+    def set_permissions(self, user):
+        from client.ui.permissions import can_access
+        can_read = can_access(user, "schemas", "read")
+        can_update = can_access(user, "schemas", "update")
+        can_create = can_access(user, "schemas", "create")
+        can_delete = can_access(user, "schemas", "delete")
+        self.refresh_button.setVisible(can_read)
+        self.entity_combo.setVisible(can_read)
+        self.add_field_button.setVisible(can_update)
+        self.new_model_button.setVisible(can_update)
+        self.save_values_button.setVisible(can_update)
+        self.create_record_button.setVisible(can_create)
+        self.delete_record_button.setVisible(can_delete)
+
     def refresh_entities(self):
         if self.window.api is None:return
         self.window.run_api(self.window.api.list_schema_entities,self._entities_loaded,busy=self.refresh_button)
@@ -200,7 +214,9 @@ class SchemaPage(QFrame):
                 self.record_table.setItem(row,col,item)
         current=next((e for e in self.entities if e.get("key")==self.entity_key()),{})
         is_custom=not bool(current.get("builtin"))
-        self.create_record_button.setVisible(is_custom);self.delete_record_button.setVisible(is_custom)
+        from client.ui.permissions import can_access
+        self.create_record_button.setVisible(is_custom and can_access(self.window.current_user, "schemas", "create"))
+        self.delete_record_button.setVisible(is_custom and can_access(self.window.current_user, "schemas", "delete"))
         self.editor.clear();self.selected_record_id=None
 
     def add_field(self):
