@@ -1,6 +1,6 @@
 """API-driven point-of-sale screen with search, quantity selection, and idempotent checkout."""
 from PySide6.QtCore import Qt
-from client.ui.invoice_dialog import InvoiceDialog
+from client.ui.invoice_dialog import InvoiceDialog, auto_print_invoice
 from client.ui.invoice_render import DEFAULT_TEMPLATE
 
 from PySide6.QtWidgets import (
@@ -117,8 +117,12 @@ class SalesPage(QFrame):
         if self.window.api:
             self.window.run_api(
                 self.window.api.get_invoice_template,
-                lambda template: InvoiceDialog(receipt, template, self.window).exec(),
-                failure=lambda _error: InvoiceDialog(receipt, DEFAULT_TEMPLATE, self.window).exec(),
+                lambda template: self._present_invoice(receipt, template),
+                failure=lambda _error: self._present_invoice(receipt, DEFAULT_TEMPLATE),
             )
         else:
-            InvoiceDialog(receipt, DEFAULT_TEMPLATE, self.window).exec()
+            self._present_invoice(receipt, DEFAULT_TEMPLATE)
+
+    def _present_invoice(self, receipt, template):
+        auto_print_invoice(receipt, template, self.window)
+        InvoiceDialog(receipt, template, self.window).exec()
