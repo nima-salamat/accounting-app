@@ -162,7 +162,7 @@ class KioskSetupPage(QFrame):
         self.status.setObjectName("PageSubtitle")
         self.status.setWordWrap(True)
         root.addWidget(self.status)
-        self.setMinimumWidth(900)
+        self.setMinimumWidth(480)
 
     def prefill(self, server_url=None, company_name=None, admin_username=None, admin_password=None,
                 kiosk_username=None, kiosk_password=None, allow_unpaid=None):
@@ -320,7 +320,7 @@ class KioskConnectionPage(QFrame):
         card = QFrame()
         card.setObjectName("Card")
         card.setMaximumWidth(680)
-        card.setMinimumWidth(440)
+        card.setMinimumWidth(0)
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(28, 28, 28, 24)
         card_layout.setSpacing(14)
@@ -803,7 +803,7 @@ class KioskWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Accounting App · کیوسک خودخدمت")
-        self.setMinimumSize(1000, 680)
+        self.setMinimumSize(480, 480)
         self.resize(1280, 800)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         self.setStyleSheet(stylesheet("light"))
