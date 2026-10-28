@@ -80,6 +80,7 @@ def create_sale(
     payload: SaleCreate,
     idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=8, max_length=128),
     user=Depends(require_permission("sales", "create")),
+    _catalog_access=Depends(require_permission("products", "read")),
 ):
     digest = _payload_hash(payload)
     replay = _get_replay(user, idempotency_key, digest)
@@ -118,7 +119,11 @@ def create_sale(
 
 
 @router.put("/sales/{receipt_id}", response_model=ReceiptDetailOut)
-def update_sale(receipt_id: UUID, payload: SaleCreate, user=Depends(require_permission("sales", "update"))):
+def update_sale(
+    receipt_id: UUID, payload: SaleCreate,
+    user=Depends(require_permission("sales", "update")),
+    _catalog_access=Depends(require_permission("products", "read")),
+):
     with DBManager():
         receipt = Receipt.get_or_none(Receipt.id == receipt_id)
         if receipt is None:
