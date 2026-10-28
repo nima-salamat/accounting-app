@@ -1,6 +1,7 @@
 """Preview, print and PDF export for a saved sales receipt."""
 from PySide6.QtCore import Qt, QSizeF, QMarginsF
-from PySide6.QtPrintSupport import QPrinter, QPrintDialog, QPageSize, QPageLayout
+from PySide6.QtPrintSupport import QPrinter, QPrintDialog
+from PySide6.QtGui import QPageSize, QPageLayout, QTextDocument
 from PySide6.QtWidgets import (
     QDialog, QFileDialog, QHBoxLayout, QMessageBox, QPushButton,
     QTextBrowser, QVBoxLayout,
@@ -8,7 +9,6 @@ from PySide6.QtWidgets import (
 
 from client.ui.invoice_render import render_invoice_html
 from client.ui.device_settings import device_settings
-from PySide6.QtGui import QTextDocument
 
 
 def configure_invoice_printer(printer, template=None):
