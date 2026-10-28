@@ -484,7 +484,7 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(created.status_code, 201, created.text)
         product_id = created.json()["id"]
-        png_signature = b"\\x89PNG\\r\\n\\x1a\\n"
+        png_signature = b"\x89PNG\r\n\x1a\n"
         uploaded = self.client.post(
             "/api/v1/products/{}/image".format(product_id),
             headers=headers,
