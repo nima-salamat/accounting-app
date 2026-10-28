@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 )
 
 from client.ui.permissions import can_access
+from client.ui.invoice_dialog import InvoiceDialog
 
 
 REFUND_METHODS = {
@@ -180,8 +181,11 @@ class ReturnsPage(QFrame):
         self.refresh_button.clicked.connect(self.refresh)
         self.detail_button = QPushButton("جزئیات سند")
         self.detail_button.clicked.connect(self.show_detail)
+        self.print_button = QPushButton("چاپ رسید")
+        self.print_button.clicked.connect(self.print_document)
         header.addWidget(self.refresh_button)
         header.addWidget(self.detail_button)
+        header.addWidget(self.print_button)
         root.addLayout(header)
 
         self.table = QTableWidget(0, 6)
@@ -209,6 +213,7 @@ class ReturnsPage(QFrame):
     def set_permissions(self, user):
         self.refresh_button.setVisible(can_access(user, "returns", "read"))
         self.detail_button.setVisible(can_access(user, "returns", "read"))
+        self.print_button.setVisible(can_access(user, "returns", "read"))
 
     def refresh(self):
         if not self.window.api or not can_access(self.window.current_user, "returns", "read"):
@@ -255,6 +260,39 @@ class ReturnsPage(QFrame):
         row = self.table.currentRow()
         cell = self.table.item(row, 0) if row >= 0 else None
         return cell.data(Qt.ItemDataRole.UserRole) if cell else None
+
+    def print_document(self):
+        selected = self._selected()
+        if not selected:
+            self.window.show_error("ابتدا یک سند مرجوعی را انتخاب کنید.")
+            return
+        self.window.run_api(
+            lambda: self.window.api.get_return(selected["id"]),
+            self._load_return_for_print,
+        )
+
+    def _load_return_for_print(self, document):
+        items = [
+            {
+                "product_name": line.get("product_name") or "کالای حذف‌شده",
+                "quantity": line.get("quantity", 0),
+                "sell_price": line.get("unit_price", 0),
+            }
+            for line in document.get("items") or []
+        ]
+        receipt = {
+            "id": document.get("id"),
+            "day_receipt_id": "م-" + str(document.get("id") or "")[:8],
+            "created_at": document.get("created_at"),
+            "payed": True,
+            "total_price": document.get("total_amount", 0),
+            "items": items,
+            "seat_number": "",
+        }
+        self.window.run_api(
+            lambda: self.window.api.get_invoice_template(kind="return_slip"),
+            lambda template: InvoiceDialog(receipt, template, self).exec(),
+        )
 
     def show_detail(self):
         selected = self._selected()
