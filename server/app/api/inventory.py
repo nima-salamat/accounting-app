@@ -7,12 +7,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from accounting_app.database.connection import DBManager
 from accounting_app.database.models import Product, StockMovement, User
 from server.app.permissions import require_permission
-from server.app.schemas import InventoryAdjustmentInput, ProductOut, StockMovementOut
+from server.app.schemas import (
+    InventoryAdjustmentInput, ProductOut, ProductPageOut,
+    StockMovementOut, StockMovementPageOut,
+)
 
 router = APIRouter(tags=["inventory"])
 
 
-@router.get("/inventory", response_model=list[ProductOut])
+@router.get("/inventory", response_model=ProductPageOut)
 def list_inventory(
     q: Optional[str] = None,
     low_stock_only: bool = False,
@@ -30,7 +33,8 @@ def list_inventory(
                 (Product.track_stock == True)
                 & (Product.stock_quantity <= Product.reorder_level)
             )
-        return [
+        total = query.count()
+        items = [
             {
                 "id": item.id,
                 "name": item.name,
@@ -47,9 +51,10 @@ def list_inventory(
             }
             for item in query.order_by(Product.name).paginate(page, page_size)
         ]
+        return {"items": items, "page": page, "page_size": page_size, "total": total}
 
 
-@router.get("/inventory/movements", response_model=list[StockMovementOut])
+@router.get("/inventory/movements", response_model=StockMovementPageOut)
 def list_stock_movements(
     product_id: Optional[UUID] = None,
     page: int = Query(1, ge=1),
@@ -60,6 +65,7 @@ def list_stock_movements(
         query = StockMovement.select().join(Product).switch(StockMovement).join(User)
         if product_id is not None:
             query = query.where(StockMovement.product == product_id)
+        total = query.count()
         query = query.order_by(StockMovement.created_at.desc()).paginate(page, page_size)
         result = []
         for movement in query:
@@ -77,7 +83,7 @@ def list_stock_movements(
                 "notes": movement.notes,
                 "created_at": movement.created_at,
             })
-        return result
+        return {"items": result, "page": page, "page_size": page_size, "total": total}
 
 
 @router.post(
