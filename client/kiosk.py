@@ -592,6 +592,7 @@ class KioskShopPage(QFrame):
         self.runtime_config = dict(kiosk_config or {})
         self.allow_unpaid = bool(self.runtime_config.get("allow_unpaid_orders", False))
         self.shop_title.setText(company_name or "انتخاب محصولات")
+        self._update_checkout_label()
         self.seat_row.setVisible(bool(self.runtime_config.get("cafe_seat_selection")))
         self.refresh_catalog()
 
@@ -651,6 +652,7 @@ class KioskShopPage(QFrame):
         self.runtime_config = dict(data.get("config") or self.runtime_config)
         self.allow_unpaid = bool(self.runtime_config.get("allow_unpaid_orders", False))
         self.seat_row.setVisible(bool(self.runtime_config.get("cafe_seat_selection")))
+        self._update_checkout_label()
         self.catalog_page = int(data.get("page", self.catalog_page))
         self.catalog_page_size = int(data.get("page_size", self.catalog_page_size))
         self.catalog_total = int(data.get("total", len(self.products)))
@@ -670,6 +672,15 @@ class KioskShopPage(QFrame):
         self.catalog_previous.setEnabled(self.catalog_page > 1)
         self.catalog_next.setEnabled(self.catalog_page < page_count)
         self._render_products()
+
+    def _update_checkout_label(self):
+        terminal_mode = device_settings().get("terminal_mode")
+        if terminal_mode == "tcp":
+            self.checkout_button.setText("پرداخت با کارت‌خوان و دریافت رسید")
+        elif self.allow_unpaid:
+            self.checkout_button.setText("ثبت سفارش و دریافت کد")
+        else:
+            self.checkout_button.setText("پرداخت / تنظیم کارت‌خوان")
 
     def _render_products(self):
         _clear_layout(self.product_grid)
