@@ -5,7 +5,7 @@ import uuid
 from PySide6.QtCore import Qt, Slot, QSettings, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFrame,
+    QApplication, QBoxLayout, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFrame,
     QFormLayout, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
     QMessageBox, QPushButton, QScrollArea, QSpinBox, QStackedWidget,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
@@ -279,6 +279,110 @@ class KioskSetupPage(QFrame):
     def _provision_failed(self, error):
         self.status.setText(str(error))
         self.save_button.setEnabled(True)
+
+
+class KioskConnectionPage(QFrame):
+    """Shown at every launch so the operator can verify/edit connection settings."""
+    def __init__(self, window):
+        super().__init__()
+        self.window = window
+        self.setObjectName("AppRoot")
+        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(24, 24, 24, 24)
+        outer.addStretch(1)
+        card = QFrame()
+        card.setObjectName("Card")
+        card.setMaximumWidth(680)
+        card.setMinimumWidth(440)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(28, 28, 28, 24)
+        card_layout.setSpacing(14)
+        brand = QLabel("Accounting App")
+        brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        brand.setStyleSheet("font-size:26px;font-weight:900;color:#3157A4;")
+        title = QLabel("اتصال کیوسک")
+        title.setObjectName("PageTitle")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        description = QLabel("تنظیمات اتصال را بررسی کنید، سپس برای ورود به صفحه خرید روی «اتصال و شروع» بزنید.")
+        description.setObjectName("PageSubtitle")
+        description.setWordWrap(True)
+        description.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(brand)
+        card_layout.addWidget(title)
+        card_layout.addWidget(description)
+        form = QFormLayout()
+        form.setVerticalSpacing(12)
+        self.server_url = QLineEdit()
+        self.server_url.setPlaceholderText("https://accounting.example.com")
+        self.username = QLineEdit()
+        self.username.setPlaceholderText("حساب مخصوص کیوسک")
+        self.password = QLineEdit()
+        self.password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password.setPlaceholderText("رمز حساب کیوسک")
+        form.addRow("نشانی سرور", self.server_url)
+        form.addRow("نام کاربری کیوسک", self.username)
+        form.addRow("رمز عبور", self.password)
+        card_layout.addLayout(form)
+        self.keyboard_button = QPushButton("⌨ صفحه‌کلید لمسی")
+        self.keyboard_button.clicked.connect(self.show_keyboard)
+        card_layout.addWidget(self.keyboard_button)
+        device_row = QHBoxLayout()
+        self.device_button = QPushButton("تنظیم کارت‌خوان / چاپگر")
+        self.device_button.clicked.connect(lambda: DeviceSettingsDialog(self, kiosk=True).exec())
+        self.exit_button = QPushButton("خروج از برنامه")
+        self.exit_button.clicked.connect(self.window.close)
+        device_row.addWidget(self.device_button)
+        device_row.addWidget(self.exit_button)
+        card_layout.addLayout(device_row)
+        self.connect_button = QPushButton("اتصال و شروع خرید  ←")
+        self.connect_button.setObjectName("PrimaryButton")
+        self.connect_button.setMinimumHeight(52)
+        self.connect_button.clicked.connect(self.connect)
+        card_layout.addWidget(self.connect_button)
+        self.status = QLabel("")
+        self.status.setObjectName("PageSubtitle")
+        self.status.setWordWrap(True)
+        card_layout.addWidget(self.status)
+        outer.addWidget(card, 0, Qt.AlignmentFlag.AlignHCenter)
+        outer.addStretch(1)
+
+    def prefill(self):
+        self.server_url.setText(self.window.local_settings.value(
+            "server_url", os.environ.get("ACCOUNTING_APP_API_URL", "http://127.0.0.1:8000"), type=str
+        ))
+        self.username.setText(self.window.local_settings.value("kiosk_username", "selfservice_kiosk", type=str))
+        password = None
+        if keyring is not None:
+            try:
+                password = keyring.get_password(KIOSK_KEYRING_SERVICE, self.username.text())
+            except Exception:
+                password = None
+        self.password.setText(password or "")
+        if not self.window.local_settings.value("configured", False, type=bool):
+            self.status.setText("این دستگاه هنوز راه‌اندازی نشده است.")
+        elif not password:
+            self.status.setText("رمز کیوسک در مخزن امن پیدا نشد؛ رمز را وارد کنید یا تنظیمات مدیر را باز کنید.")
+
+    def show_keyboard(self):
+        target = self.focusWidget()
+        if not isinstance(target, QLineEdit):
+            target = self.username
+        TouchKeyboardDialog(target, self).exec()
+
+    def connect(self):
+        server_url = self.server_url.text().strip()
+        username = self.username.text().strip()
+        password = self.password.text()
+        if not server_url or not username or not password:
+            self.status.setText("نشانی سرور، نام کاربری و رمز عبور را تکمیل کنید.")
+            return
+        self.window.run_api(
+            lambda: self.window._connect_existing_kiosk(server_url, username, password),
+            self.window._connection_complete,
+            failure=lambda error: self.status.setText(str(error)),
+            busy=self.connect_button,
+        )
 
 
 class KioskShopPage(QFrame):
