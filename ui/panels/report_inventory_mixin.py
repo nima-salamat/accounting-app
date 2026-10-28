@@ -150,6 +150,9 @@ class ReportInventoryMixin:
             btn_load.setEnabled(False)
             self._inventory_worker = QueryWorker(query_func)
             self._inventory_worker.dataReady.connect(lambda q: (on_data_ready(q), btn_load.setEnabled(True)))
+            self._inventory_worker.error.connect(
+                lambda message: (QMessageBox.warning(self, "خطا در گزارش", message), btn_load.setEnabled(True))
+            )
             self._inventory_worker.start()
         
         
@@ -241,6 +244,9 @@ class ReportInventoryMixin:
             btn_report.setEnabled(False)
             self._category_pie_worker = QueryWorker(query_func)
             self._category_pie_worker.dataReady.connect(lambda df: (on_data_ready(df), btn_report.setEnabled(True)))
+            self._category_pie_worker.error.connect(
+                lambda message: (QMessageBox.warning(self, "خطا در گزارش دسته‌ها", message), btn_report.setEnabled(True))
+            )
             self._category_pie_worker.start()
 
         btn_report.clicked.connect(load)
