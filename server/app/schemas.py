@@ -50,6 +50,7 @@ class SetupRequest(StrictModel):
     schema_rows: List[dict] = Field(default_factory=list, max_length=300)
     company_name: str = Field(default="کسب‌وکار من", min_length=1, max_length=256)
     business_profile: str = Field(default="general", pattern=r"^(general|supermarket|cafe|service|real_estate)$")
+    product_buy_price_required: Optional[bool] = None
     setup_token: Optional[str] = Field(default=None, max_length=256)
 
 
