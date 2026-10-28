@@ -11,7 +11,7 @@ from accounting_app.database.connection import DBManager
 from accounting_app.database.models import (
     IdempotencyRecord, Product, Receipt, ReceiptProduct,
 )
-from accounting_app.services.sales import record_sale
+from accounting_app.services.sales import InsufficientStockError, record_sale
 from accounting_app.services.schema_registry import cleanup_builtin_extension_values_many
 from server.app.dependencies import get_current_user
 from server.app.permissions import require_permission
@@ -107,6 +107,8 @@ def create_sale(
                 receipt=receipt.id,
             )
             return _receipt_detail(receipt)
+    except InsufficientStockError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except IntegrityError:
         # A concurrent retry can win the unique (user, key) constraint.
         replay = _get_replay(user, idempotency_key, digest)
@@ -134,9 +136,12 @@ def update_sale(receipt_id: UUID, payload: SaleCreate, user=Depends(require_perm
             item.product_id: (products[item.product_id], item.quantity)
             for item in payload.items
         }
-        updated = record_sale(
-            cart, user, payload.paid, edit_mode=True, receipt_to_edit=receipt
-        )
+        try:
+            updated = record_sale(
+                cart, user, payload.paid, edit_mode=True, receipt_to_edit=receipt
+            )
+        except InsufficientStockError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         return _receipt_detail(updated)
 
 
