@@ -64,6 +64,7 @@ def _receipt_detail(receipt):
 def _payload_hash(payload):
     canonical = {
         "paid": payload.paid,
+        "payment_method": payload.payment_method,
         "items": sorted(
             [
                 {"product_id": str(item.product_id), "quantity": item.quantity}
@@ -164,7 +165,7 @@ def create_sale(
                 product_id: (products[product_id], item.quantity)
                 for product_id, item in ((item.product_id, item) for item in payload.items)
             }
-            receipt = record_sale(cart, user, payload.paid)
+            receipt = record_sale(cart, user, payload.paid, payment_method=payload.payment_method)
             IdempotencyRecord.create(
                 key=idempotency_key,
                 user=user.id,
@@ -207,7 +208,8 @@ def update_sale(
         }
         try:
             updated = record_sale(
-                cart, user, payload.paid, edit_mode=True, receipt_to_edit=receipt
+                cart, user, payload.paid, edit_mode=True, receipt_to_edit=receipt,
+                payment_method=payload.payment_method,
             )
         except (InsufficientStockError, FiscalPeriodClosedError) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
