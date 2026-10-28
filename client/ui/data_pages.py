@@ -74,12 +74,27 @@ class ApiTablePage(QFrame):
             tools.addWidget(self.search_input, 1); tools.addWidget(self.search_button)
         tools.addWidget(self.refresh_button); tools.addWidget(self.create_button)
         tools.addWidget(self.edit_button); tools.addWidget(self.delete_button); tools.addWidget(self.export_button)
+        self.select_page_button = QPushButton("انتخاب همهٔ صفحه")
+        self.select_page_button.clicked.connect(self.select_current_page)
+        self.clear_selection_button = QPushButton("لغو انتخاب")
+        self.clear_selection_button.clicked.connect(self.table_clear_selection)
+        self.selection_count = QLabel("انتخاب‌شده: ۰")
+        self.selection_count.setObjectName("StatusPill")
+        tools.addWidget(self.select_page_button)
+        tools.addWidget(self.clear_selection_button)
+        tools.addWidget(self.selection_count)
         layout.addLayout(tools)
         self.table = QTableWidget(0, len(columns))
         self.table.setHorizontalHeaderLabels([label for _key, label in columns])
         self.table.setColumnHidden(0, True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.MultiSelection)
+        self.table.setStyleSheet(
+            "QTableWidget::item:selected { background-color: #3157A4; color: #FFFFFF; }"
+            "QTableWidget::item:selected:!active { background-color: #486DB8; color: #FFFFFF; }"
+            "QTableWidget::item { padding: 5px; }"
+        )
+        self.table.itemSelectionChanged.connect(self._update_selection_count)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
@@ -188,6 +203,7 @@ class ApiTablePage(QFrame):
         self.current_page = max(1, min(self.current_page, pages))
         start = (self.current_page - 1) * self.page_size
         visible = self.records
+        self.table.clearSelection()
         self.table.setRowCount(0)
         for row, record in enumerate(visible):
             self.table.insertRow(row)
@@ -208,6 +224,7 @@ class ApiTablePage(QFrame):
         self.page_label.setText("صفحه {} از {}".format(self.current_page, pages))
         self.previous_page_button.setEnabled(self.current_page > 1)
         self.next_page_button.setEnabled(self.current_page < pages)
+        self._update_selection_count()
 
     def _page_size_changed(self, *_args):
         if hasattr(self, "page_size_combo"):
@@ -225,6 +242,19 @@ class ApiTablePage(QFrame):
         if self.current_page < pages:
             self.current_page += 1
             self._request_current_page()
+
+    def select_current_page(self):
+        self.table.selectAll()
+        self._update_selection_count()
+
+    def table_clear_selection(self):
+        self.table.clearSelection()
+        self._update_selection_count()
+
+    def _update_selection_count(self):
+        count = len(self.table.selectionModel().selectedRows()) if self.table.selectionModel() else 0
+        self.selection_count.setText("انتخاب‌شده: {}".format(count))
+        self.clear_selection_button.setEnabled(count > 0)
 
     def selected_record(self):
         row = self.table.currentRow()
