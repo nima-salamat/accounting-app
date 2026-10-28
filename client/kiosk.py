@@ -253,6 +253,30 @@ class KioskSetupPage(QFrame):
                 requires_session_activation=False,
             )
 
+        # Seed a usable first-run policy once only. Later admin-selected products and
+        # an intentional disabled state must never be overwritten by this launcher.
+        kiosk_settings = api.get_kiosk_settings()
+        if not kiosk_settings.get("allowed_product_ids"):
+            all_products = []
+            page = 1
+            while True:
+                batch = api.list_products_page(page=page, page_size=200)
+                items = list(batch.get("items") or [])
+                all_products.extend(items)
+                total = int(batch.get("total", len(all_products)))
+                if not items or len(all_products) >= total or len(items) < 200:
+                    break
+                page += 1
+            company_profile = api.get_company_profile()
+            product_ids = [item["id"] for item in all_products if item.get("id")]
+            api.save_kiosk_settings(
+                active=bool(product_ids),
+                allowed_product_ids=product_ids,
+                receipt_history_hours=int(kiosk_settings.get("receipt_history_hours", 48)),
+                cafe_seat_selection=bool(company_profile.get("business_profile") == "cafe"),
+                allow_unpaid_orders=bool(values["allow_unpaid"]),
+            )
+
         kiosk_login = api.login(
             values["kiosk_username"], values["kiosk_password"],
             client_name="Self-service kiosk",
@@ -265,8 +289,10 @@ class KioskSetupPage(QFrame):
             and can_access(kiosk_user, "products", "read")
         ):
             raise RuntimeError("مجوز حساب کیوسک کافی نیست؛ سیاست دسترسی در سمت سرور بررسی شود.")
+        kiosk_config = api.get_kiosk_config()
         return {
             "api": api,
+            "kiosk_config": kiosk_config,
             "server_url": values["server_url"],
             "company_name": values["company_name"],
             "admin_username": values["admin_username"],
@@ -761,6 +787,17 @@ class KioskShopPage(QFrame):
         self.window.show_confirmation(receipt, paid, result.get("transaction_id"))
         self.refresh_catalog()
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if not hasattr(self, "main_layout"):
+            return
+        portrait = self.height() > self.width()
+        self.main_layout.setDirection(
+            QBoxLayout.Direction.TopToBottom if portrait else QBoxLayout.Direction.LeftToRight
+        )
+        if hasattr(self, "product_grid"):
+            self._render_products()
+
 
 class KioskWindow(QMainWindow):
     def __init__(self):
@@ -840,7 +877,8 @@ class KioskWindow(QMainWindow):
     def _automatic_login(self, server_url, username, password):
         api = AccountingApiClient(server_url)
         payload = api.login(username, password, client_name="Self-service kiosk")
-        return {"api": api, "payload": payload}
+        config = api.get_kiosk_config() if payload.get("status") == "active" else {}
+        return {"api": api, "payload": payload, "config": config}
 
     def _auto_login_complete(self, result):
         api, payload = result["api"], result["payload"]
@@ -853,13 +891,17 @@ class KioskWindow(QMainWindow):
         ):
             self._auto_login_failed("مجوزهای حساب کیوسک معتبر نیست.")
             return
+        config = result.get("config") or {}
+        if not config.get("active") or not config.get("allowed_product_ids"):
+            self._auto_login_failed("کیوسک در پنل مدیر فعال نیست یا محصولی برای نمایش انتخاب نشده است.")
+            return
         self.api, self.current_user = api, user
-        self._enter_shop()
+        self._enter_shop(config)
 
     def _auto_login_failed(self, error):
-        self.setup_page.prefill()
-        self.setup_page.status.setText("اتصال/ورود خودکار انجام نشد: {}".format(error))
-        self.stack.setCurrentWidget(self.setup_page)
+        self.connection_page.prefill()
+        self.connection_page.status.setText("اتصال/ورود انجام نشد: {}".format(error))
+        self.stack.setCurrentWidget(self.connection_page)
         self.showNormal()
 
     def setup_completed(self, result):
@@ -882,12 +924,20 @@ class KioskWindow(QMainWindow):
         self.local_settings.setValue("allow_unpaid_orders", bool(result["allow_unpaid"]))
         self.local_settings.sync()
         self.api, self.current_user = result["api"], result["user"]
-        self._enter_shop()
+        self._enter_shop(result.get("kiosk_config"))
 
-    def _enter_shop(self):
-        company = self.local_settings.value("company_name", "فروشگاه", type=str)
-        allow_unpaid = self.local_settings.value("allow_unpaid_orders", False, type=bool)
-        self.shop_page.bind_session(self.api, self.current_user, company, allow_unpaid)
+    def _enter_shop(self, kiosk_config=None):
+        kiosk_config = dict(kiosk_config or {})
+        company = kiosk_config.get("company_name") or self.local_settings.value("company_name", "فروشگاه", type=str)
+        if not kiosk_config.get("active") or not kiosk_config.get("allowed_product_ids"):
+            self.connection_page.prefill()
+            self.connection_page.status.setText(
+                "کیوسک هنوز فعال نشده یا محصولی انتخاب نشده است. تنظیمات را در پنل مدیریت بررسی کنید."
+            )
+            self.stack.setCurrentWidget(self.connection_page)
+            self.showNormal()
+            return
+        self.shop_page.bind_session(self.api, self.current_user, company, kiosk_config)
         self.stack.setCurrentWidget(self.shop_page)
         self.setCursor(Qt.CursorShape.ArrowCursor)
         self.showFullScreen()
