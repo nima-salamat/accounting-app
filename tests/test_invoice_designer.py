@@ -71,6 +71,22 @@ class InvoiceDesignerTests(unittest.TestCase):
         self.assertTrue(any(item["type"] == "items_table" for item in self.page._values()["elements"]))
         self.assertIn("80 × 220", self.page.page_info.text())
 
+    def test_zoom_buttons_and_canvas_preserve_manual_navigation_until_fit(self):
+        initial_scale = self.page.canvas.transform().m11()
+        self.page.canvas.zoom_by(1.25)
+        self.assertGreater(self.page.canvas.transform().m11(), initial_scale)
+        self.assertTrue(self.page.canvas._user_zoomed)
+        self.page._fit_page(force=True)
+        self.assertFalse(self.page.canvas._user_zoomed)
+
+    def test_document_profiles_select_different_default_paper_sizes(self):
+        self.page.document_kind.setCurrentIndex(self.page.document_kind.findData("pos_receipt"))
+        self.assertEqual(self.page._template_kind, "pos_receipt")
+        self.assertEqual(self.page.paper_size.currentData(), "receipt80")
+        self.page.document_kind.setCurrentIndex(self.page.document_kind.findData("return_slip"))
+        self.assertEqual(self.page._template_kind, "return_slip")
+        self.assertEqual(self.page.paper_size.currentData(), "A5")
+
     def test_custom_elements_can_be_added_duplicated_and_removed(self):
         before = len(self.page._values()["elements"])
         self.page.new_kind.setCurrentIndex(self.page.new_kind.findData("text"))
