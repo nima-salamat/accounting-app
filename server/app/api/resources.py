@@ -274,17 +274,19 @@ def _list_checks(model, entity, q, page, page_size, response):
         return [_serialize(item) for item in query.order_by(model.created_at.desc()).paginate(page, page_size)]
 
 
-def _create_check(model, payload, entity):
+def _create_check(model, payload, entity, user):
     if not payload.check_id.strip():
         raise HTTPException(status_code=422, detail="شناسه چک نمی‌تواند خالی باشد.")
     with DBManager():
-        return _serialize(model.create(
+        record = model.create(
             name=_clean_name(payload.name), check_id=payload.check_id.strip(),
             price=float(payload.price), date=payload.date.strip(), payed=payload.payed,
-        ))
+        )
+        record_audit(user, "check.created", entity, record.id, {"name": record.name, "check_id": record.check_id, "price": record.price})
+        return _serialize(record)
 
 
-def _update_check(model, record_id, payload):
+def _update_check(model, record_id, payload, entity, user):
     with DBManager():
         record = model.get_or_none(model.id == record_id)
         if record is None:
@@ -298,14 +300,17 @@ def _update_check(model, record_id, payload):
                 raise HTTPException(status_code=422, detail="شناسه چک نمی‌تواند خالی باشد.")
         if "date" in values and values["date"] is not None:
             values["date"] = values["date"].strip()
-        return _serialize(_save_patch(record, values))
+        updated = _save_patch(record, values)
+        record_audit(user, "check.updated", entity, updated.id, {"check_id": updated.check_id, "fields": sorted(values)})
+        return _serialize(updated)
 
 
-def _delete_check(model, entity, record_id):
+def _delete_check(model, entity, record_id, user):
     with DBManager():
         record = model.get_or_none(model.id == record_id)
         if record is None:
             _not_found("چک")
+        record_audit(user, "check.deleted", entity, record.id, {"name": record.name, "check_id": record.check_id})
         cleanup_builtin_extension_values_many(entity, [record.id])
         record.delete_instance()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -321,17 +326,17 @@ def list_check_ins(
 
 @router.post("/checks/in", response_model=CheckOut, status_code=status.HTTP_201_CREATED)
 def create_check_in(payload: CheckCreate, user=Depends(require_permission("checks_in", "create"))):
-    return _create_check(CheckInModel, payload, "check_ins")
+    return _create_check(CheckInModel, payload, "check_ins", user)
 
 
 @router.patch("/checks/in/{record_id}", response_model=CheckOut)
 def update_check_in(record_id: UUID, payload: CheckUpdate, user=Depends(require_permission("checks_in", "update"))):
-    return _update_check(CheckInModel, record_id, payload)
+    return _update_check(CheckInModel, record_id, payload, "check_ins", user)
 
 
 @router.delete("/checks/in/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_check_in(record_id: UUID, user=Depends(require_permission("checks_in", "delete"))):
-    return _delete_check(CheckInModel, "check_ins", record_id)
+    return _delete_check(CheckInModel, "check_ins", record_id, user)
 
 
 @router.get("/checks/out", response_model=List[CheckOut])
@@ -344,17 +349,17 @@ def list_check_outs(
 
 @router.post("/checks/out", response_model=CheckOut, status_code=status.HTTP_201_CREATED)
 def create_check_out(payload: CheckCreate, user=Depends(require_permission("checks_out", "create"))):
-    return _create_check(CheckOutModel, payload, "check_outs")
+    return _create_check(CheckOutModel, payload, "check_outs", user)
 
 
 @router.patch("/checks/out/{record_id}", response_model=CheckOut)
 def update_check_out(record_id: UUID, payload: CheckUpdate, user=Depends(require_permission("checks_out", "update"))):
-    return _update_check(CheckOutModel, record_id, payload)
+    return _update_check(CheckOutModel, record_id, payload, "check_outs", user)
 
 
 @router.delete("/checks/out/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_check_out(record_id: UUID, user=Depends(require_permission("checks_out", "delete"))):
-    return _delete_check(CheckOutModel, "check_outs", record_id)
+    return _delete_check(CheckOutModel, "check_outs", record_id, user)
 
 
 @router.get("/users", response_model=List[UserOut])
