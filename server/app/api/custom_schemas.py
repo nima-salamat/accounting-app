@@ -1,17 +1,18 @@
 """Admin API for custom field definitions, values, and custom records."""
 from typing import List
+import json
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from accounting_app.database.connection import DBManager
-from accounting_app.database.extension_models import CustomModelDefinition
+from accounting_app.database.extension_models import CustomFieldValue, CustomModelDefinition
 from accounting_app.services.schema_definitions import BUILTIN_ENTITIES, get_entity_fields
 from accounting_app.services.schema_registry import register_schema_rows
 from accounting_app.services.schema_values import (
     delete_custom_record, get_entity_values, list_entity_records, save_entity_values,
 )
 from server.app.dependencies import get_current_user, require_admin
-from server.app.permissions import require_permission
+from server.app.permissions import has_permission, require_permission
 
 router = APIRouter(prefix="/schemas", tags=["custom schemas"])
 
@@ -57,6 +58,68 @@ def upsert_schema_fields(payload: SchemaRowsInput, user=Depends(require_permissi
         return {"created": created}
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/table/{entity_type}")
+def custom_table_data(
+    entity_type: str,
+    record_ids: List[str] = Query(default=[]),
+    user=Depends(get_current_user),
+):
+    """Batch-fetch custom fields for visible base-table rows without N+1 queries."""
+    base_resources = {
+        "categories": "categories",
+        "products": "products",
+        "warehouses": "warehouse",
+        "check_ins": "checks_in",
+        "check_outs": "checks_out",
+        "receipts": "receipts",
+        "receipt_products": "receipts",
+    }
+    if entity_type == "users":
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="فقط مدیر می‌تواند اطلاعات تکمیلی کاربران را مشاهده کند.")
+    elif entity_type not in BUILTIN_ENTITIES:
+        with DBManager():
+            known = CustomModelDefinition.get_or_none(
+                CustomModelDefinition.model_key == entity_type
+            ) is not None
+        if not known:
+            raise HTTPException(status_code=404, detail="مدل انتخاب‌شده وجود ندارد.")
+        if not has_permission(user, "schemas", "read"):
+            raise HTTPException(status_code=403, detail="مجوز مشاهدهٔ مدل‌های سفارشی را ندارید.")
+    else:
+        resource = base_resources.get(entity_type)
+        if resource and not has_permission(user, resource, "read"):
+            raise HTTPException(status_code=403, detail="مجوز مشاهدهٔ این بخش را ندارید.")
+
+    unique_ids = list(dict.fromkeys(record_ids))
+    if len(unique_ids) > 200 or any(not item or len(item) > 64 for item in unique_ids):
+        raise HTTPException(status_code=422, detail="حداکثر ۲۰۰ شناسهٔ رکورد معتبر مجاز است.")
+    if not has_permission(user, "schemas", "read"):
+        return {"fields": [], "values": {}}
+
+    try:
+        definitions = get_entity_fields(entity_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    fields = [_field_payload(field) for field in definitions]
+    values = {record_id: {} for record_id in unique_ids}
+    if unique_ids and fields:
+        allowed_keys = {field["key"] for field in fields}
+        with DBManager():
+            rows = CustomFieldValue.select().where(
+                (CustomFieldValue.entity_type == entity_type)
+                & (CustomFieldValue.record_id.in_(unique_ids))
+                & (CustomFieldValue.field_key.in_(allowed_keys))
+            )
+            for row in rows:
+                try:
+                    value = json.loads(row.value) if row.value is not None else None
+                except (TypeError, ValueError):
+                    value = row.value
+                values.setdefault(row.record_id, {})[row.field_key] = value
+    return {"fields": fields, "values": values}
 
 
 @router.get("/fields/{entity_type}")
