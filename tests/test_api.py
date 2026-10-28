@@ -698,10 +698,11 @@ class ApiTests(unittest.TestCase):
             json={"name": "تصویر بدون مجوز ویرایش", "buy_price": 5, "sell_price": 10},
         )
         self.assertEqual(product.status_code, 201, product.text)
+        png_signature = b"\x89PNG\r\n\x1a\n"
         uploaded = self.client.post(
             "/api/v1/products/{}/image".format(product.json()["id"]),
             headers=creator_headers,
-            files={"file": ("item.png", b"\x89PNG\r\n\x1a\\n", "image/png")},
+            files={"file": ("item.png", png_signature, "image/png")},
         )
         self.assertEqual(uploaded.status_code, 200, uploaded.text)
 
