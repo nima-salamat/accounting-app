@@ -115,7 +115,6 @@ class MenuBar(QMenuBar):
 
 
     def logout_window(self):
-            print(self._parent._parent.page_stack)
             self._parent._parent.page_stack.setCurrentIndex(0)
             self._parent._parent.auth_page.update_theme(self._parent._parent.mode)
             
