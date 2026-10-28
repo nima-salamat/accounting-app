@@ -98,7 +98,7 @@ class AccountingApiClient:
             raise ApiError(0, "اتصال به سرور برقرار نشد؛ نشانی و وضعیت شبکه را بررسی کنید.", method, path) from exc
 
         if response.status_code == 204:
-            return {"data": None, "headers": dict(response.headers)} if include_headers else None
+            return {"data": None, "headers": {str(k).lower(): str(v) for k, v in response.headers.items()}} if include_headers else None
         try:
             payload = response.json()
         except ValueError:
@@ -116,7 +116,7 @@ class AccountingApiClient:
                 self.clear_session()
             raise ApiError(response.status_code, str(detail), method, path)
         if include_headers:
-            return {"data": payload, "headers": dict(response.headers)}
+            return {"data": payload, "headers": {str(k).lower(): str(v) for k, v in response.headers.items()}}
         return payload
 
     def _request_page(self, method, path, *, page, page_size, params=None):
@@ -126,7 +126,7 @@ class AccountingApiClient:
         items = result["data"] or []
         headers = result["headers"]
         try:
-            total = int(headers.get("X-Total-Count", len(items)))
+            total = int(headers.get("x-total-count", len(items)))
         except (TypeError, ValueError):
             total = len(items)
         return {
