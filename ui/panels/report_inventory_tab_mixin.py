@@ -1,0 +1,161 @@
+"""Overview, time series, product sales, inventory and category reports."""
+import sys
+import pandas as pd
+from datetime import datetime, timedelta
+from PySide2.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout,
+    QGroupBox, QLabel, QDateTimeEdit, QComboBox, QPushButton, QTableView,
+    QFileDialog, QMessageBox, QScrollArea, QHeaderView, QSpinBox, QCheckBox,
+    QSlider, QRadioButton, QLineEdit, QListWidget, QListWidgetItem, QCompleter, QTableWidgetItem,
+    QTableWidget, QDialog, QSplitter, QSizePolicy, QAction
+)
+from PySide2.QtCore import Qt, QDateTime, QTime, Signal, QStringListModel
+from PySide2.QtGui import  QPalette, QColor
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+# from matplotlib import rcParams
+# from matplotlib.font_manager import FontProperties
+# font_prop = FontProperties(fname="B-NAZANIN.TTF")
+# rcParams['font.family'] = font_prop.get_name()
+from peewee import fn, SQL, JOIN
+from db.models import Receipt, ReceiptProduct, Product, Warehouse, Category, User, CheckIn, CheckOut
+from ui.utils import PandasModel
+from ui.base_panel import jalali_tomorrow_date
+import cachetools
+import asyncio
+import jdatetime
+from datetime import datetime, date
+from manager.db import DBManager
+import webbrowser
+from ui.thread import TrackingQThread
+QThread = TrackingQThread
+JalaliDatetime = jdatetime.datetime
+
+import os
+import arabic_reshaper
+from bidi.algorithm import get_display
+
+from ui.panels.report_support import (
+    farsi, to_jalali, from_jalali, ReportWorker, PurgeWorker, QueryWorker,
+    SearchLineEdit, DataLoader, cache, wrap_scrollable,
+)
+
+class ReportInventoryTabMixin:
+    def _inventory_tab(self):
+        w = QWidget()
+        lo = QVBoxLayout(w)
+
+        date_group, dt_from_date, dt_from_time, dt_to_date, dt_to_time = self._make_date_group()
+        lo.addWidget(date_group)
+
+        
+        btn_load = QPushButton("بارگذاری هزینه")
+        btn_refresh = QPushButton("رفرش")
+        btn_layout = QHBoxLayout()
+        btn_layout.addWidget(btn_load)
+        btn_layout.addWidget(btn_refresh)
+        lo.addLayout(btn_layout)
+
+        table = QTableWidget()
+        lo.addWidget(table)
+        
+        lbl_totals = QLabel()
+        lbl_totals.setAlignment(Qt.AlignCenter)
+        lo.addWidget(lbl_totals)
+
+        def query_func(snapshot):
+            start_j = "{} {}:00".format(snapshot["from_date"], snapshot["from_time"]).replace("/", "-")
+            end_j = "{} {}:00".format(snapshot["to_date"], snapshot["to_time"]).replace("/", "-")
+            start = from_jalali(start_j, is_datetime=True)
+            end = from_jalali(end_j, is_datetime=True)
+            if start > end:
+                raise ValueError("زمان شروع نباید از زمان پایان بزرگ‌تر باشد.")
+
+            query = (
+                Warehouse.select(
+                    Warehouse.name, Warehouse.price, Warehouse.amount,
+                    Warehouse.unit, Warehouse.created_at
+                )
+                .where(Warehouse.created_at >= start, Warehouse.created_at <= end)
+                .order_by(Warehouse.created_at)
+            )
+            return list(query)
+
+        def on_data_ready(query):
+            count = len(query)
+            if count == 0:
+                dlg = QDialog(self)
+                dlg.setWindowTitle("گزارش")
+                lbl = QLabel("هیچ دیتایی در این بازه یافت نشد.", dlg)
+                QVBoxLayout(dlg).addWidget(lbl)
+                dlg.exec_()
+                return
+
+
+            table.clear()
+            table.setColumnCount(6)
+            table.setHorizontalHeaderLabels([
+                "محصول","تاریخ خرید", "تعداد", "مبلغ خرید واحد","مبلغ خرید کل" ,"یکا"
+            ])
+            
+            table.setRowCount(count + 1)
+
+            total_costs = 0.0
+
+            for row, item in enumerate(query):
+                date_str = to_jalali(item.created_at)
+                
+                qty = item.amount
+                cost = item.price
+            
+                
+                total_costs += cost * qty
+                table.setItem(row, 0, QTableWidgetItem(item.name))
+                table.setItem(row, 1, QTableWidgetItem(date_str))
+                table.setItem(row, 2, QTableWidgetItem(str(qty)))
+                table.setItem(row, 3, QTableWidgetItem(f"{cost:.2f}"))
+                table.setItem(row, 4, QTableWidgetItem(f"{cost*qty:.2f}"))
+                
+                table.setItem(row, 5, QTableWidgetItem(item.unit))
+                
+                
+
+         
+            footer = ["جمع کل:", "", "", "", f"{total_costs:.2f}"]
+            for col, text in enumerate(footer):
+                item = QTableWidgetItem(text)
+                item.setFlags(Qt.ItemIsEnabled)
+                table.setItem(count, col, item)
+
+            table.resizeColumnsToContents()
+            lbl_totals.setText(
+                f"مجموع خرید: {total_costs:.2f}"
+                )
+                
+
+        def load():
+            btn_load.setEnabled(False)
+            snapshot = {
+                "from_date": dt_from_date.text(),
+                "from_time": dt_from_time.text(),
+                "to_date": dt_to_date.text(),
+                "to_time": dt_to_time.text(),
+            }
+            self._inventory_worker = QueryWorker(lambda: query_func(snapshot))
+            self._inventory_worker.dataReady.connect(lambda q: (on_data_ready(q), btn_load.setEnabled(True)))
+            self._inventory_worker.error.connect(
+                lambda message: (QMessageBox.warning(self, "خطا در گزارش", message), btn_load.setEnabled(True))
+            )
+            self._inventory_worker.start()
+        
+        
+          
+        btn_load.clicked.connect(load)
+        btn_refresh.clicked.connect(load)
+       
+        return w
+    
+    
+    
+    
+    # -------------------------------------------------------------------------
