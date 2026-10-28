@@ -99,6 +99,8 @@ class InventoryPage(QFrame):
         self.stock_page = 1
         self.movement_page = 1
         self.page_size = 25
+        self.stock_total = 0
+        self.movement_total = 0
         self.setObjectName("Card")
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         root = QVBoxLayout(self)
@@ -228,8 +230,13 @@ class InventoryPage(QFrame):
         self.stock_page = 1
         self.refresh()
 
-    def _populate_inventory(self, records):
-        self.inventory = list(records or [])
+    def _populate_inventory(self, payload):
+        if isinstance(payload, dict):
+            self.inventory = list(payload.get("items") or [])
+            self.stock_total = int(payload.get("total") or 0)
+        else:
+            self.inventory = list(payload or [])
+            self.stock_total = len(self.inventory)
         self.stock_table.setRowCount(0)
         for row, record in enumerate(self.inventory):
             self.stock_table.insertRow(row)
@@ -252,13 +259,18 @@ class InventoryPage(QFrame):
                     cell = self.stock_table.item(row, col)
                     if cell:
                         cell.setToolTip("موجودی به حد سفارش رسیده یا از آن کمتر است.")
-        pages = max(1, (len(self.inventory) + self.page_size - 1) // self.page_size)
-        self.stock_page_label.setText("صفحه {} از {} · {} کالا".format(self.stock_page, pages, len(self.inventory)))
+        pages = max(1, (self.stock_total + self.page_size - 1) // self.page_size)
+        self.stock_page_label.setText("صفحه {} از {} · {} کالا".format(self.stock_page, pages, self.stock_total))
         self.stock_previous.setEnabled(self.stock_page > 1)
-        self.stock_next.setEnabled(len(self.inventory) >= self.page_size)
+        self.stock_next.setEnabled(self.stock_page * self.page_size < self.stock_total)
 
-    def _populate_movements(self, records):
-        self.movements = list(records or [])
+    def _populate_movements(self, payload):
+        if isinstance(payload, dict):
+            self.movements = list(payload.get("items") or [])
+            self.movement_total = int(payload.get("total") or 0)
+        else:
+            self.movements = list(payload or [])
+            self.movement_total = len(self.movements)
         self.movement_table.setRowCount(0)
         for row, item in enumerate(self.movements):
             self.movement_table.insertRow(row)
@@ -277,9 +289,10 @@ class InventoryPage(QFrame):
                 if col == 0:
                     cell.setData(Qt.ItemDataRole.UserRole, item)
                 self.movement_table.setItem(row, col, cell)
-        self.movement_page_label.setText("صفحه {} · {} گردش".format(self.movement_page, len(self.movements)))
+        pages = max(1, (self.movement_total + self.page_size - 1) // self.page_size)
+        self.movement_page_label.setText("صفحه {} از {} · {} گردش".format(self.movement_page, pages, self.movement_total))
         self.movement_previous.setEnabled(self.movement_page > 1)
-        self.movement_next.setEnabled(len(self.movements) >= self.page_size)
+        self.movement_next.setEnabled(self.movement_page * self.page_size < self.movement_total)
 
     def _set_page_size(self, combo):
         self.page_size = int(combo.currentData() or 25)
