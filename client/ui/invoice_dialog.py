@@ -3,7 +3,7 @@ from PySide6.QtCore import QRectF, QSizeF, QMarginsF, Qt
 from PySide6.QtGui import QColor, QPageSize, QPageLayout, QPainter
 from PySide6.QtPrintSupport import QPrinter, QPrintDialog
 from PySide6.QtWidgets import (
-    QDialog, QFileDialog, QGraphicsItem, QGraphicsScene, QGraphicsView,
+    QDialog, QFileDialog, QFrame, QGraphicsItem, QGraphicsScene, QGraphicsView,
     QHBoxLayout, QMessageBox, QPushButton, QVBoxLayout,
 )
 
@@ -80,7 +80,7 @@ class InvoiceDialog(QDialog):
         self.preview = QGraphicsView(self.scene, self)
         self.preview.setObjectName("InvoicePrintPreview")
         self.preview.setBackgroundBrush(QColor("#E9EDF4"))
-        self.preview.setFrameShape(self.preview.Shape.NoFrame)
+        self.preview.setFrameShape(QFrame.Shape.NoFrame)
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setRenderHints(self.preview.renderHints())
         layout.addWidget(self.preview, 1)
