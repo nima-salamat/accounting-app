@@ -102,6 +102,8 @@ class ProductCreate(StrictModel):
     image_path: Optional[str] = Field(default=None, max_length=256)
     custom_product: bool = False
     category_id: Optional[UUID] = None
+    track_stock: bool = False
+    reorder_level: Decimal = Field(default=0, ge=0, max_digits=16, decimal_places=4)
 
 
 class ProductUpdate(StrictModel):
@@ -111,6 +113,8 @@ class ProductUpdate(StrictModel):
     image_path: Optional[str] = Field(default=None, max_length=256)
     custom_product: Optional[bool] = None
     category_id: Optional[UUID] = None
+    track_stock: Optional[bool] = None
+    reorder_level: Optional[Decimal] = Field(default=None, ge=0, max_digits=16, decimal_places=4)
 
 
 class ProductOut(BaseModel):
@@ -121,8 +125,39 @@ class ProductOut(BaseModel):
     image_path: Optional[str] = None
     custom_product: bool
     category_id: Optional[UUID] = None
+    track_stock: bool = False
+    stock_quantity: float = 0
+    reorder_level: float = 0
     created_at: datetime
     updated_at: datetime
+
+
+class InventoryAdjustmentInput(StrictModel):
+    product_id: UUID
+    quantity_change: Decimal = Field(max_digits=16, decimal_places=4)
+    reason: str = Field(default="correction", pattern=r"^(opening|purchase|correction|return|damage)$")
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def require_non_zero_adjustment(self):
+        if self.quantity_change == 0:
+            raise ValueError("مقدار اصلاح موجودی نباید صفر باشد.")
+        return self
+
+
+class StockMovementOut(BaseModel):
+    id: UUID
+    product_id: UUID
+    product_name: str
+    user_id: UUID
+    username: str
+    quantity_change: float
+    stock_before: float
+    stock_after: float
+    reason: str
+    reference_id: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
 
 
 class WarehouseCreate(StrictModel):
