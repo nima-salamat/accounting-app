@@ -9,13 +9,13 @@ from accounting_app.database.extension_models import (
 )
 from accounting_app.database.models import (
     ApiSession, Category, CheckIn, CheckOut, IdempotencyRecord, Product, Receipt,
-    ReceiptProduct, User, Warehouse,
+    ReceiptProduct, StockMovement, User, Warehouse,
 )
 
 TABLES = (
     User, Category, Product, Receipt, ReceiptProduct, Warehouse, CheckIn, CheckOut,
     AppSetting, CustomModelDefinition, CustomFieldDefinition, CustomFieldValue,
-    CustomRecord, IdempotencyRecord, ApiSession,
+    CustomRecord, IdempotencyRecord, ApiSession, StockMovement,
 )
 
 
@@ -24,6 +24,7 @@ def create_tables(database=None):
     target = database or db
     target.create_tables(TABLES, safe=True)
     _migrate_existing_user_table(target)
+    _migrate_existing_product_table(target)
 
 
 def _migrate_existing_user_table(database):
@@ -33,6 +34,21 @@ def _migrate_existing_user_table(database):
     for name, definition in (
         ("is_active", "INTEGER NOT NULL DEFAULT 1"),
         ("requires_session_activation", "INTEGER NOT NULL DEFAULT 0"),
+    ):
+        if name not in columns:
+            database.execute_sql(
+                'ALTER TABLE "{}" ADD COLUMN "{}" {}'.format(table, name, definition)
+            )
+
+
+def _migrate_existing_product_table(database):
+    """Add stock tracking columns to an existing product table without data loss."""
+    table = Product._meta.table_name
+    columns = {column.name for column in database.get_columns(table)}
+    for name, definition in (
+        ("track_stock", "INTEGER NOT NULL DEFAULT 0"),
+        ("stock_quantity", "REAL NOT NULL DEFAULT 0"),
+        ("reorder_level", "REAL NOT NULL DEFAULT 0"),
     ):
         if name not in columns:
             database.execute_sql(
