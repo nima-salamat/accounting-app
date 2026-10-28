@@ -77,6 +77,7 @@ def _save_patch(record, values):
 
 @router.get("/categories", response_model=List[CategoryOut])
 def list_categories(
+    response: Response,
     q: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=200),
@@ -86,6 +87,10 @@ def list_categories(
         query = CategoryModel.select()
         if q and q.strip():
             query = query.where(CategoryModel.name.contains(q.strip()))
+        total = query.count()
+        response.headers["X-Total-Count"] = str(total)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
         return [_serialize(item) for item in query.order_by(CategoryModel.name).paginate(page, page_size)]
 
 
