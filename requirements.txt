@@ -11,3 +11,4 @@ cachetools>=5,<7
 arabic-reshaper>=3,<4
 python-bidi>=0.4,<1
 qtawesome>=1.3,<2
+keyring>=25,<27
