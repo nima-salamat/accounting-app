@@ -23,6 +23,7 @@ from accounting_app.database.models import (
 from accounting_app.services.schema_registry import cleanup_builtin_extension_values_many
 from accounting_app.services.audit import record_audit
 from accounting_app.config import get_data_dir
+from accounting_app.services.kiosk_config import load_kiosk_settings, kiosk_product_ids_for_user
 from server.app.dependencies import get_current_user, require_admin
 from server.app.permissions import has_permission, require_permission
 from server.app.schemas import (
@@ -51,6 +52,9 @@ def get_company_profile(_user=Depends(require_permission("products", "read"))):
             "business_profile": str(profile.get("business_profile") or "general")[:32],
             "business_profile_label": str(profile.get("business_profile_label") or "کسب‌وکار عمومی")[:128],
             "product_buy_price_required": bool(profile.get("product_buy_price_required", True)),
+            "receipt_history_hours": load_kiosk_settings()["receipt_history_hours"],
+            "cafe_seat_selection": load_kiosk_settings()["cafe_seat_selection"],
+            "kiosk_active": load_kiosk_settings()["active"],
         }
 
 
@@ -178,6 +182,9 @@ def list_products(
             query = query.where(ProductModel.name.contains(q.strip()))
         if category_id is not None:
             query = query.where(ProductModel.category == category_id)
+        allowed_product_ids = kiosk_product_ids_for_user(user)
+        if allowed_product_ids is not None:
+            query = query.where(ProductModel.id.in_(list(allowed_product_ids)))
         total = query.count()
         response.headers["X-Total-Count"] = str(total)
         response.headers["X-Page"] = str(page)
