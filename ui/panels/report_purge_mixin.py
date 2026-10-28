@@ -2,17 +2,18 @@
 import sys
 import pandas as pd
 from datetime import datetime, timedelta
-from PySide2.QtCore import QUrl
-from PySide2.QtWidgets import (
+from PySide6.QtGui import QAction
+from PySide6.QtCore import QUrl
+from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout,
     QGroupBox, QLabel, QDateTimeEdit, QComboBox, QPushButton, QTableView,
     QFileDialog, QMessageBox, QScrollArea, QHeaderView, QSpinBox, QCheckBox,
     QSlider, QRadioButton, QLineEdit, QListWidget, QListWidgetItem, QCompleter, QTableWidgetItem,
-    QTableWidget, QDialog, QSplitter, QSizePolicy, QAction
+    QTableWidget, QDialog, QSplitter, QSizePolicy
 )
-from PySide2.QtCore import Qt, QDateTime, QTime, Signal, QStringListModel
-from PySide2.QtGui import  QPalette, QColor
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from PySide6.QtCore import Qt, QDateTime, QTime, Signal, QStringListModel
+from PySide6.QtGui import  QPalette, QColor
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 # from matplotlib import rcParams
 # from matplotlib.font_manager import FontProperties

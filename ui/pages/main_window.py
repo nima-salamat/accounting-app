@@ -1,9 +1,9 @@
-from PySide2.QtWidgets import (
+from PySide6.QtWidgets import (
     QMainWindow, QWidget, QPushButton, QLabel,
     QHBoxLayout, QVBoxLayout, QStackedWidget, QStyle, QApplication
 )
-from PySide2.QtGui import QIcon, QMouseEvent, QFont
-from PySide2.QtCore import Qt, QTimer, QEvent, QObject, Signal
+from PySide6.QtGui import QIcon, QMouseEvent, QFont
+from PySide6.QtCore import Qt, QTimer, QEvent, QObject, Signal
 from ui.auth_page import AuthPage
 from ui.dashboard import MainPanel
 from ui.screen_saver import ScreenSaver, ClockScreenSaver

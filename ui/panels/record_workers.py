@@ -1,7 +1,7 @@
 """Background create, update and delete operations for Peewee records."""
 import os
 
-from PySide2.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, Signal, Slot
 
 from accounting_app.services.file_safety import is_managed_image_path
 from accounting_app.services.schema_registry import cleanup_builtin_extension_values, entity_key_for_model

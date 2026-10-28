@@ -1,12 +1,13 @@
 import os
-from PySide2.QtWidgets import (
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
     QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QStackedWidget,
     QLabel, QMessageBox, QScrollArea, QSizePolicy, QTableWidget, QCompleter,
     QTableWidgetItem, QTabWidget, QHeaderView, QCheckBox, QSizeGrip, QLayout, QSplitter, QLineEdit, QFrame
 )
-from PySide2.QtGui import QPixmap, Qt, QRegion, QFont
-from PySide2.QtCore import QTimer, QEasingCurve, QPropertyAnimation, QSize, QPoint, QRect, Property, Signal
-from PySide2.QtCore import QParallelAnimationGroup, QStringListModel
+from PySide6.QtGui import QPixmap, QRegion, QFont
+from PySide6.QtCore import QTimer, QEasingCurve, QPropertyAnimation, QSize, QPoint, QRect, Property, Signal
+from PySide6.QtCore import QParallelAnimationGroup, QStringListModel
 from collections import defaultdict
 from datetime import datetime, date
 from db.models import Product, Receipt, ReceiptProduct, Category
@@ -14,7 +15,7 @@ from accounting_app.services.sales import record_sale
 from manager.db import DBManager
 from ui.base_panel import RecordDialog, RecordAdder, QDialog, to_jalali
 from functools import partial
-from PySide2.QtCore import QVariantAnimation
+from PySide6.QtCore import QVariantAnimation
 import random
 import hashlib
 

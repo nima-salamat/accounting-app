@@ -5,12 +5,12 @@ import uuid
 from decimal import Decimal
 
 from peewee import BooleanField, DateField, DateTimeField, DecimalField, FloatField, ForeignKeyField, Model
-from PySide2.QtWidgets import (
+from PySide6.QtWidgets import (
     QLineEdit, QVBoxLayout, QHBoxLayout, QDialog, QLabel, QCheckBox,
     QFileDialog, QComboBox, QPushButton, QMessageBox, QWidget,
 )
-from PySide2.QtGui import QImage, QPixmap, QDoubleValidator
-from PySide2.QtCore import Qt
+from PySide6.QtGui import QImage, QPixmap, QDoubleValidator
+from PySide6.QtCore import Qt
 
 from ui.panels.date_utils import from_jalali, to_jalali
 from ui.panels.image_widgets import ImageLineEdit, _normalize_path, download_image

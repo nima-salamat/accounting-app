@@ -13,13 +13,8 @@ def run(argv=None):
     ensure_data_dir()
     initialize_database()
     create_db()
-
-    from PySide2.QtCore import Qt
-    from PySide2.QtGui import QIcon
-    from PySide2.QtWidgets import QApplication, QDialog
-
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    from PySide6.QtGui import QIcon
+    from PySide6.QtWidgets import QApplication, QDialog
     app = QApplication(sys.argv if argv is None else argv)
     app.setApplicationName("Accounting App")
     app.setWindowIcon(QIcon(str(ICON_PATH)))
@@ -29,14 +24,14 @@ def run(argv=None):
         from ui.pages.installer_wizard import InitialSetupWizard
 
         wizard = InitialSetupWizard()
-        if wizard.exec_() != QDialog.Accepted or not wizard.installation_complete:
+        if wizard.exec() != QDialog.Accepted or not wizard.installation_complete:
             return 0
 
     from ui.pages.main_window import MainWindow
 
     window = MainWindow()
     window.show()
-    return app.exec_()
+    return app.exec()
 
 
 if __name__ == "__main__":

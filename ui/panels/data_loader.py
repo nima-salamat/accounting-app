@@ -3,7 +3,7 @@ import operator
 from functools import reduce
 
 from peewee import BooleanField, CharField, TextField
-from PySide2.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, Signal, Slot
 
 from manager.db import DBManager
 from ui.panels.date_utils import parse_jalali_datetime

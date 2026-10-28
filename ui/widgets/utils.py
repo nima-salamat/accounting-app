@@ -1,6 +1,6 @@
 import pandas as pd
 
-from PySide2.QtCore import Qt, QAbstractTableModel, QModelIndex
+from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex
 
 
 class PandasModel(QAbstractTableModel):

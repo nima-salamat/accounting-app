@@ -1,7 +1,7 @@
 """Reusable password input with an inline visibility toggle."""
-from PySide2.QtWidgets import QLineEdit, QToolButton, QStyle
-from PySide2.QtGui import QIcon, QPixmap, QPainter
-from PySide2.QtCore import QSize, Qt
+from PySide6.QtWidgets import QLineEdit, QToolButton, QStyle
+from PySide6.QtGui import QIcon, QPixmap, QPainter
+from PySide6.QtCore import QSize, Qt
 
 
 class PasswordLineEdit(QLineEdit):

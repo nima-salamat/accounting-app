@@ -1,11 +1,11 @@
-# The current desktop UI is built on PySide2; Python 3.9 is recommended.
-PySide2==5.15.2.1
+# Desktop application requires Python 3.12+ and Qt 6.
+PySide6>=6.8,<7
 peewee>=3.17,<4
 jdatetime>=4.1,<6
-pandas>=1.5,<2.1
-matplotlib>=3.7,<3.9
+pandas>=2.2,<3
+matplotlib>=3.9,<4
 openpyxl>=3.1,<4
-Pillow>=10,<12
+Pillow>=10,<13
 requests>=2.31,<3
 cachetools>=5,<7
 arabic-reshaper>=3,<4

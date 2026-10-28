@@ -1,9 +1,9 @@
-from PySide2.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QLineEdit, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QSizePolicy
 )
-from PySide2.QtCore import Qt, QEvent
-from PySide2.QtGui import QPixmap
+from PySide6.QtCore import Qt, QEvent
+from PySide6.QtGui import QPixmap
 from config import USERNAME_MIN_LENGTH, PASSWORD_MIN_LENGTH
 from ui.styles.auth_styles import AUTH_DARK_QSS, AUTH_LIGHT_QSS
 

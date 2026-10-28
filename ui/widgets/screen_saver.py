@@ -1,9 +1,9 @@
 # screen_savers.py
 
 import random
-from PySide2.QtCore import QTimer, QPointF, Qt, QTime
-from PySide2.QtGui import QPainter, QColor, QFont
-from PySide2.QtWidgets import QFrame
+from PySide6.QtCore import QTimer, QPointF, Qt, QTime
+from PySide6.QtGui import QPainter, QColor, QFont
+from PySide6.QtWidgets import QFrame
 
 # -------------------------------------------------------------------
 # QSS Definitions

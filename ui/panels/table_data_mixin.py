@@ -2,9 +2,10 @@
 from functools import partial
 
 from peewee import DateField, DateTimeField, DecimalField, FloatField, ForeignKeyField, IntegerField
-from PySide2.QtCore import Qt
-from PySide2.QtWidgets import (
-    QAction, QMenu, QMessageBox, QPushButton, QTableWidgetItem,
+from PySide6.QtGui import QAction
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QMenu, QMessageBox, QPushButton, QTableWidgetItem,
 )
 
 from ui.thread import TrackingQThread as QThread
@@ -138,7 +139,7 @@ class TableDataMixin:
             menu.addAction(sum_action)
 
         if not menu.isEmpty():
-            menu.exec_(self.data_table.viewport().mapToGlobal(pos))
+            menu.exec(self.data_table.viewport().mapToGlobal(pos))
 
     def _calculate_sum(self, column):
         selected_items = self.data_table.selectedItems()
@@ -155,7 +156,7 @@ class TableDataMixin:
 
     def _preview_image(self, path):
         dlg = PreviewDialog(path, self)
-        dlg.exec_()
+        dlg.exec()
 
     def load_data(self):
         self._load_generation = getattr(self, "_load_generation", 0) + 1

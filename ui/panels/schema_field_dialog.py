@@ -1,6 +1,6 @@
 """Dialog for adding an extension field or defining a new custom entity."""
-from PySide2.QtCore import Qt
-from PySide2.QtWidgets import (
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLineEdit,
 )
 

@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10"]
+        python-version: ["3.12", "3.13"]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -26,7 +26,11 @@ jobs:
             server/requirements.txt
             client/requirements.txt
       - name: Install test dependency
-        run: python -m pip install --upgrade pip -r server/requirements.txt -r client/requirements.txt
+        run: python -m pip install --upgrade pip -r requirements.txt -r server/requirements.txt -r client/requirements.txt
+      - name: Import Qt 6 UI modules (offscreen)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -c "import PySide6; import ui.pages.auth_page; import ui.pages.dashboard; import ui.pages.installer_wizard; import ui.pages.main_window; import ui.panels.report_panel; import ui.panels.sell_panel; import ui.widgets.menu_bar; import client.desktop; print('PySide6 UI imports OK', PySide6.__version__)"
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
       - name: Compile Python modules

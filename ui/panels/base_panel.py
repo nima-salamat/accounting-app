@@ -1,11 +1,11 @@
 """Generic CRUD table layout with behavior delegated to focused mixins."""
 from peewee import DateField, DateTimeField, DecimalField, FloatField, ForeignKeyField, IntegerField
-from PySide2.QtWidgets import (
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTableWidget, QPushButton, QLineEdit, QHBoxLayout,
     QTableWidgetItem, QMessageBox, QDialog, QLabel, QCheckBox, QComboBox, QMenu,
-    QFileDialog, QGroupBox, QFrame, QAction,
-)
-from PySide2.QtCore import Qt
+    QFileDialog, QGroupBox, QFrame, )
+from PySide6.QtCore import Qt
 
 from ui.panels.date_utils import to_jalali, jalali_tomorrow_date, from_jalali, parse_jalali_datetime
 from ui.panels.data_workers import DataLoader, RecordAdder, RecordEditor, RecordDeleter, Exporter

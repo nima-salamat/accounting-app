@@ -1,7 +1,7 @@
-from PySide2.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QPushButton, QLabel, QHBoxLayout
 )
-from PySide2.QtCore import Qt, QTimer, QTime, QDateTime
+from PySide6.QtCore import Qt, QTimer, QTime, QDateTime
 import jdatetime
 
 

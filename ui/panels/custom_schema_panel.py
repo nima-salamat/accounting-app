@@ -1,6 +1,6 @@
 """Administrator UI for custom schemas and extension values."""
-from PySide2.QtCore import Qt
-from PySide2.QtWidgets import (
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
     QMessageBox, QPushButton, QTableWidget, QVBoxLayout, QWidget,
 )
@@ -191,7 +191,7 @@ class CustomSchemaManagement(QWidget):
 
     def _add_field(self):
         dialog = AddSchemaFieldDialog(self._entities, self)
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec() != QDialog.Accepted:
             return
         payload = dialog.values()
         try:

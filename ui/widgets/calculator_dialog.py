@@ -1,12 +1,12 @@
 """Frameless desktop calculator dialog with a local expression history."""
 from functools import partial
 
-from PySide2.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QPushButton, QLabel,
     QLineEdit, QToolButton, QFrame, QSizeGrip, QListWidget, QListWidgetItem,
     QSizePolicy,
 )
-from PySide2.QtCore import Qt
+from PySide6.QtCore import Qt
 
 from accounting_app.services.calculator import evaluate_expression
 

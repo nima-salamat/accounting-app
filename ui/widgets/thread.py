@@ -1,6 +1,6 @@
 # global
 import weakref
-from PySide2.QtCore import QThread
+from PySide6.QtCore import QThread
 
 all_threads = []
 

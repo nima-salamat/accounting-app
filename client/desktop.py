@@ -1,10 +1,10 @@
-"""Minimal standalone PySide2 client backed exclusively by the HTTP API."""
+"""Minimal standalone PySide6 client backed exclusively by the HTTP API."""
 import os
 import uuid
 
-from PySide2.QtCore import Qt, QThread, Signal, Slot
-from PySide2.QtGui import QDoubleValidator
-from PySide2.QtWidgets import (
+from PySide6.QtCore import Qt, QThread, Signal, Slot
+from PySide6.QtGui import QDoubleValidator
+from PySide6.QtWidgets import (
     QApplication, QCheckBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel,
     QLineEdit, QMainWindow, QMessageBox, QPushButton, QSpinBox, QStackedWidget,
     QTabWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
@@ -603,7 +603,7 @@ def main():
     app.setApplicationName("Accounting App Client")
     window = AccountingClientWindow()
     window.show()
-    return app.exec_()
+    return app.exec()
 
 
 if __name__ == "__main__":

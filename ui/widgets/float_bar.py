@@ -1,6 +1,6 @@
-from PySide2.QtWidgets import QDockWidget, QWidget, QBoxLayout, QPushButton, QMenu
-from PySide2.QtCore import Qt
-from PySide2.QtGui import QContextMenuEvent, QDragEnterEvent, QDropEvent
+from PySide6.QtWidgets import QDockWidget, QWidget, QBoxLayout, QPushButton, QMenu
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QContextMenuEvent, QDragEnterEvent, QDropEvent
 
 
 class DockButton(QPushButton):
@@ -20,7 +20,7 @@ class DockButton(QPushButton):
     def contextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
         delete_action = menu.addAction("🗑 حذف")
-        action = menu.exec_(event.globalPos())
+        action = menu.exec(event.globalPos())
         if action == delete_action:
             self.parent_dock.remove_button(self)
         self._parent._parent._parent.button_indices = self._parent.current_indices()

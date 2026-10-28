@@ -1,7 +1,8 @@
-from PySide2.QtWidgets import (
-    QMenuBar, QMenu, QSizePolicy, QMessageBox, QAction, QActionGroup, QLabel, QWidget, QHBoxLayout
+from PySide6.QtGui import QAction, QActionGroup
+from PySide6.QtWidgets import (
+    QMenuBar, QMenu, QSizePolicy, QMessageBox, QLabel, QWidget, QHBoxLayout
 )
-from PySide2.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer
 import jdatetime
 
 
@@ -129,7 +130,7 @@ class MenuBar(QMenuBar):
         about_msg_box.setText("کاری از انارتیم")
         about_msg_box.setInformativeText("done?!?!?!")
         about_msg_box.setDefaultButton(QMessageBox.StandardButton.Ok)
-        about_msg_box.exec_()
+        about_msg_box.exec()
 
     def close_window(self):
         self._parent._parent.close()
@@ -161,11 +162,11 @@ class MenuBar(QMenuBar):
 
     def more_setting_pressed(self):
         self._parent._parent.page_stack.setCurrentIndex(3)
-from PySide2.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QHBoxLayout,
     QGridLayout, QSizeGrip, QToolButton, QListWidget, QListWidgetItem, QFrame, QSizePolicy
 )
-from PySide2.QtCore import Qt
+from PySide6.QtCore import Qt
 from functools import partial
 
 from ui.widgets.calculator_dialog import Calculator

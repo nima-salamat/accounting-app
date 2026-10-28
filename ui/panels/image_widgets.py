@@ -4,13 +4,13 @@ from urllib.parse import urlparse, unquote
 
 import requests
 from accounting_app.services.file_safety import is_managed_image_path
-from PySide2.QtWidgets import (
+from PySide6.QtWidgets import (
     QLineEdit, QApplication, QMessageBox, QGraphicsScene, QGraphicsView,
     QGraphicsPixmapItem, QToolButton, QStyle, QPushButton, QHBoxLayout,
     QVBoxLayout, QLabel, QDialog,
 )
-from PySide2.QtCore import Qt, QMimeData
-from PySide2.QtGui import QKeySequence, QImage, QPixmap, QDragEnterEvent, QDropEvent
+from PySide6.QtCore import Qt, QMimeData
+from PySide6.QtGui import QKeySequence, QImage, QPixmap, QDragEnterEvent, QDropEvent
 
 
 

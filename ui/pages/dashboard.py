@@ -1,11 +1,13 @@
-from PySide2.QtWidgets import (
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction, QShortcut
+from PySide6.QtWidgets import (
     QWidget, QLabel, QPushButton, QMenuBar, QMenu, QVBoxLayout,
     QSizePolicy, QDockWidget, QMainWindow, QHBoxLayout,QApplication,
-    QStackedWidget, QAction, QShortcut
+    QStackedWidget
 )
-from PySide2.QtGui import  Qt, QKeySequence, QPainter, QPolygonF, QPixmap, QDrag
-from PySide2.QtCore import QPointF, QByteArray
-from PySide2.QtCore import QMimeData
+from PySide6.QtGui import  QKeySequence, QPainter, QPolygonF, QPixmap, QDrag
+from PySide6.QtCore import QPointF, QByteArray
+from PySide6.QtCore import QMimeData
 
 from ui.user_panel import UserManagement, UserPanel
 from ui.category_panel import CategoryManagement
@@ -146,7 +148,7 @@ class DraggableButton(QPushButton):
             pix = QPixmap(self.size())
             self.render(pix)
             drag.setPixmap(pix)
-            drag.exec_(Qt.MoveAction)
+            drag.exec(Qt.MoveAction)
             self._drag_start_pos = None  # Prevent multiple drags
         super().mouseMoveEvent(event)
     

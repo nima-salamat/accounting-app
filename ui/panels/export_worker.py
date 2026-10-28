@@ -2,7 +2,7 @@
 import csv
 
 from peewee import DateField, DateTimeField, DecimalField, FloatField, ForeignKeyField
-from PySide2.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, Signal, Slot
 
 from ui.panels.date_utils import to_jalali
 

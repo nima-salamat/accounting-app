@@ -1,10 +1,10 @@
 from datetime import datetime, date, time
-from PySide2.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QLabel, QVBoxLayout, QGridLayout, QFrame,
     QGraphicsDropShadowEffect, QSizePolicy, QPushButton, QHBoxLayout
 )
-from PySide2.QtCore import Qt, QEvent, QPropertyAnimation, QEasingCurve
-from PySide2.QtGui import QColor, QCursor
+from PySide6.QtCore import Qt, QEvent, QPropertyAnimation, QEasingCurve
+from PySide6.QtGui import QColor, QCursor
 from peewee import fn
 
 from manager.db import DBManager

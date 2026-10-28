@@ -1,10 +1,10 @@
 from ui.base_panel import TableManagement
-from PySide2.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QLabel, QLineEdit, QPushButton, QMessageBox,
     QVBoxLayout, QHBoxLayout, QFormLayout, QFrame, QCheckBox
 )
-from PySide2.QtCore import Qt
-from PySide2.QtGui import QFont
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 from ui.widgets.password_line_edit import PasswordLineEdit
 from peewee import IntegrityError
 from db.models import User

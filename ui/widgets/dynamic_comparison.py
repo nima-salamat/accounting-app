@@ -1,10 +1,10 @@
-from PySide2.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
     QPushButton, QDateTimeEdit, QTableView, QHeaderView,
     QFileDialog, QMessageBox, QScrollArea, QSizePolicy, QSplitter
 )
-from PySide2.QtCore import Qt, QDateTime, QTime
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from PySide6.QtCore import Qt, QDateTime, QTime
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from peewee import fn
 import pandas as pd

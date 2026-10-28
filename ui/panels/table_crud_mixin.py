@@ -1,5 +1,5 @@
 """Create, update, delete and export actions for the generic CRUD table."""
-from PySide2.QtWidgets import QDialog, QFileDialog, QMessageBox
+from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox
 from ui.thread import TrackingQThread as QThread
 from ui.panels.data_workers import RecordAdder, RecordEditor, RecordDeleter, Exporter
 from ui.panels.record_dialog import RecordDialog
@@ -14,7 +14,7 @@ class TableCrudMixin:
             labels=self._labels,
             parent=self
         )
-        if dlg.exec_() != QDialog.Accepted:
+        if dlg.exec() != QDialog.Accepted:
             return
 
         data = dlg.data.copy()
@@ -68,7 +68,7 @@ class TableCrudMixin:
             initial={n: getattr(rec, n) for n in self._create},
             parent=self
         )
-        if dlg.exec_() != QDialog.Accepted:
+        if dlg.exec() != QDialog.Accepted:
             return
 
         data = dlg.data.copy()
