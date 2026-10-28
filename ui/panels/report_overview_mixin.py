@@ -81,6 +81,9 @@ class ReportOverviewMixin:
             lbl.setText("در حال بارگذاری...")
             self._overview_worker = QueryWorker(query_func)
             self._overview_worker.dataReady.connect(on_data_ready)
+            self._overview_worker.error.connect(
+                lambda message: lbl.setText("بارگذاری ناموفق: {}".format(message))
+            )
             self._overview_worker.start()
 
         btn_refresh.clicked.connect(load_data)
@@ -172,6 +175,9 @@ class ReportOverviewMixin:
             btn_load.setEnabled(False)
             self._sales_time_worker = QueryWorker(query_func)
             self._sales_time_worker.dataReady.connect(lambda df: (on_data_ready(df), btn_load.setEnabled(True)))
+            self._sales_time_worker.error.connect(
+                lambda message: (QMessageBox.warning(self, "خطا در گزارش", message), btn_load.setEnabled(True))
+            )
             self._sales_time_worker.start()
 
         btn_load.clicked.connect(load)
@@ -329,6 +335,9 @@ class ReportOverviewMixin:
             btn_bar.setEnabled(False)
             self._sales_product_worker = QueryWorker(query_func)
             self._sales_product_worker.dataReady.connect(lambda df: (on_data_ready(df), btn_bar.setEnabled(True)))
+            self._sales_product_worker.error.connect(
+                lambda message: (QMessageBox.warning(self, "خطا در گزارش", message), btn_bar.setEnabled(True))
+            )
             self._sales_product_worker.start()
 
         btn_bar.clicked.connect(load)
