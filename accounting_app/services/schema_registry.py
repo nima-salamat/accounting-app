@@ -48,9 +48,20 @@ def validate_key(value, *, field_name="کلید", allow_short=False):
 
 
 def _normalize_schema_rows(rows):
+    raw_rows = list(rows or ())
+    labels_in_batch = {}
+    for row in raw_rows:
+        key = str(row.get("model_key", "") or "").strip()
+        label = str(row.get("model_label", "") or "").strip()
+        if key and label and key not in BUILTIN_ENTITIES:
+            previous = labels_in_batch.get(key)
+            if previous and previous != label:
+                raise ValueError("برای مدل {} چند عنوان متفاوت وارد شده است.".format(key))
+            labels_in_batch[key] = label
+
     normalized = []
     seen = set()
-    for row in rows or ():
+    for row in raw_rows:
         model_key = str(row.get("model_key", "") or "").strip()
         field_key = str(row.get("field_key", "") or "").strip()
         model_label = str(row.get("model_label", "") or "").strip()
@@ -67,10 +78,15 @@ def _normalize_schema_rows(rows):
         if field_type not in FIELD_TYPES:
             raise ValueError("نوع دادهٔ فیلد {} معتبر نیست.".format(field_key))
         if model_key not in BUILTIN_ENTITIES and not model_label:
-            existing = CustomModelDefinition.get_or_none(CustomModelDefinition.model_key == model_key)
-            if existing is None:
+            model_label = labels_in_batch.get(model_key, "")
+            if not model_label:
+                existing = CustomModelDefinition.get_or_none(
+                    CustomModelDefinition.model_key == model_key
+                )
+                if existing is not None:
+                    model_label = existing.label
+            if not model_label:
                 raise ValueError("برای مدل سفارشی {} باید عنوان فارسی وارد کنید.".format(model_key))
-            model_label = existing.label
         marker = (model_key, field_key)
         if marker in seen:
             raise ValueError("فیلد {} در مدل {} تکراری است.".format(field_key, model_key))
@@ -84,8 +100,6 @@ def _normalize_schema_rows(rows):
             "is_required": bool(row.get("is_required", False)),
         })
     return normalized
-
-
 def register_schema_rows(rows, *, allow_existing=False):
     """Register a batch of field definitions atomically."""
     with DBManager():
