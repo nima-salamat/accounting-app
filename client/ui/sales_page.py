@@ -1,5 +1,9 @@
 """API-driven point-of-sale screen with search, quantity selection, and idempotent checkout."""
 from PySide6.QtCore import Qt
+import uuid
+
+from client.payment_terminal import authorize_payment, void_payment
+from client.ui.device_settings import device_settings
 from client.ui.invoice_dialog import InvoiceDialog, auto_print_invoice
 from client.ui.invoice_render import DEFAULT_TEMPLATE
 
@@ -93,8 +97,56 @@ class SalesPage(QFrame):
             "فروش با {} نوع کالا ثبت شود؟ مبلغ نهایی در سرور محاسبه می‌شود.".format(len(items)),
             QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.Yes)
         if answer!=QMessageBox.StandardButton.Yes:return
-        paid=self.paid.isChecked()
-        self.window.run_api(lambda:self.window.api.create_sale(items,paid=paid),self._sale_created,busy=self.submit_button)
+        paid = self.paid.isChecked()
+        settings = device_settings()
+        if paid and settings.get("terminal_mode") == "tcp":
+            self.window.run_api(
+                lambda: self._checkout_via_terminal(items, settings),
+                self._terminal_sale_created,
+                busy=self.submit_button,
+            )
+        else:
+            self.window.run_api(
+                lambda: self.window.api.create_sale(items, paid=paid),
+                self._sale_created,
+                busy=self.submit_button,
+            )
+
+    def _checkout_via_terminal(self, items, settings):
+        quote = self.window.api.quote_sale(items, paid=True)
+        amount = str(quote.get("total") or "0")
+        reference = uuid.uuid4().hex
+        payment = authorize_payment(amount, reference, settings)
+        try:
+            receipt = self.window.api.create_sale(
+                items, paid=True, idempotency_key=reference
+            )
+        except Exception as first_error:
+            try:
+                receipt = self.window.api.create_sale(
+                    items, paid=True, idempotency_key=reference
+                )
+            except Exception as retry_error:
+                try:
+                    void_payment(amount, reference, payment["transaction_id"], settings)
+                except Exception as void_error:
+                    raise RuntimeError(
+                        "کارت‌خوان تراکنش را تأیید کرده اما ثبت فروش/لغو نامشخص است. "
+                        "شناسه تراکنش {} و مرجع {} را با مدیر/پرداخت‌یار بررسی کنید. خطا: {}؛ {}".format(
+                            payment["transaction_id"], reference, retry_error, void_error
+                        )
+                    ) from retry_error
+                raise RuntimeError(
+                    "ثبت فروش ناموفق بود و لغو وجه تأیید شد؛ مرجع {}. {}".format(reference, retry_error)
+                ) from first_error
+        return {"receipt": receipt, "transaction_id": payment["transaction_id"]}
+
+    def _terminal_sale_created(self, result):
+        receipt = result["receipt"]
+        self.window.set_status(
+            "پرداخت کارت‌خوان تأیید شد · شناسه تراکنش {}".format(result.get("transaction_id", "—"))
+        )
+        self._sale_created(receipt)
 
     def _sale_created(self,receipt):
         self.paid.setChecked(False)
