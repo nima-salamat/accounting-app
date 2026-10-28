@@ -160,12 +160,10 @@ class PurgeFinalizeWorker(QThread):
 
             receipt_ids = [record["id"] for record in self.receipts]
             item_ids = [item["id"] for item in self.items]
-            from accounting_app.services.schema_registry import cleanup_builtin_extension_values
+            from accounting_app.services.schema_registry import cleanup_builtin_extension_values_many
             with DBManager():
-                for record_id in receipt_ids:
-                    cleanup_builtin_extension_values("receipts", record_id)
-                for item_id in item_ids:
-                    cleanup_builtin_extension_values("receipt_products", item_id)
+                cleanup_builtin_extension_values_many("receipts", receipt_ids)
+                cleanup_builtin_extension_values_many("receipt_products", item_ids)
                 if item_ids:
                     ReceiptProduct.delete().where(ReceiptProduct.id.in_(item_ids)).execute()
                 if receipt_ids:
