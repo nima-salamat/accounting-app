@@ -145,17 +145,22 @@ class POSWindow(QMainWindow):
 
     def show_error(self, error):
         if getattr(error, "status_code", None) == 401:
-            self.force_logout()
+            self.force_logout(clear_remembered=True)
         QMessageBox.warning(self, "خطای صندوق فروش", str(error))
 
     def logout(self):
         if self.api is None:
-            self.force_logout()
+            self.force_logout(clear_remembered=True)
             return
-        self.run_api(self.api.logout, lambda _result: self.force_logout(),
-                     failure=lambda _error: self.force_logout())
+        self.run_api(
+            self.api.logout,
+            lambda _result: self.force_logout(clear_remembered=True),
+            failure=lambda _error: self.force_logout(clear_remembered=True),
+        )
 
-    def force_logout(self):
+    def force_logout(self, clear_remembered=False):
+        if clear_remembered:
+            self.auth_page.clear_remembered_session()
         if self.api is not None:
             self.api.clear_session()
         self.current_user = None
