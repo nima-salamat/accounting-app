@@ -3,7 +3,7 @@ import os
 import uuid
 
 from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 try:
     import qtawesome as qta
 except ImportError:  # Keep the interface usable before optional icon assets are installed.
@@ -26,6 +26,9 @@ from client.ui.settings_page import SettingsPage
 from client.ui.permissions_page import PermissionsPage
 from client.ui.invoice_templates_page import InvoiceTemplatesPage
 from client.ui.inventory_page import InventoryPage
+from client.ui.returns_page import ReturnsPage
+from client.ui.accounting_pages import JournalsPage, FiscalYearsPage, AccountingReportsPage, AuditPage
+from client.ui.global_search import GlobalSearchDialog
 from client.ui.permissions import can_access
 from client.ui.theme import stylesheet
 from client.ui.worker import ApiWorker
@@ -129,6 +132,12 @@ class AccountingMainWindow(QMainWindow):
         self._build_pages()
         self._apply_theme()
         self._show_auth()
+        self.search_shortcut=QShortcut(QKeySequence("Ctrl+K"), self)
+        self.search_shortcut.activated.connect(self.open_global_search)
+        self.refresh_shortcut=QShortcut(QKeySequence("F5"), self)
+        self.refresh_shortcut.activated.connect(self.refresh_current_page)
+        self.sale_shortcut=QShortcut(QKeySequence("F2"), self)
+        self.sale_shortcut.activated.connect(lambda: self.navigate("sales"))
 
     def _build_sidebar(self):
         side=QFrame();side.setObjectName("Sidebar");side.setMinimumWidth(218);side.setMaximumWidth(252)
@@ -145,6 +154,9 @@ class AccountingMainWindow(QMainWindow):
             ("products","محصولات","▦",False),("categories","دسته‌بندی‌ها","◇",False),
             ("warehouse","اقلام انبار","▤",False),("inventory","موجودی کالا","▧",False),("checks_in","چک‌های دریافتی","↙",False),
             ("checks_out","چک‌های پرداختی","↗",False),("receipts","رسیدها و فاکتورها","▧",False),
+            ("returns","مرجوعی‌ها و استرداد","↩",False),("journals","اسناد حسابداری","≡",False),
+            ("fiscal_years","سال مالی","◷",False),("accounting_reports","گزارش‌های مالی","▥",False),
+            ("audit","سوابق فعالیت کارکنان","◉",False),
         ]
         for key,label,icon,admin in nav_specs:self._make_nav(layout,key,label,icon,admin)
         self.admin_section=QLabel("مدیریت و تنظیمات");self.admin_section.setObjectName("SidebarSection")
@@ -168,6 +180,8 @@ class AccountingMainWindow(QMainWindow):
             "products":"fa5s.boxes", "categories":"fa5s.tags",
             "warehouse":"fa5s.warehouse", "inventory":"fa5s.boxes-stacked", "checks_in":"fa5s.file-import",
             "checks_out":"fa5s.file-export", "receipts":"fa5s.receipt",
+            "returns":"fa5s.rotate-left", "journals":"fa5s.book-open", "fiscal_years":"fa5s.calendar-check",
+            "accounting_reports":"fa5s.chart-column", "audit":"fa5s.clipboard-list",
             "admin":"fa5s.chart-line", "sessions":"fa5s.laptop",
             "users":"fa5s.users", "permissions":"fa5s.user-shield",
             "schemas":"fa5s.sliders-h", "invoices":"fa5s.file-invoice",
@@ -197,6 +211,9 @@ class AccountingMainWindow(QMainWindow):
         self.theme_button=QPushButton("☾ تم تاریک" if self.mode=="light" else "☀ تم روشن")
         self.theme_button.clicked.connect(lambda:self.change_theme("dark" if self.mode=="light" else "light"))
         layout.addWidget(self.theme_button)
+        self.search_button=QPushButton("جست‌وجوی سریع  Ctrl+K")
+        self.search_button.clicked.connect(self.open_global_search)
+        layout.addWidget(self.search_button)
         self.settings_button=QPushButton("تنظیمات")
         self.settings_button.clicked.connect(lambda:self.navigate("settings"))
         layout.addWidget(self.settings_button)
@@ -220,6 +237,11 @@ class AccountingMainWindow(QMainWindow):
         self.schemas_page=SchemaPage(self)
         self.permissions_page=PermissionsPage(self)
         self.invoice_templates_page=InvoiceTemplatesPage(self)
+        self.returns_page=ReturnsPage(self)
+        self.journals_page=JournalsPage(self)
+        self.fiscal_years_page=FiscalYearsPage(self)
+        self.accounting_reports_page=AccountingReportsPage(self)
+        self.audit_page=AuditPage(self)
         self.admin_page=AdminOverviewPage(self)
         self.settings_page=SettingsPage(self)
         definitions=[
@@ -227,6 +249,9 @@ class AccountingMainWindow(QMainWindow):
             ("products","محصولات",self.products_page),("categories","دسته‌بندی‌ها",self.categories_page),
             ("warehouse","اقلام انبار",self.warehouse_page),("inventory","موجودی کالا",self.inventory_page),("checks_in","چک‌های دریافتی",self.checks_in_page),
             ("checks_out","چک‌های پرداختی",self.checks_out_page),("receipts","رسیدها",self.receipts_page),
+            ("returns","مرجوعی‌ها",self.returns_page),("journals","اسناد حسابداری",self.journals_page),
+            ("fiscal_years","سال مالی",self.fiscal_years_page),
+            ("accounting_reports","گزارش‌های مالی",self.accounting_reports_page),("audit","سوابق فعالیت",self.audit_page),
             ("admin","پنل مدیریت",self.admin_page),("sessions","نشست‌ها و فعال‌سازی",self.sessions_page),
             ("users","کاربران و دسترسی‌ها",self.users_page),("permissions","نقش‌ها و مجوزها",self.permissions_page),
             ("schemas","فیلدهای سفارشی",self.schemas_page),("invoices","قالب فاکتور",self.invoice_templates_page),
@@ -245,7 +270,12 @@ class AccountingMainWindow(QMainWindow):
             "inventory":("موجودی کالا","رهگیری موجودی، حد سفارش و سوابق ورود و خروج"),
             "checks_in":("چک‌های دریافتی","مدیریت چک‌های دریافتی"),
             "checks_out":("چک‌های پرداختی","مدیریت چک‌های پرداختی"),
-            "receipts":("رسیدها","جست‌وجو، جزئیات و خروجی رسیدها"),
+            "receipts":("رسیدها و فاکتورها","جزئیات، چاپ، مرجوعی و خروجی رسیدها"),
+            "returns":("مرجوعی‌ها و استرداد","سند مرجوعی مرتبط با فاکتور اصلی و گردش موجودی"),
+            "journals":("اسناد حسابداری","ثبت سند دوطرفه و مشاهدهٔ دفتر روزنامه"),
+            "fiscal_years":("سال مالی","ایجاد، بستن و بازگشایی کنترل‌شدهٔ دوره‌ها"),
+            "accounting_reports":("گزارش‌های مالی","تراز آزمایشی، سود و زیان و ترازنامه"),
+            "audit":("سوابق فعالیت کارکنان","ردیابی تغییرات فروش، موجودی و حسابداری"),
             "admin":("پنل مدیریت","کنترل حساب‌ها و وضعیت نشست‌ها"),
             "sessions":("نشست‌ها و فعال‌سازی","تأیید یا لغو دسترسی دستگاه‌ها"),
             "users":("کاربران","فعال‌سازی حساب و سیاست ورود"),
@@ -277,6 +307,9 @@ class AccountingMainWindow(QMainWindow):
             "checks_in": ("checks_in", "read"),
             "checks_out": ("checks_out", "read"), "receipts": ("receipts", "read"),
             "invoices": ("invoices", "read"), "schemas": ("schemas", "read"),
+            "returns": ("returns", "read"), "journals": ("journals", "read"),
+            "fiscal_years": ("fiscal_years", "read"),
+            "accounting_reports": ("reports", "read"), "audit": ("audit", "read"),
         }
         for key,(button,admin_only) in self._nav.items():
             if admin_only:
@@ -300,6 +333,11 @@ class AccountingMainWindow(QMainWindow):
         self.invoice_templates_page.set_permissions(user)
         self.inventory_page.set_permissions(user)
         self.schemas_page.set_permissions(user)
+        self.returns_page.set_permissions(user)
+        self.journals_page.set_permissions(user)
+        self.fiscal_years_page.set_permissions(user)
+        self.accounting_reports_page.set_permissions(user)
+        self.audit_page.set_permissions(user)
         self.settings_button.setVisible(True)
         self.dashboard.set_user(user)
         self._apply_theme()
@@ -313,6 +351,22 @@ class AccountingMainWindow(QMainWindow):
         )
         self.navigate(start_page)
         self.refresh_dashboard_data()
+
+    def open_global_search(self):
+        if self.current_user is None or self.api is None:
+            return
+        dialog = GlobalSearchDialog(self)
+        dialog.exec()
+
+    def refresh_current_page(self):
+        if self.current_user is None:
+            return
+        page = self.page_stack.currentWidget()
+        refresh = getattr(page, "refresh", None)
+        if callable(refresh):
+            refresh()
+        elif hasattr(page, "refresh_products"):
+            page.refresh_products()
 
     def navigate(self,key):
         if key not in self._pages:return
