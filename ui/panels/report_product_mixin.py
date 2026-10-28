@@ -50,8 +50,7 @@ class ReportProductMixin:
         product_name = self.line.line.text().strip()
         if not product_name:
             return  
-        from jalali_core import JalaliToGregorian
-       
+        
         try:
             start_j = f"{self.dt_from_date.text()} {self.dt_from_time.text()}:00".replace("/", "-")
             end_j = f"{self.dt_to_date.text()} {self.dt_to_time.text()}:00".replace("/", "-")
