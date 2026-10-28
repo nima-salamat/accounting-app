@@ -2,12 +2,14 @@
 import hashlib
 import json
 from typing import List, Optional
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from peewee import ForeignKeyField, IntegrityError, fn
 
 from accounting_app.database.connection import DBManager
+from accounting_app.services.kiosk_config import enforce_kiosk_products, load_kiosk_settings, validate_kiosk_seat
 from accounting_app.database.models import (
     IdempotencyRecord, Product, Receipt, ReceiptProduct, SaleReturnLine,
 )
@@ -65,6 +67,7 @@ def _payload_hash(payload):
     canonical = {
         "paid": payload.paid,
         "payment_method": payload.payment_method,
+        "seat_number": payload.seat_number,
         "items": sorted(
             [
                 {"product_id": str(item.product_id), "quantity": item.quantity}
@@ -110,6 +113,8 @@ def quote_sale(
         with DBManager():
             ensure_period_open(date.today(), actor=user, action="فروش")
             product_ids = [item.product_id for item in payload.items]
+            enforce_kiosk_products(user, product_ids)
+            validate_kiosk_seat(user, payload.seat_number)
             products = {
                 product.id: product
                 for product in Product.select().where(Product.id.in_(product_ids))
@@ -155,6 +160,8 @@ def create_sale(
     try:
         with DBManager():
             product_ids = [item.product_id for item in payload.items]
+            enforce_kiosk_products(user, product_ids)
+            validate_kiosk_seat(user, payload.seat_number)
             products = {
                 product.id: product
                 for product in Product.select().where(Product.id.in_(product_ids))
@@ -166,6 +173,8 @@ def create_sale(
                 for product_id, item in ((item.product_id, item) for item in payload.items)
             }
             receipt = record_sale(cart, user, payload.paid, payment_method=payload.payment_method)
+            receipt.seat_number = payload.seat_number.strip() if payload.seat_number else None
+            receipt.save(only=[Receipt.seat_number, Receipt.updated_at])
             IdempotencyRecord.create(
                 key=idempotency_key,
                 user=user.id,
@@ -214,6 +223,31 @@ def update_sale(
         except (InsufficientStockError, FiscalPeriodClosedError) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return _receipt_detail(updated)
+
+
+@router.get("/sales/recent-receipts")
+def list_recent_receipts(
+    response: Response,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=200),
+    user=Depends(require_permission("receipts", "read")),
+):
+    """Receipts within the administrator-configured history window for the POS."""
+    with DBManager():
+        hours = load_kiosk_settings()["receipt_history_hours"]
+        cutoff = datetime.now() - timedelta(hours=hours)
+        query = Receipt.select().where(Receipt.created_at >= cutoff)
+        if not user.is_admin:
+            query = query.where(Receipt.user == user.id)
+        total = query.count()
+        response.headers["X-Total-Count"] = str(total)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
+        response.headers["X-History-Hours"] = str(hours)
+        return [
+            _serialize(item)
+            for item in query.order_by(Receipt.created_at.desc()).paginate(page, page_size)
+        ]
 
 
 @router.get("/receipts", response_model=List[ReceiptOut])
