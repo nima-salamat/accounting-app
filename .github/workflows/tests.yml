@@ -33,6 +33,30 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python -c "import PySide6; import ui.pages.auth_page; import ui.pages.dashboard; import ui.pages.installer_wizard; import ui.pages.main_window; import ui.panels.report_panel; import ui.panels.sell_panel; import ui.widgets.menu_bar; import client.desktop; print('PySide6 UI imports OK', PySide6.__version__)"
+      - name: Instantiate Qt 6 widgets (offscreen)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python - <<'PY'
+          from PySide6.QtWidgets import QApplication
+          from ui.pages.auth_page import AuthPage
+          from ui.pages.installer_wizard import InitialSetupWizard
+          from ui.widgets.calculator_dialog import Calculator
+          from ui.widgets.password_line_edit import PasswordLineEdit
+
+          app = QApplication([])
+          widgets = [AuthPage(), InitialSetupWizard(), Calculator(), PasswordLineEdit()]
+          for widget in widgets:
+              widget.close()
+          app.processEvents()
+          print("PySide6 widget construction OK")
+          PY
+      - name: Reject legacy Qt 5 imports and APIs
+        run: |
+          if grep -R -n -E 'PySide2|exec_' --include='*.py' ui client main.py; then
+            echo "Legacy Qt 5 imports/API remain."
+            exit 1
+          fi
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
       - name: Compile Python modules
