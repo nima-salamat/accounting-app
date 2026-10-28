@@ -397,6 +397,10 @@ def create_user(payload: UserCreate, _admin=Depends(require_admin)):
         )
         record.set_password(payload.password)
         record.save(force_insert=True)
+        record_audit(
+            _admin, "user.created", "users", record.id,
+            {"username": record.username, "is_admin": record.is_admin, "is_active": record.is_active},
+        )
         return _serialize(record, exclude=("password",))
 
 
@@ -458,6 +462,15 @@ def update_user(user_id: UUID, payload: UserUpdate, current_admin=Depends(requir
             ).where(
                 (ApiSession.user == updated.id) & (ApiSession.status == "active")
             ).execute()
+        record_audit(
+            current_admin, "user.updated", "users", updated.id,
+            {
+                "username": updated.username,
+                "changed_fields": sorted(values.keys()) + (["password"] if password_changed else []),
+                "is_admin": updated.is_admin,
+                "is_active": updated.is_active,
+            },
+        )
         return _serialize(updated, exclude=("password",))
 
 
@@ -473,6 +486,7 @@ def delete_user(user_id: UUID, current_admin=Depends(require_admin)):
             (UserModel.is_admin == True) & (UserModel.is_active == True)
         ).count() <= 1:
             raise HTTPException(status_code=409, detail="آخرین مدیر فعال را نمی‌توان حذف کرد.")
+        record_audit(current_admin, "user.deleted", "users", record.id, {"username": record.username})
         cleanup_builtin_extension_values_many("users", [record.id])
         record.delete_instance()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
