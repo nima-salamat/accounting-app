@@ -63,7 +63,7 @@ def _check_category(category_id):
 
 def _save_patch(record, values):
     for key, value in values.items():
-        if key in ("buy_price", "sell_price", "price", "amount") and value is not None:
+        if key in ("buy_price", "sell_price", "price", "amount", "reorder_level") and value is not None:
             value = float(value)
         if key == "name" and value is not None:
             value = _clean_name(value)
