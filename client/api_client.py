@@ -199,7 +199,7 @@ class AccountingApiClient:
         return self._request("GET", "/api/v1/products", params=params)
 
     def create_product(self, *, name, buy_price, sell_price, category_id=None,
-                       image_path=None, custom_product=False):
+                       image_path=None, custom_product=False, track_stock=False, reorder_level=0):
         return self._request(
             "POST", "/api/v1/products",
             json_body={
@@ -209,6 +209,8 @@ class AccountingApiClient:
                 "category_id": str(category_id) if category_id else None,
                 "image_path": image_path,
                 "custom_product": custom_product,
+                "track_stock": bool(track_stock),
+                "reorder_level": reorder_level,
             },
         )
 
