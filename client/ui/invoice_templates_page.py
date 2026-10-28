@@ -264,7 +264,7 @@ class InvoiceTemplatesPage(QFrame):
             "Vazirmatn", "Noto Sans Arabic", "Noto Naskh Arabic", "Tahoma",
             "Segoe UI", "Arial", "IRANSans", "B Nazanin",
         ])
-        self.global_font_size = self._spin(8, 32, " pt")
+        self.global_font_size = self._spin(8, 18, " pt")
         business_form.addRow("نام مجموعه", self.company_name)
         business_form.addRow("شناسه / مالیاتی", self.legal_id)
         business_form.addRow("تلفن", self.phone)
@@ -416,7 +416,7 @@ class InvoiceTemplatesPage(QFrame):
             "margin_mm": self.margin_mm.value(),
             "font_family": self.font_family.currentText().strip() or "Vazirmatn",
             "font_size": self.global_font_size.value(),
-            "header_font_size": self.global_font_size.value() + 6,
+            "header_font_size": min(32, self.global_font_size.value() + 6),
             "line_height": 1.5,
             "text_direction": "rtl",
             "accent_color": self.accent_color_value,

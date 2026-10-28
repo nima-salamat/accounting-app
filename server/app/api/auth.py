@@ -44,8 +44,8 @@ def _request_metadata(request, client_name):
     }
 
 
-def enforce_user_session_limit(user_id, maximum=None, reason="session_limit"):
-    """Keep only the most recent N pending/active sessions for one account."""
+def enforce_user_session_limit(user_id, maximum=None, reason="session_limit", keep_session_id=None):
+    """Keep the configured number of pending/active sessions and never evict a just-issued login."""
     now = datetime.now()
     with DBManager():
         user = User.get_or_none(User.id == user_id)
@@ -60,6 +60,8 @@ def enforce_user_session_limit(user_id, maximum=None, reason="session_limit"):
             .where((ApiSession.user == user.id) & ApiSession.status.in_(("active", "pending")))
             .order_by(ApiSession.created_at.desc(), ApiSession.id.desc())
         )
+        if keep_session_id is not None:
+            sessions.sort(key=lambda record: str(record.id) != str(keep_session_id))
         revoked = 0
         for session in sessions[limit:]:
             session.status = "revoked"
@@ -87,7 +89,9 @@ def _new_session(user, request, client_name, status_value):
         )
         # A new sign-in always creates a new server session. At the default limit of one,
         # any prior active or waiting session is immediately invalidated.
-        enforce_user_session_limit(user.id, user.max_active_sessions, reason="replaced_by_new_login")
+        enforce_user_session_limit(
+            user.id, user.max_active_sessions, reason="replaced_by_new_login", keep_session_id=session.id
+        )
     return session
 
 
