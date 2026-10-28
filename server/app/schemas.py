@@ -349,6 +349,78 @@ class JournalEntryCreate(StrictModel):
         return self
 
 
+class BusinessPartnerCreate(StrictModel):
+    partner_type: Literal["customer", "supplier"]
+    name: str = Field(min_length=2, max_length=256)
+    phone: Optional[str] = Field(default=None, max_length=80)
+    email: Optional[str] = Field(default=None, max_length=256)
+    tax_id: Optional[str] = Field(default=None, max_length=80)
+    address: Optional[str] = Field(default=None, max_length=1000)
+    payment_terms: Optional[str] = Field(default=None, max_length=128)
+    credit_limit: Decimal = Field(default=Decimal("0"), ge=0, max_digits=16, decimal_places=2)
+    is_active: bool = True
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class BusinessPartnerUpdate(StrictModel):
+    name: Optional[str] = Field(default=None, min_length=2, max_length=256)
+    phone: Optional[str] = Field(default=None, max_length=80)
+    email: Optional[str] = Field(default=None, max_length=256)
+    tax_id: Optional[str] = Field(default=None, max_length=80)
+    address: Optional[str] = Field(default=None, max_length=1000)
+    payment_terms: Optional[str] = Field(default=None, max_length=128)
+    credit_limit: Optional[Decimal] = Field(default=None, ge=0, max_digits=16, decimal_places=2)
+    is_active: Optional[bool] = None
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class PurchaseInvoiceItemCreate(StrictModel):
+    product_id: Optional[UUID] = None
+    description: str = Field(default="", max_length=256)
+    quantity: Decimal = Field(gt=0, max_digits=16, decimal_places=4)
+    unit_cost: Decimal = Field(ge=0, max_digits=16, decimal_places=2)
+
+    @model_validator(mode="after")
+    def require_item_description(self):
+        if self.product_id is None and len(self.description.strip()) < 2:
+            raise ValueError("برای ردیف بدون کالا، شرح قلم الزامی است.")
+        return self
+
+
+class PurchaseInvoiceCreate(StrictModel):
+    supplier_id: UUID
+    invoice_number: str = Field(min_length=1, max_length=64)
+    invoice_date: date
+    due_date: Optional[date] = None
+    items: List[PurchaseInvoiceItemCreate] = Field(min_length=1, max_length=200)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def valid_invoice_dates(self):
+        if self.due_date is not None and self.due_date < self.invoice_date:
+            raise ValueError("تاریخ سررسید نمی‌تواند قبل از تاریخ فاکتور باشد.")
+        return self
+
+
+class PurchasePaymentCreate(StrictModel):
+    amount: Decimal = Field(gt=0, max_digits=16, decimal_places=2)
+    paid_on: date
+    payment_method: Literal["cash", "card", "bank_transfer"] = "bank_transfer"
+    reference: Optional[str] = Field(default=None, max_length=256)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+
+
+class ExpenseCreate(StrictModel):
+    description: str = Field(min_length=2, max_length=2000)
+    category: str = Field(default="general", min_length=2, max_length=256)
+    expense_date: date
+    amount: Decimal = Field(gt=0, max_digits=16, decimal_places=2)
+    payment_method: Literal["cash", "card", "bank_transfer", "unpaid"] = "cash"
+    expense_account_id: Optional[UUID] = None
+    reference: Optional[str] = Field(default=None, max_length=256)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+
 class StocktakeCreate(StrictModel):
     name: str = Field(min_length=2, max_length=256)
     product_ids: List[UUID] = Field(min_length=1, max_length=500)
