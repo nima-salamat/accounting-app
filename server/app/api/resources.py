@@ -24,7 +24,7 @@ from accounting_app.services.schema_registry import cleanup_builtin_extension_va
 from accounting_app.services.audit import record_audit
 from accounting_app.config import get_data_dir
 from server.app.dependencies import get_current_user, require_admin
-from server.app.permissions import require_permission
+from server.app.permissions import has_permission, require_permission
 from server.app.schemas import (
     CategoryCreate, CategoryOut, CategoryUpdate,
     CheckCreate, CheckOut, CheckUpdate,
@@ -248,9 +248,11 @@ def _identify_image(data):
 async def upload_product_image(
     product_id: UUID,
     file: UploadFile = File(...),
-    user=Depends(require_permission("products", "update")),
+    user=Depends(get_current_user),
 ):
     """Store a bounded raster product photo under a generated server-side name."""
+    if not (has_permission(user, "products", "create") or has_permission(user, "products", "update")):
+        raise HTTPException(status_code=403, detail="برای افزودن یا ویرایش تصویر محصول مجوز ندارید.")
     with DBManager():
         product = ProductModel.get_or_none(ProductModel.id == product_id)
         if product is None:
