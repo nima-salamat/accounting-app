@@ -11,6 +11,7 @@ from accounting_app.database.models import (
     CheckIn as CheckInModel,
     CheckOut as CheckOutModel,
     Product as ProductModel,
+    StockMovement,
     User as UserModel,
     Warehouse as WarehouseModel,
 )
@@ -170,6 +171,11 @@ def delete_product(product_id: UUID, user=Depends(require_permission("products",
         record = ProductModel.get_or_none(ProductModel.id == product_id)
         if record is None:
             _not_found("محصول")
+        if StockMovement.select().where(StockMovement.product == record.id).exists():
+            raise HTTPException(
+                status_code=409,
+                detail="این کالا سابقهٔ گردش موجودی دارد؛ برای حفظ سابقهٔ حسابرسی نمی‌توان آن را حذف کرد.",
+            )
         cleanup_builtin_extension_values_many("products", [record.id])
         record.delete_instance()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
