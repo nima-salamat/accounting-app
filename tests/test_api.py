@@ -250,6 +250,120 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(login.status_code, 401)
 
+    def test_tracked_inventory_adjustments_and_sales_are_atomic(self):
+        admin_headers = self.setup_admin()
+        created = self.client.post(
+            "/api/v1/products",
+            headers=admin_headers,
+            json={
+                "name": "کالای انباردار",
+                "buy_price": 10,
+                "sell_price": 15,
+                "track_stock": True,
+                "reorder_level": 2,
+            },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        product = created.json()
+        self.assertTrue(product["track_stock"])
+        self.assertEqual(product["stock_quantity"], 0)
+
+        opening = self.client.post(
+            "/api/v1/inventory/adjustments",
+            headers=admin_headers,
+            json={
+                "product_id": product["id"],
+                "quantity_change": "3",
+                "reason": "opening",
+                "notes": "موجودی اولیه",
+            },
+        )
+        self.assertEqual(opening.status_code, 201, opening.text)
+        self.assertEqual(opening.json()["stock_after"], 3)
+
+        first_sale = self.client.post(
+            "/api/v1/sales",
+            headers=dict(admin_headers, **{"Idempotency-Key": "stock-sale-0001"}),
+            json={"items": [{"product_id": product["id"], "quantity": 2}], "paid": True},
+        )
+        self.assertEqual(first_sale.status_code, 201, first_sale.text)
+        self.assertEqual(first_sale.json()["items"][0]["product_name"], "کالای انباردار")
+
+        inventory = self.client.get(
+            "/api/v1/inventory?q=کالای انباردار",
+            headers=admin_headers,
+        )
+        self.assertEqual(inventory.status_code, 200, inventory.text)
+        self.assertEqual(inventory.json()["total"], 1)
+        self.assertEqual(inventory.json()["items"][0]["stock_quantity"], 1)
+
+        oversell = self.client.post(
+            "/api/v1/sales",
+            headers=dict(admin_headers, **{"Idempotency-Key": "stock-sale-0002"}),
+            json={"items": [{"product_id": product["id"], "quantity": 2}], "paid": False},
+        )
+        self.assertEqual(oversell.status_code, 409, oversell.text)
+        inventory_after = self.client.get(
+            "/api/v1/inventory?q=کالای انباردار",
+            headers=admin_headers,
+        ).json()
+        self.assertEqual(inventory_after["items"][0]["stock_quantity"], 1)
+        movements = self.client.get(
+            "/api/v1/inventory/movements?product_id={}".format(product["id"]),
+            headers=admin_headers,
+        )
+        self.assertEqual(movements.status_code, 200, movements.text)
+        self.assertEqual(movements.json()["total"], 2)
+        self.assertEqual(
+            self.client.get("/api/v1/receipts", headers=admin_headers).json().__len__(),
+            1,
+        )
+
+    def test_resource_permissions_are_enforced_per_operation(self):
+        admin_headers = self.setup_admin()
+        created = self.client.post(
+            "/api/v1/users",
+            headers=admin_headers,
+            json={
+                "username": "readonly_user",
+                "password": "read-only-password",
+                "is_admin": False,
+                "buttons": "role:custom;products:r;warehouse:r;invoices:r",
+                "requires_session_activation": False,
+            },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        login = self.client.post(
+            "/api/v1/auth/login",
+            json={"username": "readonly_user", "password": "read-only-password"},
+        )
+        self.assertEqual(login.status_code, 200, login.text)
+        headers = {"Authorization": "Bearer " + login.json()["access_token"]}
+
+        self.assertEqual(self.client.get("/api/v1/products", headers=headers).status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/inventory", headers=headers).status_code, 200)
+        denied_create = self.client.post(
+            "/api/v1/products",
+            headers=headers,
+            json={"name": "رد شده", "buy_price": 1, "sell_price": 2},
+        )
+        self.assertEqual(denied_create.status_code, 403)
+        denied_adjustment = self.client.post(
+            "/api/v1/inventory/adjustments",
+            headers=headers,
+            json={"product_id": "00000000-0000-0000-0000-000000000001", "quantity_change": 1},
+        )
+        self.assertEqual(denied_adjustment.status_code, 403)
+        self.assertEqual(
+            self.client.get("/api/v1/invoices/template", headers=headers).status_code, 200
+        )
+        denied_template_update = self.client.put(
+            "/api/v1/invoices/template",
+            headers=headers,
+            json={"company_name": "نباید ذخیره شود"},
+        )
+        self.assertEqual(denied_template_update.status_code, 403)
+
     def test_remote_first_run_requires_a_separate_bootstrap_token(self):
         request = SimpleNamespace(client=SimpleNamespace(host="192.0.2.10"))
         payload = SetupRequest(
