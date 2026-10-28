@@ -50,9 +50,9 @@ def render_invoice_html(receipt, template=None):
         except (TypeError, ValueError):
             line_total = 0
         rows.append(
-            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
-                index, _text(name), _text(quantity), _money(price)
-            ) + "<td class='sum'>{}</td>".format(_money(line_total))
+            "<tr><td>{}</td><td>{}</td><td>{}</td><td class='sum'>{}</td><td class='sum'>{}</td></tr>".format(
+                index, _text(name), _text(quantity), _money(price), _money(line_total)
+            )
         )
     if not rows:
         rows.append("<tr><td colspan='5' class='empty'>جزئیات ردیف‌های فاکتور در دسترس نیست.</td></tr>")
