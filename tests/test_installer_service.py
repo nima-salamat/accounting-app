@@ -13,6 +13,7 @@ from accounting_app.services.installer import complete_initial_setup, is_setup_r
 from accounting_app.services.schema_registry import (
     get_entity_values, register_field, save_entity_values,
 )
+from manager.db import create_admin
 
 
 class InstallerAndSchemaRegistryTests(unittest.TestCase):
@@ -29,6 +30,12 @@ class InstallerAndSchemaRegistryTests(unittest.TestCase):
 
     def test_fresh_database_requires_installation(self):
         self.assertTrue(is_setup_required())
+        with DBManager():
+            self.assertEqual(User.select().count(), 0)
+
+    def test_legacy_admin_helper_does_not_create_default_credentials(self):
+        with self.assertRaises(ValueError):
+            create_admin()
         with DBManager():
             self.assertEqual(User.select().count(), 0)
 
