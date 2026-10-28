@@ -252,6 +252,8 @@ class ReceiptProductOut(BaseModel):
     sell_price: float
     quantity: int
     product_name: str = "محصول حذف‌شده"
+    returned_quantity: int = 0
+    returnable_quantity: int = 0
     created_at: datetime
     updated_at: datetime
 
