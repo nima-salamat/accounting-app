@@ -2,9 +2,36 @@
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLabel,
-    QLineEdit, QMessageBox, QVBoxLayout,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
+    QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget,
 )
+
+
+class ImageFilePicker(QWidget):
+    """Optional local image selection; the selected file is uploaded separately to the server."""
+    def __init__(self, current_server_image=None, parent=None):
+        super().__init__(parent)
+        self.path = None
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.label = QLabel(
+            "تصویر فعلی: {}".format(current_server_image)
+            if current_server_image else "بدون تصویر (اختیاری)"
+        )
+        self.label.setWordWrap(True)
+        self.button = QPushButton("انتخاب عکس…")
+        self.button.clicked.connect(self.pick)
+        layout.addWidget(self.label, 1)
+        layout.addWidget(self.button)
+
+    def pick(self):
+        path, _filter = QFileDialog.getOpenFileName(
+            self, "انتخاب عکس محصول", "",
+            "تصاویر (*.png *.jpg *.jpeg *.webp *.gif)",
+        )
+        if path:
+            self.path = path
+            self.label.setText(path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1])
 
 
 class RecordDialog(QDialog):
@@ -29,7 +56,9 @@ class RecordDialog(QDialog):
             key = spec["key"]
             kind = spec.get("kind", "text")
             value = self.record.get(key, spec.get("default"))
-            if kind == "bool":
+            if kind == "image":
+                widget = ImageFilePicker(self.record.get("image_path"), self)
+            elif kind == "bool":
                 widget = QCheckBox()
                 widget.setChecked(bool(value))
             elif kind == "select":
@@ -80,6 +109,10 @@ class RecordDialog(QDialog):
         for spec in self.fields:
             key, kind = spec["key"], spec.get("kind", "text")
             widget = self.inputs[key]
+            if kind == "image":
+                if widget.path:
+                    output[key] = widget.path
+                continue
             if kind == "bool":
                 output[key] = widget.isChecked()
                 continue
