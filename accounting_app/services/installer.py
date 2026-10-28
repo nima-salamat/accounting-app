@@ -10,21 +10,18 @@ SETUP_COMPLETE_KEY = "initial_setup_complete"
 
 
 def is_setup_required():
-    """Show the installer only for a database that has not been initialized."""
+    """Show setup when the database has no users, including after administrator loss."""
     with DBManager():
         setting = AppSetting.get_or_none(AppSetting.key == SETUP_COMPLETE_KEY)
-        if setting is not None and setting.value == "1":
-            return False
         if User.select().exists():
             # Existing installations predate the setup marker and must remain usable.
             if setting is None:
                 AppSetting.create(key=SETUP_COMPLETE_KEY, value="1")
-            else:
+            elif setting.value != "1":
                 setting.value = "1"
                 setting.save(only=[AppSetting.value, AppSetting.updated_at])
             return False
         return True
-
 
 def complete_initial_setup(username, password, password_confirmation, schema_rows=None):
     """Create the first admin and schema metadata as one atomic operation."""
@@ -39,15 +36,15 @@ def complete_initial_setup(username, password, password_confirmation, schema_row
 
     with DBManager():
         setting = AppSetting.get_or_none(AppSetting.key == SETUP_COMPLETE_KEY)
-        if (setting is not None and setting.value == "1") or User.select().exists():
-            raise ValueError("نصب اولیه قبلاً انجام شده است؛ مدیر دیگری از این مسیر ساخته نمی‌شود.")
+        if User.select().exists():
+            raise ValueError("پایگاه داده از قبل کاربر دارد؛ نصب اولیهٔ دیگری مجاز نیست.")
         if User.get_or_none(User.username == normalized_username) is not None:
             raise ValueError("این نام کاربری قبلاً ثبت شده است.")
 
         user = User(username=normalized_username, password="", is_admin=True)
         user.set_password(validated_password)
         user.save(force_insert=True)
-        register_schema_rows(schema_rows or [])
+        register_schema_rows(schema_rows or [], allow_existing=True)
         if setting is None:
             AppSetting.create(key=SETUP_COMPLETE_KEY, value="1")
         else:
