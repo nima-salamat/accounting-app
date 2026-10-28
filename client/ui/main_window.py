@@ -30,6 +30,7 @@ from client.ui.returns_page import ReturnsPage
 from client.ui.accounting_pages import JournalsPage, FiscalYearsPage, AccountingReportsPage, AuditPage
 from client.ui.global_search import GlobalSearchDialog
 from client.ui.stocktakes_page import StocktakesPage
+from client.ui.purchasing_page import PurchasingPage
 from client.ui.permissions import can_access
 from client.ui.theme import stylesheet
 from client.ui.worker import ApiWorker
@@ -156,6 +157,7 @@ class AccountingMainWindow(QMainWindow):
             ("products","محصولات","▦",False),("categories","دسته‌بندی‌ها","◇",False),
             ("warehouse","اقلام انبار","▤",False),("inventory","موجودی کالا","▧",False),("stocktakes","انبارگردانی","☷",False),("checks_in","چک‌های دریافتی","↙",False),
             ("checks_out","چک‌های پرداختی","↗",False),("receipts","رسیدها و فاکتورها","▧",False),
+            ("purchases","خریدها، طرف‌حساب و هزینه","▤",False),
             ("returns","مرجوعی‌ها و استرداد","↩",False),("journals","اسناد حسابداری","≡",False),
             ("fiscal_years","سال مالی","◷",False),("accounting_reports","گزارش‌های مالی","▥",False),
             ("audit","سوابق فعالیت کارکنان","◉",False),
@@ -182,7 +184,7 @@ class AccountingMainWindow(QMainWindow):
             "products":"fa5s.boxes", "categories":"fa5s.tags",
             "warehouse":"fa5s.warehouse", "inventory":"fa5s.boxes-stacked", "stocktakes":"fa5s.clipboard-check", "checks_in":"fa5s.file-import",
             "checks_out":"fa5s.file-export", "receipts":"fa5s.receipt",
-            "returns":"fa5s.rotate-left", "journals":"fa5s.book-open", "fiscal_years":"fa5s.calendar-check",
+            "purchases":"fa5s.file-invoice-dollar", "returns":"fa5s.rotate-left", "journals":"fa5s.book-open", "fiscal_years":"fa5s.calendar-check",
             "accounting_reports":"fa5s.chart-column", "audit":"fa5s.clipboard-list",
             "admin":"fa5s.chart-line", "sessions":"fa5s.laptop",
             "users":"fa5s.users", "permissions":"fa5s.user-shield",
@@ -232,6 +234,7 @@ class AccountingMainWindow(QMainWindow):
         self.warehouse_page=WarehousePage(self)
         self.inventory_page=InventoryPage(self)
         self.stocktakes_page=StocktakesPage(self)
+        self.purchasing_page=PurchasingPage(self)
         self.checks_in_page=ChecksPage(self,"in")
         self.checks_out_page=ChecksPage(self,"out")
         self.receipts_page=ReceiptsPage(self)
@@ -252,6 +255,7 @@ class AccountingMainWindow(QMainWindow):
             ("products","محصولات",self.products_page),("categories","دسته‌بندی‌ها",self.categories_page),
             ("warehouse","اقلام انبار",self.warehouse_page),("inventory","موجودی کالا",self.inventory_page),("stocktakes","انبارگردانی",self.stocktakes_page),("checks_in","چک‌های دریافتی",self.checks_in_page),
             ("checks_out","چک‌های پرداختی",self.checks_out_page),("receipts","رسیدها",self.receipts_page),
+            ("purchases","خریدها و طرف‌حساب‌ها",self.purchasing_page),
             ("returns","مرجوعی‌ها",self.returns_page),("journals","اسناد حسابداری",self.journals_page),
             ("fiscal_years","سال مالی",self.fiscal_years_page),
             ("accounting_reports","گزارش‌های مالی",self.accounting_reports_page),("audit","سوابق فعالیت",self.audit_page),
@@ -275,6 +279,7 @@ class AccountingMainWindow(QMainWindow):
             "checks_in":("چک‌های دریافتی","مدیریت چک‌های دریافتی"),
             "checks_out":("چک‌های پرداختی","مدیریت چک‌های پرداختی"),
             "receipts":("رسیدها و فاکتورها","جزئیات، چاپ، مرجوعی و خروجی رسیدها"),
+            "purchases":("خریدها، طرف‌حساب و هزینه","ثبت فاکتور تأمین‌کننده، پرداخت‌ها و هزینه‌های عملیاتی"),
             "returns":("مرجوعی‌ها و استرداد","سند مرجوعی مرتبط با فاکتور اصلی و گردش موجودی"),
             "journals":("اسناد حسابداری","ثبت سند دوطرفه و مشاهدهٔ دفتر روزنامه"),
             "fiscal_years":("سال مالی","ایجاد، بستن و بازگشایی کنترل‌شدهٔ دوره‌ها"),
@@ -322,6 +327,7 @@ class AccountingMainWindow(QMainWindow):
             "checks_in": ("checks_in", "read"),
             "checks_out": ("checks_out", "read"), "receipts": ("receipts", "read"),
             "invoices": ("invoices", "read"), "schemas": ("schemas", "read"),
+            "purchases": ("purchase_invoices", "read"),
             "returns": ("returns", "read"), "journals": ("journals", "read"),
             "fiscal_years": ("fiscal_years", "read"),
             "accounting_reports": ("reports", "read"), "audit": ("audit", "read"),
@@ -332,6 +338,12 @@ class AccountingMainWindow(QMainWindow):
             elif key in nav_permissions:
                 resource, action = nav_permissions[key]
                 allowed = can_access(user, resource, action)
+                if key == "purchases":
+                    allowed = any(can_access(user, code, verb) for code, verb in (
+                        ("purchase_invoices", "read"), ("purchase_invoices", "create"),
+                        ("partners", "read"), ("partners", "create"),
+                        ("expenses", "read"), ("expenses", "create"),
+                    ))
                 if key == "sales":
                     allowed = allowed and can_access(user, "products", "read")
                 button.setVisible(allowed)
@@ -348,6 +360,7 @@ class AccountingMainWindow(QMainWindow):
         self.invoice_templates_page.set_permissions(user)
         self.inventory_page.set_permissions(user)
         self.stocktakes_page.set_permissions(user)
+        self.purchasing_page.set_permissions(user)
         self.schemas_page.set_permissions(user)
         self.returns_page.set_permissions(user)
         self.journals_page.set_permissions(user)
