@@ -2,6 +2,7 @@
 import sys
 import pandas as pd
 from datetime import datetime, timedelta
+from PySide2.QtCore import QUrl
 from PySide2.QtWidgets import (
     QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout,
     QGroupBox, QLabel, QDateTimeEdit, QComboBox, QPushButton, QTableView,
@@ -70,52 +71,29 @@ class ReportPurgeMixin:
             if not path_r:
                 btn.setEnabled(True)
                 return
-            base = os.path.splitext(path_r)[0]
-            path_i = base + "_items.csv"
-            path_w = base + "_warehouse_backup.csv"
+            btn.setEnabled(False)
+            self.purge_finalize_worker = PurgeFinalizeWorker(
+                recs, items, path_r, count, sum_total, sum_buy
+            )
+            self.purge_finalize_worker.completed.connect(on_finalize_complete)
+            self.purge_finalize_worker.error.connect(on_error)
+            self.purge_finalize_worker.start()
 
-            # save CSVs
-            try:
-                pd.DataFrame(recs).to_csv(path_r, index=False, encoding='utf-8-sig')
-                pd.DataFrame(items).to_csv(path_i, index=False, encoding='utf-8-sig')
-                backup = [w.__data__ for w in Warehouse.select()]
-                pd.DataFrame(backup).to_csv(path_w, index=False, encoding='utf-8-sig')
-            except Exception as e:
-                QMessageBox.critical(self, "خطا در ذخیره CSV", str(e))
-                btn.setEnabled(True)
-                return
-
-            # deletion in transaction
-            try:
-                with DBManager():
-                    receipt_ids = [record["id"] for record in recs]
-                    item_ids = [item["id"] for item in items]
-                    for record_id in receipt_ids:
-                        cleanup_builtin_extension_values("receipts", record_id)
-                    for item_id in item_ids:
-                        cleanup_builtin_extension_values("receipt_products", item_id)
-                    if item_ids:
-                        ReceiptProduct.delete().where(
-                            ReceiptProduct.id.in_(item_ids)
-                        ).execute()
-                    Receipt.delete().where(Receipt.id.in_(receipt_ids)).execute()
-            except Exception as e:
-                QMessageBox.critical(self, "خطا هنگام حذف", str(e))
-                btn.setEnabled(True)
-                return
-
-            # show links
+        def on_finalize_complete(path_r, path_i, path_w, count, sum_total, sum_buy):
             lbl.setTextFormat(Qt.RichText)
             lbl.setOpenExternalLinks(True)
+            receipt_url = QUrl.fromLocalFile(path_r).toString()
+            items_url = QUrl.fromLocalFile(path_i).toString()
+            warehouse_url = QUrl.fromLocalFile(path_w).toString()
             lbl.setText(
                 f"<b>تعداد:</b> {count}<br>"
                 f"<b>مجموع فروش:</b> {sum_total:,.2f}<br>"
                 f"<b>مجموع خرید:</b> {sum_buy:,.2f}<br><br>"
-                f"<a href='file:///{path_r}'>📄 مشاهده فاکتورها</a><br>"
-                f"<a href='file:///{path_i}'>📄 مشاهده آیتم‌ها</a><br>"
-                f"<a href='file:///{path_w}'>📄 مشاهده بک‌آپ انبار</a>"
+                f"<a href='{receipt_url}'>📄 مشاهده فاکتورها</a><br>"
+                f"<a href='{items_url}'>📄 مشاهده آیتم‌ها</a><br>"
+                f"<a href='{warehouse_url}'>📄 مشاهده بک‌آپ انبار</a>"
             )
-            QMessageBox.information(self, "موفق", "عملیات با موفقیت انجام شد.")
+            QMessageBox.information(self, "موفق", "پشتیبان‌گیری و پاک‌سازی با موفقیت انجام شد.")
             btn.setEnabled(True)
 
         def on_error(msg):
