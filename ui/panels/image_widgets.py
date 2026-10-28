@@ -1,9 +1,9 @@
 """Image controls, previews, bounded downloads and safe path utilities."""
 import os
-from pathlib import Path
 from urllib.parse import urlparse, unquote
 
 import requests
+from accounting_app.services.file_safety import is_managed_image_path
 from PySide2.QtWidgets import (
     QLineEdit, QApplication, QMessageBox, QGraphicsScene, QGraphicsView,
     QGraphicsPixmapItem, QToolButton, QStyle, QPushButton, QHBoxLayout,
@@ -12,17 +12,6 @@ from PySide2.QtWidgets import (
 from PySide2.QtCore import Qt, QMimeData
 from PySide2.QtGui import QKeySequence, QImage, QPixmap, QDragEnterEvent, QDropEvent
 
-
-def is_managed_image_path(path):
-    """Only allow cleanup of images stored under the application's images directory."""
-    if not path:
-        return False
-    try:
-        candidate = Path(path).expanduser().resolve()
-        image_root = Path("images").resolve()
-        return candidate != image_root and image_root in candidate.parents
-    except (OSError, RuntimeError, TypeError, ValueError):
-        return False
 
 
 def download_image(url, max_bytes=15 * 1024 * 1024):
