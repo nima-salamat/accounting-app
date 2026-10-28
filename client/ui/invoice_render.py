@@ -48,6 +48,8 @@ def _template_config(template):
         for key, value in template.items():
             if key in config:
                 config[key] = value
+    if config["paper_size"] == "receipt":
+        config["paper_size"] = "receipt80"
     config["paper_size"] = config["paper_size"] if config["paper_size"] in PAPER_DIMENSIONS_MM else "A4"
     config["orientation"] = config["orientation"] if config["orientation"] in ("portrait", "landscape") else "portrait"
     try:
@@ -96,6 +98,7 @@ def render_invoice_html(receipt, template=None):
     page_size_css = (f"{paper_width}mm {paper_height}mm" if paper_size.startswith("receipt")
                      else f"{paper_size} {config['orientation']}")
     min_height = max(70, paper_height - 2 * margin)
+    invoice_width_css = "74mm" if paper_size == "receipt80" else ("52mm" if paper_size == "receipt58" else "100%")
     receipt_number = receipt.get("day_receipt_id") or str(receipt.get("id", ""))[:8]
     created_at = str(receipt.get("created_at") or "")
     try:
@@ -156,7 +159,7 @@ def render_invoice_html(receipt, template=None):
 @page { size: %s; margin: %smm; }
 * { box-sizing: border-box; }
 html, body { margin:0; padding:0; color:#182235; font-family:"Vazirmatn","Segoe UI","Noto Sans Arabic",sans-serif; background:#fff; }
-.invoice { width:100%%; min-height:%smm; border:%s; border-radius:%s; padding:8mm; display:flex; flex-direction:column; }
+.invoice { width:%s; min-height:%smm; border:%s; border-radius:%s; padding:8mm; display:flex; flex-direction:column; }
 .layout-grid { direction:ltr; flex:1; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-content:space-between; column-gap:8mm; row-gap:7mm; }
 .layout-block { min-width:0; direction:rtl; break-inside:avoid; }
 .col-full { grid-column:1 / -1; } .col-left { grid-column:1; } .col-right { grid-column:2; }
@@ -176,6 +179,6 @@ td { padding:2.7mm 2mm; border:1px solid #D7DFEA; overflow-wrap:anywhere; vertic
 .empty { text-align:center; color:#64748B; padding:8mm; }
 @media print { html,body { background:white; } }
 </style></head><body><main class="invoice"><div class="layout-grid">%s</div></main></body></html>""" % (
-        page_size_css, margin, min_height, border, radius, accent, accent, accent,
+        page_size_css, margin, invoice_width_css, min_height, border, radius, accent, accent, accent,
         accent, frame_color, accent, accent, "".join(rendered_blocks),
     )
