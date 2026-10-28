@@ -204,6 +204,11 @@ class AccountingApiClient:
             params={"q": q, "page": page, "page_size": page_size},
         )
 
+    def list_categories_page(self, q=None, page=1, page_size=25):
+        return self._request_page(
+            "GET", "/api/v1/categories", page=page, page_size=page_size, params={"q": q}
+        )
+
     def create_category(self, name):
         return self._request("POST", "/api/v1/categories", json_body={"name": name})
 
@@ -216,6 +221,12 @@ class AccountingApiClient:
     def list_products(self, q=None, category_id=None, page=1, page_size=100):
         params = {"q": q, "category_id": category_id, "page": page, "page_size": page_size}
         return self._request("GET", "/api/v1/products", params=params)
+
+    def list_products_page(self, q=None, category_id=None, page=1, page_size=25):
+        return self._request_page(
+            "GET", "/api/v1/products", page=page, page_size=page_size,
+            params={"q": q, "category_id": category_id},
+        )
 
     def create_product(self, *, name, buy_price, sell_price, category_id=None,
                        image_path=None, custom_product=False, track_stock=False, reorder_level=0):
@@ -242,6 +253,11 @@ class AccountingApiClient:
     def list_warehouses(self):
         return self._request("GET", "/api/v1/warehouses")
 
+    def list_warehouses_page(self, q=None, page=1, page_size=25):
+        return self._request_page(
+            "GET", "/api/v1/warehouses", page=page, page_size=page_size, params={"q": q}
+        )
+
     def create_warehouse(self, *, name, price, amount, unit):
         return self._request(
             "POST", "/api/v1/warehouses",
@@ -256,8 +272,24 @@ class AccountingApiClient:
             params={"q": q, "page": page, "page_size": page_size},
         )
 
-    def list_users(self):
-        return self._request("GET", "/api/v1/users")
+    def list_checks_page(self, direction="in", q=None, page=1, page_size=25):
+        if direction not in ("in", "out"):
+            raise ValueError("direction must be 'in' or 'out'")
+        return self._request_page(
+            "GET", "/api/v1/checks/{}".format(direction),
+            page=page, page_size=page_size, params={"q": q},
+        )
+
+    def list_users(self, page=1, page_size=100, q=None):
+        return self._request(
+            "GET", "/api/v1/users",
+            params={"page": page, "page_size": page_size, "q": q},
+        )
+
+    def list_users_page(self, q=None, page=1, page_size=25):
+        return self._request_page(
+            "GET", "/api/v1/users", page=page, page_size=page_size, params={"q": q}
+        )
 
     def create_user(
         self, *, username, password, is_admin=False, buttons="",
@@ -279,6 +311,11 @@ class AccountingApiClient:
         return self._request(
             "GET", "/api/v1/receipts",
             params={"page": page, "page_size": page_size},
+        )
+
+    def list_receipts_page(self, page=1, page_size=25):
+        return self._request_page(
+            "GET", "/api/v1/receipts", page=page, page_size=page_size
         )
 
     def get_receipt(self, receipt_id):
