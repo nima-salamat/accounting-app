@@ -230,6 +230,25 @@ def _payment_label(receipt):
     return "پرداخت‌شده" if receipt.get("payed") else "پرداخت‌نشده"
 
 
+def _effective_font_size(element, config):
+    """Scale per-element point sizes with the shared base size; retain explicit headline sizing."""
+    try:
+        requested = float(element.get("font_size", config.get("font_size", 11)))
+    except (TypeError, ValueError):
+        requested = 11.0
+    try:
+        base = float(config.get("font_size", 11))
+    except (TypeError, ValueError):
+        base = 11.0
+    effective = requested * base / float(DEFAULT_TEMPLATE["font_size"])
+    if element.get("type") == "company":
+        try:
+            effective = max(effective, float(config.get("header_font_size", 23)))
+        except (TypeError, ValueError):
+            effective = max(effective, 23.0)
+    return round(max(6.0, min(48.0, effective)), 2)
+
+
 def _text_for_element(element, receipt, config):
     kind = element["type"]
     label = element.get("label") or ""
@@ -298,7 +317,7 @@ def draw_invoice_element(painter, rect, element, receipt=None, template=None, *,
     font_family = config["font_family"]
     accent = config["accent_color"]
     frame_color = config["frame_border_color"]
-    font_size = float(element.get("font_size") or config["font_size"])
+    font_size = _effective_font_size(element, config)
     bold = bool(element.get("bold", False))
     align = element.get("align") if element.get("align") in ALIGNMENTS else "right"
     direction = config["text_direction"]
@@ -330,12 +349,12 @@ def draw_invoice_element(painter, rect, element, receipt=None, template=None, *,
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawLine(content_rect.topLeft(), content_rect.topRight())
         title_rect = QRectF(content_rect.x(), content_rect.y() + 0.7, content_rect.width(), min(content_rect.height() * 0.48, 7.5))
-        _draw_text(painter, title_rect, company, font=_font(font_family, max(font_size, 13), bold=True),
+        _draw_text(painter, title_rect, company, font=_font(font_family, max(font_size, config["header_font_size"]), bold=True),
                    color=accent, align=align, direction=direction)
         detail = "  ·  ".join(str(v) for v in (config.get("legal_id"), config.get("phone"), config.get("address")) if v)
         if detail:
             details_rect = QRectF(content_rect.x(), title_rect.bottom(), content_rect.width(), max(0, content_rect.bottom() - title_rect.bottom()))
-            _draw_text(painter, details_rect, detail, font=_font(font_family, max(6, font_size - 2)),
+            _draw_text(painter, details_rect, detail, font=_font(font_family, max(6, min(config["font_size"], font_size) - 2)),
                        color="#58677C", align=align, direction=direction)
     elif kind == "items_table":
         items = list(receipt.get("items") or [])
@@ -449,7 +468,7 @@ def _element_html(element, receipt, config):
         return ""
     x, y, w, h = (element["x_mm"], element["y_mm"], element["w_mm"], element["h_mm"])
     align = element.get("align", "right")
-    font_size = element.get("font_size", config["font_size"])
+    font_size = _effective_font_size(element, config)
     style = (
         "position:absolute;left:{:.2f}mm;top:{:.2f}mm;width:{:.2f}mm;height:{:.2f}mm;"
         "overflow:hidden;box-sizing:border-box;font-family:'{}';font-size:{}pt;text-align:{};"
@@ -473,7 +492,10 @@ def _element_html(element, receipt, config):
         return "<div style='{}'><table class='items'><thead><tr><th>#</th><th>شرح کالا</th><th>تعداد</th><th>قیمت واحد</th><th>جمع</th></tr></thead><tbody>{}</tbody></table></div>".format(style, "".join(rows))
     if kind == "company":
         detail = " · ".join(_text(v) for v in (config.get("legal_id"), config.get("phone"), config.get("address")) if v)
-        text = "<strong>{}</strong><br>{}".format(_text(config.get("company_name")), detail)
+        detail_size = max(6, float(config["font_size"]) - 2)
+        text = "<strong style='font-size:{}pt'>{}</strong><br><span style='font-size:{}pt'>{}</span>".format(
+            config["header_font_size"], _text(config.get("company_name")), detail_size, detail
+        )
     else:
         text = _text(_text_for_element(element, receipt, config))
     return "<div style='{}'>{}</div>".format(style, text)
@@ -491,7 +513,7 @@ def render_invoice_html(receipt, template=None):
 @page {{ size: {width}mm {height}mm; margin: 0; }}
 * {{ box-sizing: border-box; }}
 html,body {{ padding:0; margin:0; background:#fff; color:#172337; font-family:"{font}","Vazirmatn","Segoe UI","Noto Sans Arabic",sans-serif; }}
-.paper {{ position:relative; overflow:hidden; width:{width}mm; height:{height}mm; border:{border}; background:#fff; }}
+.paper {{ position:relative; overflow:hidden; width:{width}mm; height:{height}mm; border:{border}; background:#fff; font-size:{font_size}pt; }}
 .items {{ width:100%; border-collapse:collapse; table-layout:fixed; font-size:{font_size}pt; direction:{direction}; }}
 .items th {{ color:#fff; background:{accent}; border:1px solid {frame}; padding:1mm; }}
 .items td {{ border:1px solid {frame}; padding:0.7mm; overflow-wrap:anywhere; }}

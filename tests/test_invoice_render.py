@@ -34,8 +34,8 @@ class InvoiceRenderTests(unittest.TestCase):
         )
         self.assertIn('dir="rtl"', html)
         self.assertIn('font-family:"Noto Naskh Arabic"', html)
-        self.assertIn("font-size:14px", html)
-        self.assertIn("font-size:28px", html)
+        self.assertIn("font-size:14pt", html)
+        self.assertIn("font-size:28pt", html)
         self.assertIn("line-height:2.0", html)
 
     def test_untrusted_font_family_cannot_inject_css(self):
