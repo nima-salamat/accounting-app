@@ -1,6 +1,6 @@
 """Preview, print and PDF export for a saved sales receipt."""
-from PySide6.QtCore import Qt
-from PySide6.QtPrintSupport import QPrinter, QPrintDialog
+from PySide6.QtCore import Qt, QSizeF, QMarginsF
+from PySide6.QtPrintSupport import QPrinter, QPrintDialog, QPageSize, QPageLayout
 from PySide6.QtWidgets import (
     QDialog, QFileDialog, QHBoxLayout, QMessageBox, QPushButton,
     QTextBrowser, QVBoxLayout,
@@ -9,6 +9,43 @@ from PySide6.QtWidgets import (
 from client.ui.invoice_render import render_invoice_html
 from client.ui.device_settings import device_settings
 from PySide6.QtGui import QTextDocument
+
+
+def configure_invoice_printer(printer, template=None):
+    """Apply the same paper dimensions, orientation and margins used by the HTML preview."""
+    template = template or {}
+    paper = str(template.get("paper_size") or "A4")
+    standard = {
+        "A4": QPageSize.PageSizeId.A4,
+        "A5": QPageSize.PageSizeId.A5,
+        "A6": QPageSize.PageSizeId.A6,
+    }
+    if paper in standard:
+        page_size = QPageSize(standard[paper])
+    else:
+        width, height = (80, 220) if paper == "receipt80" else (58, 180)
+        page_size = QPageSize(
+            QSizeF(width, height),
+            QPageSize.Unit.Millimeter,
+            "Receipt {} mm".format(width),
+            QPageSize.SizeMatchPolicy.ExactMatch,
+        )
+    orientation = (
+        QPageLayout.Orientation.Landscape
+        if template.get("orientation") == "landscape" and paper not in ("receipt80", "receipt58")
+        else QPageLayout.Orientation.Portrait
+    )
+    try:
+        margin = max(3.0, min(30.0, float(template.get("margin_mm", 12))))
+    except (TypeError, ValueError):
+        margin = 12.0
+    layout = QPageLayout(
+        page_size,
+        orientation,
+        QMarginsF(margin, margin, margin, margin),
+        QPageLayout.Unit.Millimeter,
+    )
+    printer.setPageLayout(layout)
 
 
 class InvoiceDialog(QDialog):
@@ -50,6 +87,7 @@ class InvoiceDialog(QDialog):
         if not path.lower().endswith(".pdf"):
             path += ".pdf"
         printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        configure_invoice_printer(printer, self.template)
         printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
         printer.setOutputFileName(path)
         self.preview.document().print_(printer)
@@ -64,6 +102,7 @@ class InvoiceDialog(QDialog):
             if not printer.isValid():
                 QMessageBox.warning(self, "چاپگر در دسترس نیست", "چاپگر انتخاب‌شده در تنظیمات صندوق در دسترس نیست.")
                 return
+        configure_invoice_printer(printer, self.template)
         dialog = QPrintDialog(printer, self)
         dialog.setWindowTitle("چاپ فاکتور")
         if dialog.exec() == QPrintDialog.DialogCode.Accepted:
@@ -77,6 +116,7 @@ def auto_print_invoice(receipt, template=None, parent=None):
     if not settings.get("auto_print"):
         return False
     printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+    configure_invoice_printer(printer, template)
     name = settings.get("printer_name")
     if name:
         printer.setPrinterName(name)
