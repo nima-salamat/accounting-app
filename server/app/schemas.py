@@ -90,6 +90,7 @@ class UserOut(BaseModel):
     buttons: str
     is_active: bool = True
     requires_session_activation: bool = False
+    max_active_sessions: int = 1
     created_at: datetime
     updated_at: datetime
 
@@ -101,6 +102,7 @@ class UserCreate(StrictModel):
     buttons: str = Field(default="", max_length=256)
     is_active: bool = True
     requires_session_activation: bool = True
+    max_active_sessions: int = Field(default=1, ge=1, le=20)
 
 
 class UserUpdate(StrictModel):
@@ -110,6 +112,7 @@ class UserUpdate(StrictModel):
     buttons: Optional[str] = Field(default=None, max_length=256)
     is_active: Optional[bool] = None
     requires_session_activation: Optional[bool] = None
+    max_active_sessions: Optional[int] = Field(default=None, ge=1, le=20)
 
 
 class CategoryCreate(StrictModel):

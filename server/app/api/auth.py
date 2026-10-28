@@ -30,6 +30,7 @@ def _user_payload(user):
         "buttons": user.buttons,
         "is_active": bool(user.is_active),
         "requires_session_activation": bool(user.requires_session_activation),
+        "max_active_sessions": int(user.max_active_sessions or 1),
         "created_at": user.created_at,
         "updated_at": user.updated_at,
     }
@@ -41,6 +42,35 @@ def _request_metadata(request, client_name):
         "remote_addr": request.client.host if request.client is not None else None,
         "user_agent": (request.headers.get("user-agent") or "")[:256] or None,
     }
+
+
+def enforce_user_session_limit(user_id, maximum=None, reason="session_limit"):
+    """Keep only the most recent N pending/active sessions for one account."""
+    now = datetime.now()
+    with DBManager():
+        user = User.get_or_none(User.id == user_id)
+        if user is None:
+            return 0
+        try:
+            limit = max(1, min(20, int(maximum if maximum is not None else user.max_active_sessions)))
+        except (TypeError, ValueError):
+            limit = 1
+        sessions = list(
+            ApiSession.select()
+            .where((ApiSession.user == user.id) & ApiSession.status.in_(("active", "pending")))
+            .order_by(ApiSession.created_at.desc(), ApiSession.id.desc())
+        )
+        revoked = 0
+        for session in sessions[limit:]:
+            session.status = "revoked"
+            session.revoked_at = now
+            session.revocation_reason = reason
+            session.save(only=[
+                ApiSession.status, ApiSession.revoked_at,
+                ApiSession.revocation_reason, ApiSession.updated_at,
+            ])
+            revoked += 1
+        return revoked
 
 
 def _new_session(user, request, client_name, status_value):
@@ -55,6 +85,9 @@ def _new_session(user, request, client_name, status_value):
             activated_at=now if status_value == "active" else None,
             **metadata,
         )
+        # A new sign-in always creates a new server session. At the default limit of one,
+        # any prior active or waiting session is immediately invalidated.
+        enforce_user_session_limit(user.id, user.max_active_sessions, reason="replaced_by_new_login")
     return session
 
 
