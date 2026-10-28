@@ -134,8 +134,12 @@ def render_invoice_html(receipt, template=None):
             _text(config.get("address")), _text(config.get("phone"))),
         "metadata": ("<section class='meta-box'><h2>فاکتور فروش شمارهٔ {}</h2>"
                      "<div class='meta-grid'><div><strong>تاریخ</strong><br>{}</div>"
-                     "<div><strong>وضعیت پرداخت</strong><br>{}</div></div></section>").format(
-            _text(receipt_number), _text(created_at), _text(payment)),
+                     "<div><strong>وضعیت پرداخت</strong><br>{}</div>{}</div></section>").format(
+            _text(receipt_number), _text(created_at), _text(payment),
+            ("<div><strong>{}</strong><br>{}</div>".format(
+                _text(config.get("seat_number_label") or "شماره صندلی / میز"),
+                _text(receipt.get("seat_number"))
+            ) if receipt.get("seat_number") else "")),
         "items": ("<section class='items'><table><thead><tr><th class='al-{}'>#</th>"
                   "<th class='al-{}'>شرح کالا</th><th class='al-{}'>تعداد</th>"
                   "<th class='al-{}'>فی واحد</th><th class='al-{}'>جمع</th></tr></thead>"
