@@ -85,6 +85,7 @@ python -m server --host 127.0.0.1 --port 8000
 # Generate a secret with Python and set it in the server environment.
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 # Set ACCOUNTING_APP_SECRET_KEY to the generated value before starting the server.
+# If first-run setup must happen remotely, also set ACCOUNTING_APP_SETUP_TOKEN to a separate secret.
 python -m server --host 0.0.0.0 --port 8000
 ~~~
 

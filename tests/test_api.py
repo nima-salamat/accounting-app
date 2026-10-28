@@ -55,7 +55,7 @@ class ApiTests(unittest.TestCase):
             self.client.post(
                 "/api/v1/setup",
                 json={
-                    "username": "bob",
+                    "username": "bobby",
                     "password": "password",
                     "password_confirmation": "password",
                 },

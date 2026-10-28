@@ -31,12 +31,14 @@ def sales_summary(
         filters.append(Receipt.user == user.id)
 
     with DBManager():
-        query = Receipt.select().where(*filters)
+        query = Receipt.select()
+        if filters:
+            query = query.where(*filters)
         receipt_count = query.count()
-        sales_total = (
-            Receipt.select(fn.COALESCE(fn.SUM(Receipt.total_price), 0))
-            .where(*filters).scalar() or 0
-        )
+        sales_query = Receipt.select(fn.COALESCE(fn.SUM(Receipt.total_price), 0))
+        if filters:
+            sales_query = sales_query.where(*filters)
+        sales_total = sales_query.scalar() or 0
         paid_count = Receipt.select().where(*(filters + [Receipt.payed == True])).count()
         unpaid_count = Receipt.select().where(*(filters + [Receipt.payed == False])).count()
         item_count = (

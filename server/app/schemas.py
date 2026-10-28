@@ -27,6 +27,7 @@ class SetupRequest(StrictModel):
     password: str = Field(min_length=4, max_length=1024)
     password_confirmation: str = Field(min_length=4, max_length=1024)
     schema_rows: List[dict] = Field(default_factory=list, max_length=300)
+    setup_token: Optional[str] = Field(default=None, max_length=256)
 
 
 class UserOut(BaseModel):

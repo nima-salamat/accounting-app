@@ -1,5 +1,8 @@
 """Public setup/login endpoints and authenticated identity lookup."""
-from fastapi import APIRouter, Depends, HTTPException, status
+import hmac
+import os
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from accounting_app.services.authentication import AuthManager
 from accounting_app.services.installer import complete_initial_setup, is_setup_required
@@ -27,10 +30,27 @@ def setup_status():
     return {"setup_required": is_setup_required()}
 
 
+def _authorize_setup(request, payload):
+    configured_token = os.environ.get("ACCOUNTING_APP_SETUP_TOKEN")
+    host = request.client.host if request.client is not None else ""
+    is_local = host in ("127.0.0.1", "::1", "localhost", "testclient")
+    if configured_token:
+        supplied = (payload.setup_token or "").encode("utf-8")
+        expected = configured_token.encode("utf-8")
+        if not hmac.compare_digest(supplied, expected):
+            raise HTTPException(status_code=403, detail="توکن نصب اولیه معتبر نیست.")
+    elif not is_local:
+        raise HTTPException(
+            status_code=403,
+            detail="برای نصب اولیه از راه دور، ACCOUNTING_APP_SETUP_TOKEN را تنظیم کنید.",
+        )
+
+
 @router.post("/setup", status_code=status.HTTP_201_CREATED)
-def setup(payload: SetupRequest):
+def setup(payload: SetupRequest, request: Request):
     if not is_setup_required():
         raise HTTPException(status_code=409, detail="نصب اولیه قبلاً انجام شده است.")
+    _authorize_setup(request, payload)
     try:
         user = complete_initial_setup(
             payload.username,
