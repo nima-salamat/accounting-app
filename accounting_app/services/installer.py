@@ -2,6 +2,7 @@
 from accounting_app.config import PASSWORD_MIN_LENGTH, USERNAME_MIN_LENGTH
 from accounting_app.database.connection import DBManager
 from accounting_app.database.extension_models import AppSetting
+from accounting_app.services.business_profiles import profile_metadata
 from accounting_app.database.models import User
 from accounting_app.services.schema_registry import register_schema_rows
 from accounting_app.services.validation import validate_password, validate_username
@@ -23,7 +24,7 @@ def is_setup_required():
             return False
         return True
 
-def complete_initial_setup(username, password, password_confirmation, schema_rows=None):
+def complete_initial_setup(username, password, password_confirmation, schema_rows=None, company_name="کسب‌وکار من", business_profile="general"):
     """Create the first admin and schema metadata as one atomic operation."""
     normalized_username = validate_username(username)
     if len(normalized_username) < USERNAME_MIN_LENGTH:
@@ -45,6 +46,14 @@ def complete_initial_setup(username, password, password_confirmation, schema_row
         user.set_password(validated_password)
         user.save(force_insert=True)
         register_schema_rows(schema_rows or [], allow_existing=True)
+        profile = profile_metadata(business_profile, company_name)
+        company_setting = AppSetting.get_or_none(AppSetting.key == "company_profile")
+        serialized_profile = __import__("json").dumps(profile, ensure_ascii=False, separators=(",", ":"))
+        if company_setting is None:
+            AppSetting.create(key="company_profile", value=serialized_profile)
+        else:
+            company_setting.value = serialized_profile
+            company_setting.save(only=[AppSetting.value, AppSetting.updated_at])
         if setting is None:
             AppSetting.create(key=SETUP_COMPLETE_KEY, value="1")
         else:
