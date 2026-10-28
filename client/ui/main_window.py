@@ -29,6 +29,7 @@ from client.ui.inventory_page import InventoryPage
 from client.ui.returns_page import ReturnsPage
 from client.ui.accounting_pages import JournalsPage, FiscalYearsPage, AccountingReportsPage, AuditPage
 from client.ui.global_search import GlobalSearchDialog
+from client.ui.stocktakes_page import StocktakesPage
 from client.ui.permissions import can_access
 from client.ui.theme import stylesheet
 from client.ui.worker import ApiWorker
@@ -152,7 +153,7 @@ class AccountingMainWindow(QMainWindow):
         nav_specs=[
             ("dashboard","نمای کلی","◫",False),("sales","صندوق فروش","＋",False),
             ("products","محصولات","▦",False),("categories","دسته‌بندی‌ها","◇",False),
-            ("warehouse","اقلام انبار","▤",False),("inventory","موجودی کالا","▧",False),("checks_in","چک‌های دریافتی","↙",False),
+            ("warehouse","اقلام انبار","▤",False),("inventory","موجودی کالا","▧",False),("stocktakes","انبارگردانی","☷",False),("checks_in","چک‌های دریافتی","↙",False),
             ("checks_out","چک‌های پرداختی","↗",False),("receipts","رسیدها و فاکتورها","▧",False),
             ("returns","مرجوعی‌ها و استرداد","↩",False),("journals","اسناد حسابداری","≡",False),
             ("fiscal_years","سال مالی","◷",False),("accounting_reports","گزارش‌های مالی","▥",False),
@@ -178,7 +179,7 @@ class AccountingMainWindow(QMainWindow):
         icon_names = {
             "dashboard":"fa5s.chart-pie", "sales":"fa5s.cash-register",
             "products":"fa5s.boxes", "categories":"fa5s.tags",
-            "warehouse":"fa5s.warehouse", "inventory":"fa5s.boxes-stacked", "checks_in":"fa5s.file-import",
+            "warehouse":"fa5s.warehouse", "inventory":"fa5s.boxes-stacked", "stocktakes":"fa5s.clipboard-check", "checks_in":"fa5s.file-import",
             "checks_out":"fa5s.file-export", "receipts":"fa5s.receipt",
             "returns":"fa5s.rotate-left", "journals":"fa5s.book-open", "fiscal_years":"fa5s.calendar-check",
             "accounting_reports":"fa5s.chart-column", "audit":"fa5s.clipboard-list",
@@ -229,6 +230,7 @@ class AccountingMainWindow(QMainWindow):
         self.categories_page=CategoriesPage(self)
         self.warehouse_page=WarehousePage(self)
         self.inventory_page=InventoryPage(self)
+        self.stocktakes_page=StocktakesPage(self)
         self.checks_in_page=ChecksPage(self,"in")
         self.checks_out_page=ChecksPage(self,"out")
         self.receipts_page=ReceiptsPage(self)
@@ -247,7 +249,7 @@ class AccountingMainWindow(QMainWindow):
         definitions=[
             ("dashboard","نمای کلی",self.dashboard),("sales","ثبت فروش",self.sales_page),
             ("products","محصولات",self.products_page),("categories","دسته‌بندی‌ها",self.categories_page),
-            ("warehouse","اقلام انبار",self.warehouse_page),("inventory","موجودی کالا",self.inventory_page),("checks_in","چک‌های دریافتی",self.checks_in_page),
+            ("warehouse","اقلام انبار",self.warehouse_page),("inventory","موجودی کالا",self.inventory_page),("stocktakes","انبارگردانی",self.stocktakes_page),("checks_in","چک‌های دریافتی",self.checks_in_page),
             ("checks_out","چک‌های پرداختی",self.checks_out_page),("receipts","رسیدها",self.receipts_page),
             ("returns","مرجوعی‌ها",self.returns_page),("journals","اسناد حسابداری",self.journals_page),
             ("fiscal_years","سال مالی",self.fiscal_years_page),
@@ -268,6 +270,7 @@ class AccountingMainWindow(QMainWindow):
             "categories":("دسته‌بندی‌ها","سازمان‌دهی کالاها"),
             "warehouse":("اقلام انبار","مدیریت اقلام و مواد انبار"),
             "inventory":("موجودی کالا","رهگیری موجودی، حد سفارش و سوابق ورود و خروج"),
+            "stocktakes":("انبارگردانی","شمارش فیزیکی، مشاهده اختلاف و اعمال کنترل‌شدهٔ موجودی"),
             "checks_in":("چک‌های دریافتی","مدیریت چک‌های دریافتی"),
             "checks_out":("چک‌های پرداختی","مدیریت چک‌های پرداختی"),
             "receipts":("رسیدها و فاکتورها","جزئیات، چاپ، مرجوعی و خروجی رسیدها"),
@@ -303,7 +306,7 @@ class AccountingMainWindow(QMainWindow):
         nav_permissions = {
             "dashboard": ("reports", "read"), "sales": ("sales", "create"),
             "products": ("products", "read"), "categories": ("categories", "read"),
-            "warehouse": ("warehouse", "read"), "inventory": ("warehouse", "read"),
+            "warehouse": ("warehouse", "read"), "inventory": ("warehouse", "read"), "stocktakes": ("warehouse", "read"),
             "checks_in": ("checks_in", "read"),
             "checks_out": ("checks_out", "read"), "receipts": ("receipts", "read"),
             "invoices": ("invoices", "read"), "schemas": ("schemas", "read"),
@@ -332,6 +335,7 @@ class AccountingMainWindow(QMainWindow):
         self.permissions_page.set_permissions(user)
         self.invoice_templates_page.set_permissions(user)
         self.inventory_page.set_permissions(user)
+        self.stocktakes_page.set_permissions(user)
         self.schemas_page.set_permissions(user)
         self.returns_page.set_permissions(user)
         self.journals_page.set_permissions(user)
