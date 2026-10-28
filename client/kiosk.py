@@ -24,7 +24,7 @@ from client.ui.device_settings import DeviceSettingsDialog, device_settings
 from client.ui.invoice_dialog import auto_print_invoice
 from client.ui.invoice_render import DEFAULT_TEMPLATE
 from client.ui.permissions import can_access
-from client.ui.theme import stylesheet
+from client.ui.theme import set_design_config, stylesheet
 from client.ui.touch_keyboard import TouchKeyboardDialog
 from client.ui.worker import ApiWorker
 
@@ -416,6 +416,7 @@ class KioskConnectionPage(QFrame):
             self.status.setText("این دستگاه هنوز راه‌اندازی نشده است.")
         elif not password:
             self.status.setText("رمز کیوسک در مخزن امن پیدا نشد؛ رمز را وارد کنید یا تنظیمات مدیر را باز کنید.")
+        self.window.load_shared_appearance(self.server_url.text())
 
     def show_keyboard(self):
         target = self._keyboard_target
@@ -930,7 +931,7 @@ class KioskWindow(QMainWindow):
         self.setMinimumSize(480, 480)
         self.resize(1280, 800)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        self.setStyleSheet(stylesheet("light") + """
+        self._kiosk_stylesheet = """
             QFrame#KioskProductCard { background:#FFFFFF; border:1px solid #DDE5F0; border-radius:16px; }
             QLabel#KioskProductImage { background:#F1F5FB; color:#5D79A3; border-radius:12px; font-size:44px; font-weight:800; }
             QLabel#KioskProductTitle { color:#1F2937; font-size:15px; font-weight:750; }
@@ -941,13 +942,15 @@ class KioskWindow(QMainWindow):
             QPushButton#KioskAddButton { color:white; background:#3157A4; border:0; border-radius:10px; font-size:13px; font-weight:800; }
             QPushButton#KioskAddButton:hover { background:#25498D; }
             QPushButton#KioskAddButton:disabled { background:#E5E7EB; color:#9CA3AF; }
-        """)
+        """
+        self.setStyleSheet(stylesheet("light") + self._kiosk_stylesheet)
         self.local_settings = QSettings("AccountingApp", "SelfServiceKiosk")
         self.api = None
         self.current_user = None
         self._workers = {}
         self._callbacks = {}
         self._authorized_exit = False
+        self._appearance_url_requested = None
 
         self.stack = QStackedWidget(self)
         self.setup_page = KioskSetupPage(self)
@@ -968,6 +971,28 @@ class KioskWindow(QMainWindow):
         self.exit_shortcut.activated.connect(self.request_exit)
 
         self._boot()
+
+    def load_shared_appearance(self, url):
+        """Fetch non-sensitive shared design settings asynchronously for the kiosk UI."""
+        url = str(url or "").strip()
+        if not url or url == self._appearance_url_requested:
+            return
+        try:
+            api = AccountingApiClient(url)
+        except ValueError:
+            return
+        self._appearance_url_requested = url
+        self.run_api(
+            api.get_appearance_settings,
+            self._apply_shared_appearance,
+            failure=lambda _error: None,
+        )
+
+    def _apply_shared_appearance(self, values):
+        if not isinstance(values, dict):
+            return
+        set_design_config(values)
+        self.setStyleSheet(stylesheet("light") + self._kiosk_stylesheet)
 
     def _boot(self):
         configured = self.local_settings.value("configured", False, type=bool)
@@ -1001,7 +1026,15 @@ class KioskWindow(QMainWindow):
             raise RuntimeError("کیوسک در پنل مدیر غیرفعال است. از برنامه حسابداری > مدیریت کیوسک آن را فعال کنید.")
         if not config.get("allowed_product_ids"):
             raise RuntimeError("هیچ محصولی برای کیوسک انتخاب نشده است. در صفحه مدیریت کیوسک محصولات را انتخاب کنید.")
-        return {"api": api, "user": user, "config": config, "server_url": server_url, "username": username}
+        try:
+            appearance = api.get_appearance_settings()
+        except Exception:
+            appearance = None
+        return {
+            "api": api, "user": user, "config": config,
+            "server_url": server_url, "username": username,
+            "appearance": appearance,
+        }
 
     def _connection_complete(self, result):
         self.api, self.current_user = result["api"], result["user"]
@@ -1009,6 +1042,7 @@ class KioskWindow(QMainWindow):
         self.local_settings.setValue("kiosk_username", result["username"])
         self.local_settings.setValue("configured", True)
         self.local_settings.sync()
+        self._apply_shared_appearance(result.get("appearance"))
         if keyring is not None and self.connection_page.password.text():
             try:
                 keyring.set_password(KIOSK_KEYRING_SERVICE, result["username"], self.connection_page.password.text())
@@ -1020,7 +1054,11 @@ class KioskWindow(QMainWindow):
         api = AccountingApiClient(server_url)
         payload = api.login(username, password, client_name="Self-service kiosk")
         config = api.get_kiosk_config() if payload.get("status") == "active" else {}
-        return {"api": api, "payload": payload, "config": config}
+        try:
+            appearance = api.get_appearance_settings()
+        except Exception:
+            appearance = None
+        return {"api": api, "payload": payload, "config": config, "appearance": appearance}
 
     def _auto_login_complete(self, result):
         api, payload = result["api"], result["payload"]
@@ -1038,6 +1076,11 @@ class KioskWindow(QMainWindow):
             self._auto_login_failed("کیوسک در پنل مدیر فعال نیست یا محصولی برای نمایش انتخاب نشده است.")
             return
         self.api, self.current_user = api, user
+        try:
+            appearance = api.get_appearance_settings()
+        except Exception:
+            appearance = None
+        self._apply_shared_appearance(appearance)
         self._enter_shop(config)
 
     def _auto_login_failed(self, error):
