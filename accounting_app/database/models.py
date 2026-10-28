@@ -5,7 +5,7 @@ import hmac
 import secrets
 from enum import Enum
 
-from peewee import BooleanField, CharField, DateTimeField, FloatField, ForeignKeyField, IntegerField, TextField
+from peewee import BooleanField, CharField, DateField, DateTimeField, DecimalField, FloatField, ForeignKeyField, IntegerField, TextField
 
 from accounting_app.config import FIELD_LENGTH
 from accounting_app.database.connection import BaseModel
@@ -148,6 +148,131 @@ class StockMovement(BaseModel):
             (("product", "created_at"), False),
             (("reference_id",), False),
         )
+
+
+class SaleReturn(BaseModel):
+    """A finalized refund tied to its original receipt and operator."""
+    receipt = ForeignKeyField(Receipt, backref="returns", on_delete="RESTRICT")
+    user = ForeignKeyField(User, backref="sale_returns", null=True, on_delete="SET NULL")
+    operator_name = CharField(max_length=FIELD_LENGTH, default="Unknown")
+    refund_method = CharField(max_length=24, default="cash")
+    reason = CharField(max_length=64, default="customer_return")
+    total_amount = DecimalField(max_digits=16, decimal_places=2, auto_round=True, default=0)
+    notes = TextField(null=True)
+
+    class Meta:
+        table_name = "sale_returns"
+
+
+class SaleReturnLine(BaseModel):
+    sale_return = ForeignKeyField(SaleReturn, backref="items", on_delete="CASCADE")
+    original_line = ForeignKeyField(ReceiptProduct, backref="return_lines", on_delete="RESTRICT")
+    product = ForeignKeyField(Product, null=True, on_delete="SET NULL")
+    product_name = CharField(max_length=FIELD_LENGTH, default="")
+    quantity = IntegerField()
+    unit_price = DecimalField(max_digits=16, decimal_places=2, auto_round=True, default=0)
+    line_total = DecimalField(max_digits=16, decimal_places=2, auto_round=True, default=0)
+
+    class Meta:
+        table_name = "sale_return_lines"
+        indexes = ((( "sale_return", "original_line"), False),)
+
+
+class FiscalYear(BaseModel):
+    name = CharField(max_length=FIELD_LENGTH)
+    start_date = DateField()
+    end_date = DateField()
+    status = CharField(max_length=16, default="open")
+    opened_by_name = CharField(max_length=FIELD_LENGTH, default="Unknown")
+    closed_by_name = CharField(max_length=FIELD_LENGTH, null=True)
+    closed_at = DateTimeField(null=True)
+    reopen_reason = TextField(null=True)
+
+    class Meta:
+        table_name = "fiscal_years"
+        indexes = ((( "start_date", "end_date"), True),)
+
+
+class LedgerAccount(BaseModel):
+    code = CharField(max_length=32, unique=True)
+    name = CharField(max_length=FIELD_LENGTH)
+    account_type = CharField(max_length=24, default="asset")
+    is_active = BooleanField(default=True)
+    description = TextField(null=True)
+
+    class Meta:
+        table_name = "ledger_accounts"
+
+
+class JournalEntry(BaseModel):
+    entry_number = CharField(max_length=48, unique=True)
+    entry_date = DateField()
+    description = TextField()
+    reference = CharField(max_length=FIELD_LENGTH, null=True)
+    status = CharField(max_length=16, default="posted")
+    created_by = ForeignKeyField(User, backref="journal_entries", null=True, on_delete="SET NULL")
+    created_by_name = CharField(max_length=FIELD_LENGTH, default="Unknown")
+    debit_total = DecimalField(max_digits=16, decimal_places=2, auto_round=True, default=0)
+    credit_total = DecimalField(max_digits=16, decimal_places=2, auto_round=True, default=0)
+    is_year_closing = BooleanField(default=False)
+
+    class Meta:
+        table_name = "journal_entries"
+        indexes = ((( "entry_date", "status"), False),)
+
+
+class JournalLine(BaseModel):
+    entry = ForeignKeyField(JournalEntry, backref="lines", on_delete="CASCADE")
+    account = ForeignKeyField(LedgerAccount, backref="journal_lines", on_delete="RESTRICT")
+    description = CharField(max_length=FIELD_LENGTH, default="")
+    debit = DecimalField(max_digits=16, decimal_places=2, auto_round=True, default=0)
+    credit = DecimalField(max_digits=16, decimal_places=2, auto_round=True, default=0)
+
+    class Meta:
+        table_name = "journal_lines"
+
+
+class AuditEvent(BaseModel):
+    """Append-only business audit entry with a non-null actor-name snapshot."""
+    user = ForeignKeyField(User, backref="audit_events", null=True, on_delete="SET NULL")
+    actor_name = CharField(max_length=FIELD_LENGTH, default="Unknown")
+    action = CharField(max_length=48)
+    resource = CharField(max_length=64)
+    target_id = CharField(max_length=64, null=True)
+    details = TextField(default="{}")
+    remote_addr = CharField(max_length=128, null=True)
+
+    class Meta:
+        table_name = "audit_events"
+        indexes = (
+            (("created_at",), False),
+            (("resource", "action"), False),
+            (("actor_name", "created_at"), False),
+        )
+
+
+class Stocktake(BaseModel):
+    name = CharField(max_length=FIELD_LENGTH)
+    status = CharField(max_length=16, default="draft")
+    notes = TextField(null=True)
+    created_by = ForeignKeyField(User, backref="stocktakes", null=True, on_delete="SET NULL")
+    created_by_name = CharField(max_length=FIELD_LENGTH, default="Unknown")
+    applied_at = DateTimeField(null=True)
+
+    class Meta:
+        table_name = "stocktakes"
+
+
+class StocktakeLine(BaseModel):
+    stocktake = ForeignKeyField(Stocktake, backref="lines", on_delete="CASCADE")
+    product = ForeignKeyField(Product, backref="stocktake_lines", on_delete="RESTRICT")
+    expected_quantity = FloatField()
+    counted_quantity = FloatField()
+    difference = FloatField()
+
+    class Meta:
+        table_name = "stocktake_lines"
+        indexes = ((( "stocktake", "product"), True),)
 
 
 class CheckIn(BaseModel):
