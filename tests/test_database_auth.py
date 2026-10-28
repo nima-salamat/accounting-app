@@ -1,3 +1,4 @@
+import binascii
 import hashlib
 import tempfile
 import unittest
@@ -41,6 +42,20 @@ class DatabaseAuthTests(unittest.TestCase):
         with DBManager():
             user = User.get(User.username == "alice")
             user.password = hashlib.sha256(legacy_password.encode("utf-8")).hexdigest()
+            user.save(only=[User.password, User.updated_at])
+        manager = AuthManager()
+        self.assertTrue(manager.validate("alice", legacy_password))
+        self.assertTrue(manager.user.password.startswith("pbkdf2_sha256$"))
+        self.assertTrue(manager.user.check_password(legacy_password))
+
+    def test_legacy_pbkdf2_hash_is_verified_and_upgraded(self):
+        legacy_password = "historic password"
+        salt = bytes(range(16))
+        digest = hashlib.pbkdf2_hmac("sha256", legacy_password.encode("utf-8"), salt, 100_000)
+        stored_legacy_hash = binascii.hexlify(salt + digest).decode("ascii")
+        with DBManager():
+            user = User.get(User.username == "alice")
+            user.password = stored_legacy_hash
             user.save(only=[User.password, User.updated_at])
         manager = AuthManager()
         self.assertTrue(manager.validate("alice", legacy_password))
