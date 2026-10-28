@@ -17,7 +17,7 @@ from matplotlib.figure import Figure
 # from matplotlib.font_manager import FontProperties
 # font_prop = FontProperties(fname="B-NAZANIN.TTF")
 # rcParams['font.family'] = font_prop.get_name()
-from peewee import fn, SQL, JOIN
+from peewee import fn, SQL, JOIN, ForeignKeyField
 from db.models import Receipt, ReceiptProduct, Product, Warehouse, Category, User, CheckIn, CheckOut
 from ui.utils import PandasModel
 from ui.base_panel import jalali_tomorrow_date
@@ -85,27 +85,37 @@ class PurgeWorker(QThread):
 
     def run(self):
         try:
-            # fetch and serialize
-            recs = list(Receipt.select().where(Receipt.created_at.between(self.start_dt, self.end_dt)))
-            items = list(ReceiptProduct.select().where(
-                ReceiptProduct.receipt.in_([r.id for r in recs])
-            ))
-            sum_total = sum(r.total_price for r in recs)
-            sum_buy = sum(p.buy_price * p.quantity for p in items)
+            with DBManager():
+                recs = list(
+                    Receipt.select().where(
+                        Receipt.created_at.between(self.start_dt, self.end_dt)
+                    )
+                )
+                receipt_ids = [record.id for record in recs]
+                items = list(
+                    ReceiptProduct.select().where(
+                        ReceiptProduct.receipt.in_(receipt_ids)
+                    )
+                ) if receipt_ids else []
+                sum_total = sum(record.total_price for record in recs)
+                sum_buy = sum(item.buy_price * item.quantity for item in items)
 
-            serial_recs = [ { field.name: getattr(r, field.name)
-                              for field in Receipt._meta.fields.values() }
-                            for r in recs ]
-            for d in serial_recs:
-                d['created_at'] = to_jalali(d['created_at'])
+                def serialize(record, model):
+                    row = {}
+                    for field in model._meta.fields.values():
+                        if isinstance(field, ForeignKeyField):
+                            row[field.name] = getattr(record, field.name + "_id")
+                        else:
+                            row[field.name] = getattr(record, field.name)
+                    return row
 
-            serial_items = [ { field.name: getattr(i, field.name)
-                               for field in ReceiptProduct._meta.fields.values() }
-                             for i in items ]
-
+                serial_recs = [serialize(record, Receipt) for record in recs]
+                for row in serial_recs:
+                    row["created_at"] = to_jalali(row["created_at"])
+                serial_items = [serialize(item, ReceiptProduct) for item in items]
             self.dataReady.emit(serial_recs, serial_items, len(recs), sum_total, sum_buy)
-        except Exception as e:
-            self.error.emit(str(e))
+        except Exception as exc:
+            self.error.emit(str(exc))
 
 
 class QueryWorker(QThread):
