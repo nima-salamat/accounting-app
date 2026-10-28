@@ -157,16 +157,19 @@ class TableDataMixin:
         dlg.exec_()
 
     def load_data(self):
-        self.loader = DataLoader(
-            self.model, self.search_input.text(), self.sort_fields, self.page_size, self.current_page,
+        loader = DataLoader(
+            self.model, self.search_input.text(), list(self.sort_fields), self.page_size, self.current_page,
             self.cb_enable_date.isChecked(), self.dt_from_date.text(), self.dt_from_time.text(),
-            self.dt_to_date.text(), self.dt_to_time.text(), self.lbl2fld, self._searchable
+            self.dt_to_date.text(), self.dt_to_time.text(), dict(self.lbl2fld), list(self._searchable)
         )
+        self.loader = loader
         thread = QThread(self)
-        self.loader.moveToThread(thread)
-        thread.started.connect(self.loader.load_data, Qt.QueuedConnection)
-        self.loader.data_loaded.connect(self._on_data_loaded, Qt.QueuedConnection)
-        self.loader.error.connect(self._on_load_error, Qt.QueuedConnection)
+        loader.moveToThread(thread)
+        thread.started.connect(loader.load_data, Qt.QueuedConnection)
+        loader.data_loaded.connect(self._on_data_loaded, Qt.QueuedConnection)
+        loader.error.connect(self._on_load_error, Qt.QueuedConnection)
+        loader.finished.connect(thread.quit)
+        loader.finished.connect(loader.deleteLater)
         thread.finished.connect(thread.deleteLater)
         thread.start()
         self.search_input.setEnabled(False)
