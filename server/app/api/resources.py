@@ -1,8 +1,11 @@
 """Authenticated CRUD endpoints for the primary accounting records."""
 from typing import List, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
+from pathlib import Path
+import mimetypes
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
+from fastapi.responses import FileResponse
 from peewee import ForeignKeyField, IntegrityError
 
 from accounting_app.database.connection import DBManager
@@ -17,6 +20,7 @@ from accounting_app.database.models import (
 )
 from accounting_app.services.schema_registry import cleanup_builtin_extension_values_many
 from accounting_app.services.audit import record_audit
+from accounting_app.config import get_data_dir
 from server.app.dependencies import get_current_user, require_admin
 from server.app.permissions import require_permission
 from server.app.schemas import (
@@ -184,6 +188,91 @@ def update_product(product_id: UUID, payload: ProductUpdate, user=Depends(requir
         updated = _save_patch(record, values)
         record_audit(user, "product.updated", "products", updated.id, {"name": updated.name, "fields": sorted(values)})
         return _serialize(updated)
+
+
+def _product_image_directory():
+    directory = (get_data_dir() / "product_images").resolve()
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def _identify_image(data):
+    if data.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+        return ".png", "image/png"
+    if data.startswith(b"\\xff\\xd8\\xff"):
+        return ".jpg", "image/jpeg"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return ".gif", "image/gif"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp", "image/webp"
+    return None, None
+
+
+@router.post("/products/{product_id}/image")
+async def upload_product_image(
+    product_id: UUID,
+    file: UploadFile = File(...),
+    user=Depends(require_permission("products", "update")),
+):
+    """Store a bounded raster product photo under a generated server-side name."""
+    with DBManager():
+        product = ProductModel.get_or_none(ProductModel.id == product_id)
+        if product is None:
+            raise HTTPException(status_code=404, detail="محصول پیدا نشد.")
+        if file.content_type not in {"image/jpeg", "image/png", "image/webp", "image/gif"}:
+            raise HTTPException(status_code=415, detail="فقط تصویر JPEG، PNG، WebP یا GIF مجاز است.")
+        data = await file.read(8 * 1024 * 1024 + 1)
+        if not data or len(data) > 8 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="حجم عکس باید حداکثر ۸ مگابایت باشد.")
+        extension, media_type = _identify_image(data)
+        if not extension or media_type != file.content_type:
+            raise HTTPException(status_code=415, detail="محتوای فایل با نوع تصویر معتبر مطابقت ندارد.")
+        directory = _product_image_directory()
+        generated_name = "{}{}".format(uuid4().hex, extension)
+        destination = (directory / generated_name).resolve()
+        if destination.parent != directory:
+            raise HTTPException(status_code=400, detail="نام فایل نامعتبر است.")
+        destination.write_bytes(data)
+        old_name = product.image_path
+        product.image_path = generated_name
+        product.save(only=[ProductModel.image_path, ProductModel.updated_at])
+        if old_name and old_name != generated_name:
+            old_path = (directory / Path(old_name).name).resolve()
+            if old_path.parent == directory and old_path.is_file():
+                try:
+                    old_path.unlink()
+                except OSError:
+                    pass
+        record_audit(
+            user, "product.image_updated", "products", product.id,
+            {"image": generated_name, "content_type": media_type, "bytes": len(data)},
+        )
+        return _serialize(product)
+
+
+@router.get("/products/{product_id}/image")
+def get_product_image(
+    product_id: UUID,
+    user=Depends(require_permission("products", "read")),
+):
+    with DBManager():
+        product = ProductModel.get_or_none(ProductModel.id == product_id)
+        if product is None:
+            raise HTTPException(status_code=404, detail="محصول پیدا نشد.")
+        if not product.image_path:
+            raise HTTPException(status_code=404, detail="برای این محصول عکسی ثبت نشده است.")
+        directory = _product_image_directory()
+        path = (directory / Path(product.image_path).name).resolve()
+        if path.parent != directory or not path.is_file():
+            raise HTTPException(status_code=404, detail="فایل تصویر پیدا نشد.")
+        _extension, media_type = _identify_image(path.read_bytes()[:16])
+        if not media_type:
+            raise HTTPException(status_code=415, detail="فایل تصویر ذخیره‌شده معتبر نیست.")
+        return FileResponse(
+            path,
+            media_type=media_type,
+            headers={"Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"},
+        )
 
 
 @router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
