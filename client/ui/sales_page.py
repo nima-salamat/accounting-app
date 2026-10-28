@@ -308,7 +308,10 @@ class SalesPage(QFrame):
 
     def _load_recent_invoice(self, receipt_id):
         receipt = self.window.api.get_receipt(receipt_id)
-        template = self.window.api.get_invoice_template()
+        try:
+            template = self.window.api.get_invoice_template()
+        except Exception:
+            template = DEFAULT_TEMPLATE
         return {"receipt": receipt, "template": template}
 
     def _show_recent_invoice(self, payload, dialog):
