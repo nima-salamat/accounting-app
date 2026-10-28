@@ -326,6 +326,12 @@ class AccountingApiClient:
     def delete_receipt(self, receipt_id):
         return self._request("DELETE", "/api/v1/receipts/{}".format(receipt_id))
 
+    def quote_sale(self, items, paid=False):
+        return self._request(
+            "POST", "/api/v1/sales/quote",
+            json_body={"items": items, "paid": bool(paid)},
+        )
+
     def create_sale(self, items, paid=False, idempotency_key=None):
         """Create a sale. Reuse last_idempotency_key if the result of a request is uncertain."""
         key = idempotency_key or uuid.uuid4().hex
