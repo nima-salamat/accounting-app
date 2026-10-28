@@ -21,6 +21,7 @@ from ui.menu_bar import MenuBar
 from ui.float_bar import DockWidget
 from ui.checks import CheckInPanel, CheckOutPanel
 from functools import partial
+from ui.panels.custom_schema_panel import CustomSchemaManagement
 
 
 
@@ -193,10 +194,10 @@ class ManagerPanel(QWidget):
         self.panel_classes = [
             Home, UserPanel, UserManagement, ProductManagement,
             CategoryManagement, ReceiptManagement, ReceiptProductManagement,
-            WarehouseManagement ,SellPanel, ProductSalesChartPanel, CheckInPanel, CheckOutPanel
+            WarehouseManagement ,SellPanel, ProductSalesChartPanel, CheckInPanel, CheckOutPanel, CustomSchemaManagement
         ]
         names = ["خانه", "کاربر", "کاربران", "محصولات", "دسته بندی ها",
-                 "رسید ها", "آیتم رسید","خرید ها", "فروش", "گزارش", "طلبکاری", "بدهکاری"]
+                 "رسید ها", "آیتم رسید","خرید ها", "فروش", "گزارش", "طلبکاری", "بدهکاری", "ساختارهای سفارشی"]
         self.pages = [None] * len(self.panel_classes)
         self.buttons = []
         # ساخت دکمه‌های درگ‌ابل
