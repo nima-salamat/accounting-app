@@ -681,6 +681,10 @@ class InvoiceTemplatesPage(QFrame):
             for element in values["elements"]:
                 if element["type"] == "invoice_number":
                     element["label"] = "شماره سند خرید"
+                elif element["type"] == "seat_number":
+                    element["label"] = "تأمین‌کننده"
+                elif element["type"] == "payment_status":
+                    element["label"] = "وضعیت تسویه"
         return values
 
     def resizeEvent(self, event):
