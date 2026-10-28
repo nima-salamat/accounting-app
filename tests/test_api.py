@@ -308,14 +308,27 @@ class ApiTests(unittest.TestCase):
             headers=admin_headers,
         ).json()
         self.assertEqual(inventory_after["items"][0]["stock_quantity"], 1)
+        edited_sale = self.client.put(
+            "/api/v1/sales/{}".format(first_sale.json()["id"]),
+            headers=admin_headers,
+            json={"items": [{"product_id": product["id"], "quantity": 1}], "paid": True},
+        )
+        self.assertEqual(edited_sale.status_code, 200, edited_sale.text)
+        inventory_after_edit = self.client.get(
+            "/api/v1/inventory?q=کالای انباردار",
+            headers=admin_headers,
+        ).json()
+        self.assertEqual(inventory_after_edit["items"][0]["stock_quantity"], 2)
+        self.assertEqual(edited_sale.json()["items"][0]["quantity"], 1)
+
         movements = self.client.get(
             "/api/v1/inventory/movements?product_id={}".format(product["id"]),
             headers=admin_headers,
         )
         self.assertEqual(movements.status_code, 200, movements.text)
-        self.assertEqual(movements.json()["total"], 2)
+        self.assertEqual(movements.json()["total"], 4)
         self.assertEqual(
-            self.client.get("/api/v1/receipts", headers=admin_headers).json().__len__(),
+            len(self.client.get("/api/v1/receipts", headers=admin_headers).json()),
             1,
         )
 
