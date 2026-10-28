@@ -5,7 +5,8 @@ from accounting_app.services.schema_definitions import (
     BUILTIN_ENTITIES, FIELD_TYPES, _normalize_schema_rows, get_entity_fields, validate_key,
 )
 from accounting_app.services.schema_values import (
-    cleanup_builtin_extension_values, delete_custom_record, entity_key_for_model,
+    cleanup_builtin_extension_values, cleanup_builtin_extension_values_many,
+    delete_custom_record, entity_key_for_model,
     get_entity_values, list_entity_records, normalize_field_value, save_entity_values,
 )
 
