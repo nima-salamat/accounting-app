@@ -34,6 +34,7 @@ DEFAULT_DESIGN = {
     "section_spacing": 12,
 }
 _CURRENT_DESIGN = dict(DEFAULT_DESIGN)
+_SPINBOX_WHEEL_GUARD = None
 
 
 class _NoSpinboxWheelChanges(QObject):
@@ -52,15 +53,14 @@ class _NoSpinboxWheelChanges(QObject):
 
 def install_spinbox_wheel_guard(app=None):
     """Install one application-wide guard for every QSpinBox/QDoubleSpinBox."""
+    global _SPINBOX_WHEEL_GUARD
     app = app or QApplication.instance()
     if app is None:
         return None
-    guard = getattr(app, "_accounting_spinbox_wheel_guard", None)
-    if guard is None:
-        guard = _NoSpinboxWheelChanges(app)
-        app._accounting_spinbox_wheel_guard = guard
-        app.installEventFilter(guard)
-    return guard
+    if _SPINBOX_WHEEL_GUARD is None:
+        _SPINBOX_WHEEL_GUARD = _NoSpinboxWheelChanges(app)
+        app.installEventFilter(_SPINBOX_WHEEL_GUARD)
+    return _SPINBOX_WHEEL_GUARD
 
 
 def normalize_design_config(values=None):
