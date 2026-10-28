@@ -2,6 +2,7 @@
 from accounting_app.database.connection import DBManager, db, initialize_db
 from accounting_app.database.models import User
 from accounting_app.database.schema import create_tables
+from accounting_app.services.validation import validate_password, validate_username
 
 
 def initialize_database(path=None):
@@ -10,23 +11,28 @@ def initialize_database(path=None):
 
 
 def create_db():
+    """Create any missing tables without altering existing records."""
     initialize_database()
     with DBManager() as database:
         create_tables(database)
 
 
-def create_admin():
-    """Create the documented first-run admin only if it does not exist."""
+def create_admin(username=None, password=None):
+    """Create an administrator only with explicit credentials; never ship a default password."""
+    if not username or not password:
+        raise ValueError("برای ساخت مدیر باید نام کاربری و رمز عبور صریحاً تعیین شوند.")
+    normalized_username = validate_username(username)
+    validated_password = validate_password(password)
     with DBManager():
-        user = User.get_or_none(User.username == "admin")
-        if user is None:
-            user = User(username="admin", password="")
-            user.set_password("admin")
-            user.is_admin = True
-            user.save(force_insert=True)
-        elif not user.is_admin:
-            user.is_admin = True
-            user.save(only=[User.is_admin, User.updated_at])
+        existing = User.get_or_none(User.username == normalized_username)
+        if existing is not None:
+            if not existing.is_admin:
+                existing.is_admin = True
+                existing.save(only=[User.is_admin, User.updated_at])
+            return existing
+        user = User(username=normalized_username, password="", is_admin=True)
+        user.set_password(validated_password)
+        user.save(force_insert=True)
         return user
 
 
