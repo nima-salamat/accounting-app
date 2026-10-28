@@ -118,8 +118,8 @@ class KioskSettingsPage(QFrame):
         self.set_permissions(window.current_user)
 
     def set_permissions(self, user):
-        can_read = can_access(user, "kiosk", "read")
-        can_update = can_access(user, "kiosk", "update")
+        can_read = can_access(user, "kiosk", "read") and can_access(user, "products", "read")
+        can_update = can_access(user, "kiosk", "update") and can_access(user, "products", "read")
         for widget in (
             self.active_checkbox, self.allow_unpaid_checkbox, self.seat_checkbox,
             self.history_hours, self.product_search, self.product_list,
