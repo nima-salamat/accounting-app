@@ -16,6 +16,7 @@ from accounting_app.database.models import (
     Warehouse as WarehouseModel,
 )
 from accounting_app.services.schema_registry import cleanup_builtin_extension_values_many
+from accounting_app.services.audit import record_audit
 from server.app.dependencies import get_current_user, require_admin
 from server.app.permissions import require_permission
 from server.app.schemas import (
@@ -98,6 +99,7 @@ def list_categories(
 def create_category(payload: CategoryCreate, user=Depends(require_permission("categories", "create"))):
     with DBManager():
         record = CategoryModel.create(name=_clean_name(payload.name))
+        record_audit(user, "category.created", "categories", record.id, {"name": record.name})
         return _serialize(record)
 
 
@@ -110,7 +112,9 @@ def update_category(category_id: UUID, payload: CategoryUpdate, user=Depends(req
         values = payload.model_dump(exclude_unset=True)
         if "name" in values:
             values["name"] = _clean_name(values["name"])
-        return _serialize(_save_patch(record, values))
+        updated = _save_patch(record, values)
+        record_audit(user, "category.updated", "categories", updated.id, {"fields": sorted(values)})
+        return _serialize(updated)
 
 
 @router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -119,6 +123,7 @@ def delete_category(category_id: UUID, user=Depends(require_permission("categori
         record = CategoryModel.get_or_none(CategoryModel.id == category_id)
         if record is None:
             _not_found("دسته‌بندی")
+        record_audit(user, "category.deleted", "categories", record.id, {"name": record.name})
         cleanup_builtin_extension_values_many("categories", [record.id])
         record.delete_instance()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -160,6 +165,10 @@ def create_product(payload: ProductCreate, user=Depends(require_permission("prod
             track_stock=payload.track_stock,
             reorder_level=float(payload.reorder_level),
         )
+        record_audit(
+            user, "product.created", "products", record.id,
+            {"name": record.name, "sell_price": record.sell_price, "track_stock": record.track_stock},
+        )
         return _serialize(record)
 
 
@@ -172,7 +181,9 @@ def update_product(product_id: UUID, payload: ProductUpdate, user=Depends(requir
         values = payload.model_dump(exclude_unset=True)
         if "category_id" in values:
             _check_category(values["category_id"])
-        return _serialize(_save_patch(record, values))
+        updated = _save_patch(record, values)
+        record_audit(user, "product.updated", "products", updated.id, {"name": updated.name, "fields": sorted(values)})
+        return _serialize(updated)
 
 
 @router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -186,6 +197,7 @@ def delete_product(product_id: UUID, user=Depends(require_permission("products",
                 status_code=409,
                 detail="این کالا سابقهٔ گردش موجودی دارد؛ برای حفظ سابقهٔ حسابرسی نمی‌توان آن را حذف کرد.",
             )
+        record_audit(user, "product.deleted", "products", record.id, {"name": record.name})
         cleanup_builtin_extension_values_many("products", [record.id])
         record.delete_instance()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -219,6 +231,7 @@ def create_warehouse(payload: WarehouseCreate, user=Depends(require_permission("
             name=_clean_name(payload.name), price=float(payload.price),
             amount=float(payload.amount), unit=payload.unit,
         )
+        record_audit(user, "warehouse.created", "warehouse", record.id, {"name": record.name, "amount": record.amount})
         return _serialize(record)
 
 
@@ -231,7 +244,9 @@ def update_warehouse(record_id: UUID, payload: WarehouseUpdate, user=Depends(req
         values = payload.model_dump(exclude_unset=True)
         if "unit" in values and values["unit"] not in ("kg", "m", "l", "pcs"):
             raise HTTPException(status_code=422, detail="واحد انبار معتبر نیست.")
-        return _serialize(_save_patch(record, values))
+        updated = _save_patch(record, values)
+        record_audit(user, "warehouse.updated", "warehouse", updated.id, {"name": updated.name, "fields": sorted(values)})
+        return _serialize(updated)
 
 
 @router.delete("/warehouses/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -240,6 +255,7 @@ def delete_warehouse(record_id: UUID, user=Depends(require_permission("warehouse
         record = WarehouseModel.get_or_none(WarehouseModel.id == record_id)
         if record is None:
             _not_found("رکورد انبار")
+        record_audit(user, "warehouse.deleted", "warehouse", record.id, {"name": record.name})
         cleanup_builtin_extension_values_many("warehouses", [record.id])
         record.delete_instance()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
