@@ -441,7 +441,14 @@ class InvoiceTemplatesPage(QFrame):
         self.address.setPlainText(str(values.get("address", "") or ""))
         self.footer.setPlainText(str(values.get("footer", "") or ""))
         self.paper_size.setCurrentIndex(max(0, self.paper_size.findData(values.get("paper_size", "A4"))))
+        paper_value = values.get("paper_size", "A4")
         self.orientation.setCurrentIndex(max(0, self.orientation.findData(values.get("orientation", "portrait"))))
+        is_thermal = paper_value in ("receipt", "receipt80", "receipt58")
+        if is_thermal:
+            self.orientation.blockSignals(True)
+            self.orientation.setCurrentIndex(max(0, self.orientation.findData("portrait")))
+            self.orientation.blockSignals(False)
+        self.orientation.setEnabled(not is_thermal)
         self.margin_mm.setValue(int(values.get("margin_mm", 12)))
         self.show_border.setChecked(bool(values.get("show_border", True)))
         self.accent_color_value = str(values.get("accent_color", "#3157A4"))
@@ -525,9 +532,11 @@ class InvoiceTemplatesPage(QFrame):
         width, height = page_dimensions(self._values())
         paper = self.paper_size.currentData() or "A4"
         orientation = self.orientation.currentData() or "portrait"
-        orientation_text = "افقی" if orientation == "landscape" else "عمودی"
+        is_thermal = paper in ("receipt80", "receipt58")
+        orientation_text = "حرارتی (جهت ثابت)" if is_thermal else ("افقی" if orientation == "landscape" else "عمودی")
+        paper_label = {"receipt80": "رسید حرارتی ۸۰mm", "receipt58": "رسید حرارتی ۵۸mm"}.get(paper, paper)
         self.page_info.setText("{} · {} · {:.0f} × {:.0f} میلی‌متر".format(
-            paper, orientation_text, width, height
+            paper_label, orientation_text, width, height
         ))
 
     def _page_style_changed(self, *_args):
@@ -538,6 +547,13 @@ class InvoiceTemplatesPage(QFrame):
     def _page_dimensions_changed(self, *_args):
         if self._loading:
             return
+        paper = self.paper_size.currentData() or "A4"
+        is_thermal = paper in ("receipt", "receipt80", "receipt58")
+        self.orientation.setEnabled(not is_thermal)
+        if is_thermal and self.orientation.currentData() != "portrait":
+            self.orientation.blockSignals(True)
+            self.orientation.setCurrentIndex(max(0, self.orientation.findData("portrait")))
+            self.orientation.blockSignals(False)
         old_width, old_height = self._last_page_size
         new_width, new_height = page_dimensions(self._values())
         scale_x = new_width / old_width if old_width else 1

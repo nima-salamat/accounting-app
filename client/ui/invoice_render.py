@@ -5,7 +5,7 @@ import math
 import re
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QBrush, QFont, QPen
+from PySide6.QtGui import QColor, QBrush, QFont, QPainter, QPen
 
 BLOCKS = ("company", "metadata", "items", "totals", "footer")
 ELEMENT_TYPES = (
@@ -303,7 +303,7 @@ def draw_invoice_element(painter, rect, element, receipt=None, template=None, *,
     align = element.get("align") if element.get("align") in ALIGNMENTS else "right"
     direction = config["text_direction"]
     painter.save()
-    painter.setRenderHint(painter.RenderHint.Antialiasing, True)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
     if editor:
         painter.setBrush(QBrush(QColor("#FFFFFF")))
@@ -314,7 +314,7 @@ def draw_invoice_element(painter, rect, element, receipt=None, template=None, *,
         painter.drawRect(rect.adjusted(0.12, 0.12, -0.12, -0.12))
         if rect.height() >= 8:
             tag_rect = QRectF(rect.left() + 0.5, rect.top() + 0.35, min(rect.width() - 1, 32), min(4.2, rect.height() - 0.6))
-            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setPen(QPen(Qt.PenStyle.NoPen))
             painter.setBrush(QBrush(QColor("#2563EB" if selected else "#E2E8F0")))
             painter.drawRoundedRect(tag_rect, 0.6, 0.6)
             _draw_text(painter, tag_rect, element.get("label") or kind, font=_font(font_family, 6.5, bold=True),

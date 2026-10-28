@@ -69,7 +69,7 @@ class InvoiceDesignerTests(unittest.TestCase):
         self.assertEqual(self.page.paper_size.currentData(), "receipt80")
         self.assertEqual(page_dimensions(self.page._values()), (80.0, 220.0))
         self.assertTrue(any(item["type"] == "items_table" for item in self.page._values()["elements"]))
-        self.assertIn("۸۰ میلی‌متر", self.page.page_info.text())
+        self.assertIn("80 × 220", self.page.page_info.text())
 
     def test_custom_elements_can_be_added_duplicated_and_removed(self):
         before = len(self.page._values()["elements"])
