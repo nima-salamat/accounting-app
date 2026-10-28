@@ -646,12 +646,65 @@ class ReceiptsPage(QFrame):
         self.window.set_status("رسید حذف شد.");self.refresh();self.window.refresh_dashboard_data()
 
     def export_csv(self):
-        if not self.records:self.window.show_error("داده‌ای برای خروجی وجود ندارد.");return
-        path,_=QFileDialog.getSaveFileName(self,"ذخیره رسیدها","receipts.csv","CSV (*.csv)")
-        if not path:return
+        if self.total_records == 0:
+            self.window.show_error("داده‌ای برای خروجی وجود ندارد.")
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "ذخیرهٔ CSV", "receipts.csv", "CSV (*.csv)")
+        if not path:
+            return
+        if not path.lower().endswith(".csv"):
+            path += ".csv"
+        self.window.run_api(
+            self._collect_receipt_export,
+            lambda payload: self._write_receipt_export(path, payload),
+            busy=self.export_button,
+        )
+
+    def _collect_receipt_export(self):
+        api = self.window.api
+        page, page_size = 1, 200
+        records, total, custom_fields = [], 0, []
+        while True:
+            result = api.list_receipts_page(page=page, page_size=page_size)
+            batch = list(result.get("items") or [])
+            total = int(result.get("total", len(batch)))
+            if not batch:
+                break
+            extension = {"fields": [], "values": {}}
+            if can_access(self.window.current_user, "schemas", "read"):
+                extension = api.get_custom_table_data(
+                    "receipts", [item.get("id") for item in batch]
+                ) or extension
+            custom_fields = list(extension.get("fields") or custom_fields)
+            values = extension.get("values") or {}
+            for record in batch:
+                record["custom_fields"] = dict(values.get(str(record.get("id")), {}))
+            records.extend(batch)
+            if len(records) >= total or len(batch) < page_size:
+                break
+            page += 1
+        return {"records": records, "custom_fields": custom_fields, "total": total}
+
+    def _write_receipt_export(self, path, payload):
+        records = list(payload.get("records") or [])
+        custom_fields = list(payload.get("custom_fields") or [])
+        columns = list(self.base_columns) + [("user_id", "شناسه کاربر")] + [
+            ("custom:" + field["key"], field["label"]) for field in custom_fields
+        ]
         try:
-            with open(path,"w",newline="",encoding="utf-8-sig") as stream:
-                writer=csv.DictWriter(stream,fieldnames=["id","day_receipt_id","total_price","payed","user_id","created_at"],extrasaction="ignore")
-                writer.writeheader();writer.writerows(self.records)
-        except OSError as exc:self.window.show_error(exc);return
-        self.window.set_status("خروجی ذخیره شد: "+path)
+            with open(path, "w", newline="", encoding="utf-8-sig") as stream:
+                fieldnames = [key for key, _label in columns]
+                writer = csv.DictWriter(stream, fieldnames=fieldnames, extrasaction="ignore")
+                writer.writeheader()
+                for record in records:
+                    row = dict(record)
+                    custom_values = row.get("custom_fields") or {}
+                    for key, _label in columns:
+                        if key.startswith("custom:"):
+                            row[key] = custom_values.get(key.split(":", 1)[1])
+                    row["payed"] = "بله" if row.get("payed") else "خیر"
+                    writer.writerow(row)
+        except OSError as exc:
+            self.window.show_error(exc)
+            return
+        self.window.set_status("خروجی کامل {} رسید ذخیره شد: {}".format(len(records), path))
