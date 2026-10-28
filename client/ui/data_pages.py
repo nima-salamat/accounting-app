@@ -291,26 +291,75 @@ class ApiTablePage(QFrame):
         self.window.refresh_dashboard_data()
 
     def export_csv(self):
-        if not self.records:
-            self.window.show_error("داده‌ای برای خروجی وجود ندارد."); return
+        if not self.records and self.total_records == 0:
+            self.window.show_error("داده‌ای برای خروجی وجود ندارد.")
+            return
         path, _ = QFileDialog.getSaveFileName(self, "ذخیرهٔ CSV", "export.csv", "CSV (*.csv)")
         if not path:
             return
+        if not path.lower().endswith(".csv"):
+            path += ".csv"
+        self.window.run_api(
+            self._collect_export_payload,
+            lambda payload: self._write_export_csv(path, payload),
+            busy=self.export_button,
+        )
+
+    def _collect_export_payload(self):
+        api = self.window.api
+        query = self.search_input.text().strip() if self.searchable else None
+        page_size = 200
+        page = 1
+        records = []
+        total = None
+        fields = []
+        while True:
+            response = self.load_fn(api, query, page, page_size)
+            if isinstance(response, dict) and "items" in response:
+                batch = list(response.get("items") or [])
+                total = int(response.get("total", len(batch))) if total is None else total
+            else:
+                batch = list(response or [])
+                total = len(batch) if total is None else total
+            if not batch:
+                break
+            extension = {"fields": [], "values": {}}
+            if self.schema_entity and can_access(self.window.current_user, "schemas", "read"):
+                extension = api.get_custom_table_data(
+                    self.schema_entity, [item.get("id") for item in batch]
+                ) or extension
+            fields = list(extension.get("fields") or fields)
+            values = extension.get("values") or {}
+            for record in batch:
+                record["custom_fields"] = dict(values.get(str(record.get("id")), {}))
+            records.extend(batch)
+            if len(records) >= total or len(batch) < page_size:
+                break
+            page += 1
+        return {"records": records, "custom_fields": fields}
+
+    def _write_export_csv(self, path, payload):
+        records = list(payload.get("records") or [])
+        custom_fields = list(payload.get("custom_fields") or [])
+        columns = list(self.base_columns) + [
+            ("custom:" + field["key"], field["label"]) for field in custom_fields
+        ]
         try:
             with open(path, "w", newline="", encoding="utf-8-sig") as stream:
-                fieldnames = [key for key, _ in self.columns]
+                fieldnames = [key for key, _label in columns]
                 writer = csv.DictWriter(stream, fieldnames=fieldnames, extrasaction="ignore")
                 writer.writeheader()
-                for record in self.records:
+                for record in records:
                     row = dict(record)
                     custom_values = row.get("custom_fields") or {}
-                    for key, _label in self.columns:
+                    for key, _label in columns:
                         if key.startswith("custom:"):
                             row[key] = custom_values.get(key.split(":", 1)[1])
                     writer.writerow(row)
         except OSError as exc:
-            self.window.show_error(exc); return
-        self.window.set_status("خروجی ذخیره شد: " + path)
+            self.window.show_error(exc)
+            return
+        self.window.set_status("خروجی کامل {} رکورد ذخیره شد: {}".format(len(records), path))
 
 
 class ProductsPage(ApiTablePage):
