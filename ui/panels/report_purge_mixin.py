@@ -38,7 +38,7 @@ from bidi.algorithm import get_display
 
 from accounting_app.services.schema_registry import cleanup_builtin_extension_values
 from ui.panels.report_support import (
-    farsi, to_jalali, from_jalali, ReportWorker, PurgeWorker, QueryWorker,
+    farsi, to_jalali, from_jalali, ReportWorker, PurgeWorker, PurgeFinalizeWorker, QueryWorker,
     SearchLineEdit, DataLoader, cache, wrap_scrollable,
 )
 
