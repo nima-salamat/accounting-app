@@ -78,4 +78,4 @@ class CheckoutWorker(QThread):
         except Exception:
             import logging
             logging.exception("Unable to persist checkout")
-            self.finished.emit(False, "خطایی در ثبت فروش رخ داد.")
+            self.checkout_done.emit(False, "خطایی در ثبت فروش رخ داد.")
