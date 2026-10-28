@@ -446,8 +446,9 @@ def accounting_summary(
 ):
     if start_date and end_date and start_date > end_date:
         raise HTTPException(status_code=422, detail="بازهٔ گزارش معتبر نیست.")
-    with DBManager():
-        _seed_chart()
+    as_of = end_date or date.today()
+
+    def aggregate(start=None, end=None, exclude_closing=False):
         query = (
             JournalLine.select(
                 LedgerAccount.id.alias("account_id"),
@@ -462,16 +463,20 @@ def accounting_summary(
             .join(JournalEntry)
             .where(JournalEntry.status == "posted")
         )
-        if start_date:
-            query = query.where(JournalEntry.entry_date >= start_date)
-        if end_date:
-            query = query.where(JournalEntry.entry_date <= end_date)
-        rows = list(query.group_by(LedgerAccount.id).order_by(LedgerAccount.code).dicts())
-        accounts = []
+        if start is not None:
+            query = query.where(JournalEntry.entry_date >= start)
+        if end is not None:
+            query = query.where(JournalEntry.entry_date <= end)
+        if exclude_closing:
+            query = query.where(JournalEntry.is_year_closing == False)
+        return list(query.group_by(LedgerAccount.id).order_by(LedgerAccount.code).dicts())
+
+    def money_rows(rows):
+        result = []
         for row in rows:
-            debit = Decimal(str(row["debit"] or 0))
-            credit = Decimal(str(row["credit"] or 0))
-            accounts.append({
+            debit = Decimal(str(row["debit"] or 0)).quantize(Decimal("0.01"))
+            credit = Decimal(str(row["credit"] or 0)).quantize(Decimal("0.01"))
+            result.append({
                 "account_id": str(row["account_id"]),
                 "code": row["code"],
                 "name": row["name"],
@@ -480,25 +485,87 @@ def accounting_summary(
                 "credit": str(credit),
                 "net": str(debit - credit),
             })
+        return result
+
+    with DBManager():
+        _seed_chart()
+        # The trial balance is the selected-period movement, including closing journals.
+        activity_rows = aggregate(start_date, end_date, exclude_closing=False)
+        accounts = money_rows(activity_rows)
         total_debit = sum((Decimal(row["debit"]) for row in accounts), Decimal("0"))
         total_credit = sum((Decimal(row["credit"]) for row in accounts), Decimal("0"))
+
+        # The profit-and-loss statement excludes closing entries so closed years still
+        # report their original revenue and expense rather than artificial zeros.
+        pnl_rows = money_rows(aggregate(start_date, end_date, exclude_closing=True))
         income = sum(
-            (Decimal(row["credit"]) - Decimal(row["debit"]) for row in accounts if row["account_type"] == "income"),
+            (Decimal(row["credit"]) - Decimal(row["debit"]) for row in pnl_rows if row["account_type"] == "income"),
             Decimal("0"),
         )
         expenses = sum(
-            (Decimal(row["debit"]) - Decimal(row["credit"]) for row in accounts if row["account_type"] == "expense"),
+            (Decimal(row["debit"]) - Decimal(row["credit"]) for row in pnl_rows if row["account_type"] == "expense"),
             Decimal("0"),
         )
+
+        # A balance sheet is cumulative through the selected end date, not just activity
+        # inside the report's start/end window.
+        balance_rows = money_rows(aggregate(None, as_of, exclude_closing=False))
         assets = sum(
-            (Decimal(row["debit"]) - Decimal(row["credit"]) for row in accounts if row["account_type"] == "asset"),
+            (Decimal(row["debit"]) - Decimal(row["credit"]) for row in balance_rows if row["account_type"] == "asset"),
             Decimal("0"),
         )
         liabilities_equity = sum(
-            (Decimal(row["credit"]) - Decimal(row["debit"]) for row in accounts if row["account_type"] in ("liability", "equity")),
+            (Decimal(row["credit"]) - Decimal(row["debit"]) for row in balance_rows if row["account_type"] in ("liability", "equity")),
             Decimal("0"),
         )
+
+        # Profit already transferred into retained earnings by posted year-close entries
+        # must not be added to equity again. Add only P&L activity in currently open periods.
+        unclosed_query = (
+            JournalLine.select(
+                LedgerAccount.account_type.alias("account_type"),
+                fn.COALESCE(fn.SUM(JournalLine.debit), 0).alias("debit"),
+                fn.COALESCE(fn.SUM(JournalLine.credit), 0).alias("credit"),
+            )
+            .join(LedgerAccount)
+            .switch(JournalLine)
+            .join(JournalEntry)
+            .where(
+                (JournalEntry.status == "posted")
+                & (JournalEntry.is_year_closing == False)
+                & (JournalEntry.entry_date <= as_of)
+                & (LedgerAccount.account_type.in_(("income", "expense")))
+            )
+        )
+        closed_years = list(
+            FiscalYear.select().where(
+                (FiscalYear.status == "closed") & (FiscalYear.end_date <= as_of)
+            )
+        )
+        for fiscal in closed_years:
+            unclosed_query = unclosed_query.where(
+                ~JournalEntry.entry_date.between(fiscal.start_date, fiscal.end_date)
+            )
+        unclosed_rows = list(unclosed_query.group_by(LedgerAccount.id).dicts())
+        unclosed_income = sum(
+            (
+                Decimal(str(row["credit"] or 0)) - Decimal(str(row["debit"] or 0))
+                for row in unclosed_rows if row["account_type"] == "income"
+            ),
+            Decimal("0"),
+        )
+        unclosed_expenses = sum(
+            (
+                Decimal(str(row["debit"] or 0)) - Decimal(str(row["credit"] or 0))
+                for row in unclosed_rows if row["account_type"] == "expense"
+            ),
+            Decimal("0"),
+        )
+        unclosed_profit = (unclosed_income - unclosed_expenses).quantize(Decimal("0.01"))
+        equity_with_current_profit = liabilities_equity + unclosed_profit
+
         return {
+            "as_of": as_of.isoformat(),
             "accounts": accounts,
             "trial_balance": {
                 "debit_total": str(total_debit),
@@ -506,11 +573,15 @@ def accounting_summary(
                 "balanced": total_debit == total_credit,
             },
             "profit_and_loss": {
-                "income": str(income), "expenses": str(expenses), "net_profit": str(income - expenses),
+                "income": str(income),
+                "expenses": str(expenses),
+                "net_profit": str(income - expenses),
             },
             "balance_sheet": {
-                "assets": str(assets), "liabilities_and_equity": str(liabilities_equity),
-                "difference": str(assets - liabilities_equity - (income - expenses)),
+                "assets": str(assets),
+                "liabilities_and_equity": str(equity_with_current_profit),
+                "unclosed_profit": str(unclosed_profit),
+                "difference": str((assets - equity_with_current_profit).quantize(Decimal("0.01"))),
             },
         }
 
