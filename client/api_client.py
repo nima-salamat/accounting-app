@@ -307,6 +307,29 @@ class AccountingApiClient:
         )
 
 
+    def list_inventory(self, q=None, low_stock_only=False, page=1, page_size=50):
+        return self._request(
+            "GET", "/api/v1/inventory",
+            params={"q": q, "low_stock_only": bool(low_stock_only),
+                    "page": page, "page_size": page_size},
+        )
+
+    def list_stock_movements(self, product_id=None, page=1, page_size=50):
+        return self._request(
+            "GET", "/api/v1/inventory/movements",
+            params={"product_id": str(product_id) if product_id else None,
+                    "page": page, "page_size": page_size},
+        )
+
+    def adjust_inventory(self, product_id, quantity_change, reason="correction", notes=None):
+        return self._request(
+            "POST", "/api/v1/inventory/adjustments",
+            json_body={
+                "product_id": str(product_id), "quantity_change": quantity_change,
+                "reason": reason, "notes": notes,
+            },
+        )
+
     def get_invoice_template(self):
         return self._request("GET", "/api/v1/invoices/template")
 
