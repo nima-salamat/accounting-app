@@ -331,7 +331,7 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.assertEqual(self.page.product_table.rowCount(), len(self.page.products))
         self.assertEqual(self.page.product_table.columnCount(), 5)
         self.assertEqual(self.page._product_add_buttons, {})
-        self.assertIsNone(self.page.product_table.cellWidget(0, 5))
+        self.assertFalse(self.page.product_table.findChildren(QPushButton, "SalesProductAddButton"))
         self.page.product_table.doubleClicked.emit(self.page.product_table.model().index(0, 1))
         self.assertEqual(self.page.collect_items()[0]["product_id"], "product-1")
 
