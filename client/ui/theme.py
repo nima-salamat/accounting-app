@@ -283,6 +283,8 @@ def stylesheet(mode="light", design=None):
     QLabel#SidebarSub {{ color: {sidebar_muted}; font-size: 11px; }}
     QLabel#SidebarSection {{ color: {sidebar_muted}; font-size: 10px; font-weight: 800; padding: 12px 11px 4px; }}
     QLabel#StatusPill {{ background: {highlight}; color: {primary}; border-radius: {corner_radius}px; padding: 6px 10px; font-weight: 700; }}
+    QLabel#SalesCartCountBadge {{ background: {highlight}; color: {primary}; border-radius: 7px; border: 1px solid {border}; padding: 0px; font-weight: 850; min-width: 28px; min-height: 26px; qproperty-alignment: AlignCenter; }}
+    QLineEdit#RecentInvoicesSearch {{ min-height: 30px; }}
     QPushButton {{
         background: {surface}; border: 1px solid {border}; border-radius: {corner_radius}px;
         padding: {control_padding}px {horizontal_padding}px; font-weight: 650; min-height: {control_height}px;
