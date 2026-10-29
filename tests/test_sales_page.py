@@ -11,7 +11,10 @@ from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication, QBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
 
 from client.ui.invoice_dialog import InvoicePreviewWidget
-from client.ui.invoice_render import DEFAULT_TEMPLATE, SALES_INVOICE_TEMPLATE_KIND
+from client.ui.invoice_render import (
+    DEFAULT_TEMPLATE, SALES_INVOICE_TEMPLATE_KIND, default_elements_for_paper,
+    page_dimensions,
+)
 from client.ui.sales_page import SalesPage
 from client.ui.data_pages import ReceiptsPage
 
@@ -706,6 +709,35 @@ class SalesPageLayoutTests(unittest.TestCase):
         preview._zoom(1.2)
         self.assertGreater(preview.preview.transform().m11(), scale_before)
         preview.fit_width()
+        preview.close()
+
+    def test_pos_inline_preview_uses_content_based_height_for_thermal_receipts(self):
+        preview = InvoicePreviewWidget()
+        preview.resize(700, 520)
+        preview.show()
+        self.app.processEvents()
+        template = dict(
+            DEFAULT_TEMPLATE,
+            paper_size="receipt80",
+            orientation="portrait",
+            margin_mm=4,
+            elements=default_elements_for_paper("receipt80", "portrait", 4),
+        )
+        receipt = {
+            "id": "short-pos-roll",
+            "day_receipt_id": 106,
+            "total_price": 300,
+            "items": [
+                {"product_name": "قلم", "quantity": 1, "sell_price": 100},
+                {"product_name": "دفتر", "quantity": 2, "sell_price": 100},
+            ],
+        }
+        preview.set_invoice(receipt, template)
+        self.app.processEvents()
+        _width, height = page_dimensions(preview.pages[0][1])
+        self.assertLess(height, 220.0)
+        self.assertAlmostEqual(preview._page_item.boundingRect().height(), height)
+        self.assertIn("رول پیوسته", preview.page_info.text())
         preview.close()
 
     def test_recent_invoices_are_a_mode_with_inline_preview(self):
