@@ -840,7 +840,7 @@ class SalesPage(QFrame):
         image_checkbox.setChecked(self._show_product_images)
         stock_checkbox = QCheckBox("نمایش موجودی کالا")
         stock_checkbox.setChecked(self._show_product_stock)
-        add_button_checkbox = QCheckBox("نمایش دکمهٔ افزودن به سبد")
+        add_button_checkbox = QCheckBox("نمایش دکمهٔ افزودن به سبد (در حالت کارت)")
         add_button_checkbox.setChecked(self._show_product_add_button)
         density_label = QLabel("تراکم کارت")
         density_combo = QComboBox()
@@ -933,13 +933,22 @@ class SalesPage(QFrame):
                     0, 3,
                     QTableWidgetItem("{:,.2f}".format(float(sample.get("sell_price") or 0))),
                 )
-                stock = max(0, int(float(sample.get("stock_quantity") or 0)))
+                sample_key = str(sample.get("id") or "")
+                capacity = self._stock_capacity(sample, sample_key)
+                stock = max(
+                    0,
+                    capacity - int(self._cart.get(sample_key, {}).get("quantity", 0)),
+                )
                 if sample.get("track_stock"):
                     stock_text = "ناموجود" if stock <= 0 else "موجودی: {:g}".format(stock)
                 else:
                     stock_text = "آماده فروش"
                 stock_badge = QLabel(stock_text)
                 stock_badge.setObjectName("SalesProductStock")
+                stock_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                stock_badge.setProperty(
+                    "outOfStock", bool(sample.get("track_stock") and stock <= 0)
+                )
                 table_preview.setCellWidget(0, 4, stock_badge)
                 table_preview.setFixedHeight(90)
                 preview_layout.addWidget(table_preview)
