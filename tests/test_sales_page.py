@@ -224,6 +224,16 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.assertEqual(self.page.cart_panel_toggle.text(), "‹")
         self.assertEqual(self.page.collect_items()[0]["quantity"], 1)
 
+    def test_empty_cart_summary_is_visible_and_not_clipped_on_initial_open(self):
+        self.assertEqual(self.page.cart_status_label.text(), "0 نوع · 0 عدد")
+        self.assertGreaterEqual(self.page.cart_status_label.minimumWidth(), 100)
+        self.assertGreaterEqual(
+            self.page.cart_status_label.maximumWidth(),
+            self.page.cart_status_label.sizeHint().width(),
+        )
+        self.page.add_to_cart(self.window.api.products[0])
+        self.assertEqual(self.page.cart_status_label.text(), "1 نوع · 1 عدد")
+
     def test_cart_quantity_updates_the_line_subtotal(self):
         self.page.refresh_products()
         self.page.add_to_cart(self.page.products[0])
@@ -559,33 +569,44 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.assertEqual(self.page.product_table.selectionModel().selectedRows(), [])
         self.assertFalse(self.page.product_deselect_button.isEnabled())
 
-    def test_table_column_widths_are_saved_and_restored(self):
+    def test_table_columns_fit_responsively_and_allow_manual_resize_without_persistence(self):
+        self.page.resize(1180, 780)
         self.page.refresh_products()
         self.page._apply_product_display_settings("table", True, "comfortable", 0)
-        self.page.product_table.setColumnWidth(1, 333)
-        self.page._save_product_table_column_widths()
-        self.assertIn("333", self.page._local_settings.value(
-            "sales/product_table_column_widths"
-        ))
+        self.app.processEvents()
+        table = self.page.product_table
+        self.page._fit_product_table_columns()
+        self.app.processEvents()
 
-        another_page = SalesPage(self.window)
-        try:
-            self.assertEqual(another_page._product_table_column_weights[1], 333)
-            another_page.show()
-            self.app.processEvents()
-            another_page._fit_product_table_columns()
+        def assert_table_fills_viewport():
             visible_width = sum(
-                another_page.product_table.columnWidth(column)
-                for column in range(another_page.product_table.columnCount())
-                if not another_page.product_table.isColumnHidden(column)
+                table.columnWidth(column)
+                for column in range(table.columnCount())
+                if not table.isColumnHidden(column)
             )
-            self.assertLessEqual(
-                abs(visible_width - another_page.product_table.viewport().width()), 2
-            )
-        finally:
-            another_page.close()
-            another_page.deleteLater()
+            self.assertLessEqual(abs(visible_width - table.viewport().width()), 2)
+            self.assertFalse(table.horizontalScrollBar().isVisible())
+
+        assert_table_fills_viewport()
+        original_column_width = table.columnWidth(1)
+        table.setColumnWidth(1, original_column_width + 60)
+        self.page._product_table_column_adjust_timer.stop()
+        self.page._remember_manual_product_table_column_widths()
+        self.app.processEvents()
+
+        # A manual drag changes live proportions but never writes a setting.
+        self.assertGreater(table.columnWidth(1), original_column_width)
+        self.assertFalse(
+            self.page._local_settings.contains("sales/product_table_column_widths")
+        )
+        assert_table_fills_viewport()
+
+        for page_width in (980, 880, 1180):
+            self.page.resize(page_width, 780)
             self.app.processEvents()
+            self.page._fit_product_table_columns()
+            self.app.processEvents()
+            assert_table_fills_viewport()
 
     def test_standalone_pos_exposes_theme_icon_but_desktop_client_does_not(self):
         self.assertTrue(self.page.theme_button.isHidden())

@@ -71,6 +71,8 @@ class SalesPage(QFrame):
         self._local_settings = QSettings(
             "AccountingApp", "POSClient" if self._is_standalone_pos else "DesktopClient"
         )
+        # Drop the obsolete fixed-pixel column preference from older versions.
+        self._local_settings.remove("sales/product_table_column_widths")
         self._cart_was_collapsed = self._local_settings.value(
             "sales/cart_collapsed", False, type=bool
         )
@@ -419,18 +421,19 @@ class SalesPage(QFrame):
         table_header = self.product_table.horizontalHeader()
         table_header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         table_header.setStretchLastSection(False)
-        # These weights describe proportions, not fixed pixel widths. The table
-        # redistributes them whenever its viewport changes size.
+        # Default proportions are in-memory only. Resizing a column adjusts the
+        # live proportions for this window, never a saved pixel/width preference.
         self._product_table_column_weights = [116, 198, 95, 105, 90, 100]
         for column, width in enumerate(self._product_table_column_weights):
             self.product_table.setColumnWidth(column, width)
-        self._restore_product_table_column_widths()
         self.product_table.viewport().installEventFilter(self)
-        self._product_table_width_save_timer = QTimer(self)
-        self._product_table_width_save_timer.setSingleShot(True)
-        self._product_table_width_save_timer.setInterval(300)
-        self._product_table_width_save_timer.timeout.connect(self._save_product_table_column_widths)
-        table_header.sectionResized.connect(self._schedule_product_table_width_save)
+        self._product_table_column_adjust_timer = QTimer(self)
+        self._product_table_column_adjust_timer.setSingleShot(True)
+        self._product_table_column_adjust_timer.setInterval(120)
+        self._product_table_column_adjust_timer.timeout.connect(
+            self._remember_manual_product_table_column_widths
+        )
+        table_header.sectionResized.connect(self._schedule_product_table_column_adjustment)
         self.product_table.itemSelectionChanged.connect(self._update_product_table_selection_controls)
         self.product_table.currentCellChanged.connect(self._update_product_table_selection_controls)
         self.product_table.doubleClicked.connect(self._add_table_selection_to_cart)
@@ -470,12 +473,16 @@ class SalesPage(QFrame):
         self.cart_title_box.addWidget(title)
         self.cart_title_box.addWidget(hint)
         header.addLayout(self.cart_title_box, 1)
-        self.cart_status_label = QLabel("۰")
+        self.cart_status_label = QLabel("0 نوع · 0 عدد")
         self.cart_status_label.setObjectName("StatusPill")
         self.cart_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.cart_status_label.setMinimumWidth(34)
-        self.cart_status_label.setMaximumWidth(48)
-        self.cart_status_label.setToolTip("تعداد کالاهای سبد خرید")
+        self.cart_status_label.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        self.cart_status_label.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
+        )
+        self.cart_status_label.setMinimumWidth(112)
+        self.cart_status_label.setMaximumWidth(220)
+        self.cart_status_label.setToolTip("تعداد کالاها و تعداد کل واحدهای سبد خرید")
         header.addWidget(self.cart_status_label)
         self.cart_header_layout = header
         layout.addLayout(header)
@@ -524,8 +531,8 @@ class SalesPage(QFrame):
             self.cart_panel.setMinimumWidth(320)
             self.cart_panel.show()
             self.cart_status_label.setObjectName("StatusPill")
-            self.cart_status_label.setMinimumWidth(58)
-            self.cart_status_label.setMaximumWidth(180)
+            self.cart_status_label.setMinimumWidth(112)
+            self.cart_status_label.setMaximumWidth(220)
             self.cart_status_label.style().unpolish(self.cart_status_label)
             self.cart_status_label.style().polish(self.cart_status_label)
             self.cart_scroll.show()
@@ -932,40 +939,27 @@ class SalesPage(QFrame):
         )
         self.product_deselect_button.setEnabled(in_table_mode and selected)
 
-    def _restore_product_table_column_widths(self):
-        """Restore preferred column proportions; absolute saved pixels are not layout."""
-        try:
-            raw = self._local_settings.value("sales/product_table_column_widths", "")
-            widths = json.loads(raw) if isinstance(raw, str) and raw else list(raw or [])
-            if len(widths) != self.product_table.columnCount():
-                return
-            parsed = [int(width) for width in widths]
-            if all(36 <= width <= 1200 for width in parsed):
-                self._product_table_column_weights = parsed
-        except (TypeError, ValueError, json.JSONDecodeError):
-            return
-
-    def _schedule_product_table_width_save(self, *_args):
-        timer = getattr(self, "_product_table_width_save_timer", None)
+    def _schedule_product_table_column_adjustment(self, *_args):
+        """Debounce manual header drags, without writing widths to persistent settings."""
+        timer = getattr(self, "_product_table_column_adjust_timer", None)
         if timer is not None:
             timer.start()
 
-    def _save_product_table_column_widths(self):
-        # This method is called after a user drags a column handle. Persist those
-        # proportions and then normalize them to the table's current viewport.
+    def _remember_manual_product_table_column_widths(self):
+        """Use the user's latest drag as live weights, then refit to the viewport."""
+        table = getattr(self, "product_table", None)
+        if table is None:
+            return
         widths = [
-            max(36, int(self.product_table.columnWidth(column)))
-            for column in range(self.product_table.columnCount())
+            max(1, int(table.columnWidth(column)))
+            for column in range(table.columnCount())
         ]
-        self._product_table_column_weights = widths
-        self._local_settings.setValue(
-            "sales/product_table_column_widths", json.dumps(widths)
-        )
-        self._local_settings.sync()
-        self._fit_product_table_columns()
+        if widths:
+            self._product_table_column_weights = widths
+            self._fit_product_table_columns()
 
     def _fit_product_table_columns(self):
-        """Fit every visible column to the table viewport, keeping the saved proportions."""
+        """Fit visible columns to the viewport using this window's current proportions."""
         table = getattr(self, "product_table", None)
         if table is None:
             return
