@@ -5,7 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import unittest
 from decimal import Decimal
 
-from PySide6.QtWidgets import QApplication, QLineEdit
+from PySide6.QtWidgets import QApplication, QLabel, QLineEdit
 from pydantic import ValidationError
 
 from client.ui.currency import (
@@ -56,7 +56,7 @@ class CurrencyDisplayTests(unittest.TestCase):
         control = dialog.inputs["sell_price"]
         self.assertIsInstance(control, QLineEdit)
         self.assertEqual(control.text(), "1250000")
-        self.assertIn("ریال", dialog.findChild(type(dialog.layout().itemAt(1).widget().itemAt(0).widget()), ""))
+        self.assertTrue(any("ریال" in label.text() for label in dialog.findChildren(QLabel)))
         control.setText("1750000")
         value = Decimal(dialog.values()["sell_price"])
         self.assertEqual(value, Decimal("175000"))
