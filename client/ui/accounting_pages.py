@@ -10,7 +10,9 @@ from PySide6.QtWidgets import (
 )
 
 from client.ui.permissions import can_access
-from client.ui.currency import currency_label, format_currency, to_base_amount, to_display_amount
+from client.ui.currency import (
+    currency_label, format_currency, format_display_amount, to_base_amount,
+)
 
 
 ACCOUNT_TYPE_LABELS = {
@@ -160,8 +162,8 @@ class ManualJournalDialog(QDialog):
         difference = round(debit - credit, 2)
         self.totals.setText(
             "بدهکار {}   |   بستانکار {}   |   اختلاف {}".format(
-                format_currency(debit), format_currency(credit),
-                format_currency(difference, signed=True),
+                format_display_amount(debit), format_display_amount(credit),
+                format_display_amount(difference, signed=True),
             )
         )
         self.totals.setStyleSheet("color:#17846D;" if difference == 0 and debit > 0 else "color:#C74455;")
