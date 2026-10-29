@@ -447,7 +447,7 @@ class InvoiceTemplatesPage(QFrame):
         business_layout.addLayout(business_form)
         properties_layout.addWidget(business_card)
 
-        properties_layout.addStretch(1)        properties_layout.addStretch(1)
+        properties_layout.addStretch(1)
         properties_scroll.setWidget(properties)
 
         # Physical page in the center.
