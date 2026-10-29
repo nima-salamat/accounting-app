@@ -622,6 +622,7 @@ class SalesPageLayoutTests(unittest.TestCase):
         }
         self.page._populate_recent_receipts({"items": [record], "total": 1, "page": 1})
         table = self.page._history_tables["all"]
+        table.setCurrentCell(0, 1)
         table.selectRow(0)
         self.app.processEvents()
         self.assertTrue(self.page.history_deselect_button.isEnabled())
