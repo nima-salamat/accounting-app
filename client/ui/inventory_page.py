@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 )
 
 from client.ui.permissions import can_access
+from client.ui.currency import format_currency
 
 
 REASON_LABELS = {
@@ -249,7 +250,7 @@ class InventoryPage(QFrame):
                 "فعال" if record.get("track_stock") else "خاموش",
                 "{:,.4f}".format(stock).rstrip("0").rstrip("."),
                 "{:,.4f}".format(threshold).rstrip("0").rstrip("."),
-                "{:,.2f}".format(float(record.get("sell_price") or 0)),
+                format_currency(record.get("sell_price")),
             ]
             for col, value in enumerate(values):
                 item = QTableWidgetItem(str(value))
