@@ -1,12 +1,25 @@
-"""Shared design tokens and stylesheet for all Qt client windows."""
+"""Shared design tokens, application palette, and QDarkStyle-backed Qt stylesheet."""
 from copy import deepcopy
+import logging
 import re
 
 from PySide6.QtCore import QEvent, QObject
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication, QAbstractSpinBox
 
+try:
+    import qdarkstyle
+    from qdarkstyle.dark.palette import DarkPalette
+    from qdarkstyle.light.palette import LightPalette
+except ImportError:  # Keep the custom design system available in recovery environments.
+    qdarkstyle = None
+    DarkPalette = LightPalette = None
+
+_LOGGER = logging.getLogger(__name__)
+_CURRENT_MODE = "light"
+
 LIGHT = {
-    "window": "#F3F6FB", "surface": "#FFFFFF", "surface_alt": "#F7F9FC",
+    "window": "#F5F7FB", "surface": "#FFFFFF", "surface_alt": "#F7F9FC",
     "text": "#172337", "muted": "#718096", "border": "#DEE6F0",
     "primary": "#315FAD", "primary_hover": "#244B8B", "accent": "#168779",
     "danger": "#C74455", "sidebar": "#15263D", "sidebar_text": "#E8EFF8",
@@ -105,9 +118,65 @@ def get_design_config():
     return deepcopy(_CURRENT_DESIGN)
 
 
+
+
+def current_theme_mode():
+    """Return the active application theme, including for dialogs created later."""
+    app = QApplication.instance()
+    if app is not None:
+        configured = app.property("accountingAppThemeMode")
+        if configured in ("light", "dark"):
+            return configured
+    return _CURRENT_MODE
+
+
+def _apply_application_palette(mode, colors):
+    """Make empty viewports and native controls inherit the same app colors."""
+    app = QApplication.instance()
+    if app is None:
+        return
+    palette = QPalette(app.palette())
+    roles = {
+        QPalette.ColorRole.Window: "window",
+        QPalette.ColorRole.WindowText: "text",
+        QPalette.ColorRole.Base: "surface",
+        QPalette.ColorRole.AlternateBase: "surface_alt",
+        QPalette.ColorRole.ToolTipBase: "sidebar",
+        QPalette.ColorRole.ToolTipText: "sidebar_text",
+        QPalette.ColorRole.Text: "text",
+        QPalette.ColorRole.Button: "surface",
+        QPalette.ColorRole.ButtonText: "text",
+        QPalette.ColorRole.BrightText: "danger",
+        QPalette.ColorRole.Highlight: "primary",
+        QPalette.ColorRole.HighlightedText: "selection_text",
+        QPalette.ColorRole.Link: "primary",
+        QPalette.ColorRole.PlaceholderText: "muted",
+    }
+    for role, token in roles.items():
+        palette.setColor(role, QColor(colors[token]))
+    app.setPalette(palette)
+    app.setProperty("accountingAppThemeMode", mode)
+
+
+def _base_stylesheet(mode):
+    """Load QDarkStyle's native-control styles with its matching light/dark palette."""
+    if qdarkstyle is None:
+        return ""
+    palette = DarkPalette if mode == "dark" else LightPalette
+    try:
+        return qdarkstyle.load_stylesheet(qt_api="pyside6", palette=palette)
+    except Exception:
+        # Resource failures should not prevent the accounting client from opening.
+        _LOGGER.exception("QDarkStyle failed to load; using the application stylesheet fallback.")
+        return ""
+
+
 def stylesheet(mode="light", design=None):
-    """Build a consistent light/dark stylesheet using normalized central design tokens."""
+    """Compose QDarkStyle controls with the shared application design tokens."""
+    global _CURRENT_MODE
     install_spinbox_wheel_guard()
+    mode = "dark" if mode == "dark" else "light"
+    _CURRENT_MODE = mode
     colors = dict(DARK if mode == "dark" else LIGHT)
     d = normalize_design_config(_CURRENT_DESIGN if design is None else design)
     density_factor = {"compact": 0.82, "comfortable": 1.0, "spacious": 1.18}[d["density"]]
@@ -126,16 +195,23 @@ def stylesheet(mode="light", design=None):
         "auth_hero_title_size": round(d["font_size"] * 2.1 * d["heading_scale"]),
         "auth_button_size": round(d["font_size"] * 1.05),
     })
-    return r"""
+    app_stylesheet = r"""
     * {{ font-family: "{font_family}", "Vazirmatn", "Segoe UI", "Noto Sans Arabic", sans-serif; }}
-    QWidget {{ color: {text}; font-size: {font_size}px; }}
+    QWidget {{ color: {text}; font-size: {font_size}px; background-color: transparent; }}
     QMainWindow, QDialog {{ background: {window}; }}
     QWidget#AppRoot, QWidget#AuthRoot, QWidget#WizardRoot {{ background: {window}; }}
     QFrame#Card, QGroupBox#Card {{ background: {surface}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
+    QFrame#SidebarBrandmark {{ background: {primary}; color: #FFFFFF; border-radius: 13px; font-size: 23px; font-weight: 900; }}
     QFrame#AuthCard {{ background: {surface}; border: 1px solid {border}; border-radius: 22px; }}
     QFrame#AuthHero {{ background: {sidebar}; border: 1px solid rgba(255,255,255,0.07); border-radius: 22px; }}
     QFrame#AuthFeature {{ background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; }}
     QFrame#AuthSection {{ background: {surface_alt}; border: 1px solid {border}; border-radius: 14px; }}
+    QWidget#AuthForm {{ background: transparent; }}
+    QLabel#StatusDot {{ color: {accent}; font-size: 12px; }}
+    QLabel#StatusDot[state="error"] {{ color: {danger}; }}
+    QLabel#AuthPendingIcon {{ color: {primary}; font-size: 34px; }}
+    QLabel#AuthPendingTitle {{ color: {text}; font-size: 18px; font-weight: 800; }}
+    QLabel#AuthConnectionStatus[connected="true"] {{ color: {accent}; font-weight: 700; }}
     QFrame#Workbar {{ background: {surface}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
     QFrame#WorkbarPrimaryRow {{ background: transparent; border: none; }}
     QFrame#WorkbarSubmenuRow {{ background: {surface_alt}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
@@ -202,7 +278,8 @@ def stylesheet(mode="light", design=None):
     }}
     QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTextEdit:focus {{ border: 1px solid {primary}; }}
     QComboBox::drop-down {{ border: none; width: 24px; }}
-    QTableWidget {{ background: {surface}; alternate-background-color: {surface_alt}; border: 1px solid {border}; border-radius: {corner_radius}px; gridline-color: transparent; selection-background-color: {selection}; selection-color: {selection_text}; outline: 0; }}
+    QTableWidget, QTableView {{ background: {surface}; alternate-background-color: {surface_alt}; border: 1px solid {border}; border-radius: {corner_radius}px; gridline-color: transparent; selection-background-color: {selection}; selection-color: {selection_text}; outline: 0; }}
+    QTableWidget#ResourceTable::item:selected, QTableWidget#ResourceTable::item:selected:!active {{ background: {selection}; color: {selection_text}; }}
     QTableWidget::item {{ padding: 9px 8px; border-bottom: 1px solid {border}; }}
     QTableWidget::item:selected, QTableWidget::item:selected:!active, QTableView::item:selected, QListWidget::item:selected {{ background: {selection}; color: {selection_text}; }}
     QHeaderView::section {{ background: {surface_alt}; color: {muted}; border: none; border-bottom: 1px solid {border}; padding: 12px 10px; font-weight: 800; }}
@@ -211,10 +288,33 @@ def stylesheet(mode="light", design=None):
     QTabBar::tab:selected {{ color: {primary}; background: {surface}; font-weight: 800; }}
     QProgressBar {{ border: none; border-radius: 4px; background: {border}; height: 7px; text-align: center; }}
     QProgressBar::chunk {{ background: {primary}; border-radius: 4px; }}
-    QScrollArea {{ border: none; background: transparent; }}
+    QScrollArea, QAbstractScrollArea, QStackedWidget {{ border: none; background: transparent; }}
+    QScrollArea::viewport, QAbstractScrollArea::viewport {{ background: transparent; border: none; }}
     QSplitter::handle {{ background: {border}; width: 5px; }}
-    QCheckBox {{ spacing: 8px; }}
-    QCheckBox::indicator {{ width: 17px; height: 17px; }}
-    QToolTip {{ background: {sidebar}; color: white; border: none; padding: 7px; }}
+    QCheckBox, QRadioButton {{ spacing: 8px; background: transparent; padding: 3px 2px; }}
+    QCheckBox::indicator, QRadioButton::indicator {{ width: 18px; height: 18px; }}
+    QCheckBox:hover, QRadioButton:hover {{ color: {primary}; }}
+    QCheckBox:checked, QRadioButton:checked {{ color: {primary}; font-weight: 650; }}
+    QGroupBox {{ background: {surface}; color: {text}; border: 1px solid {border}; border-radius: {corner_radius}px; margin-top: 12px; padding: 12px 10px 10px 10px; }}
+    QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 5px; color: {text}; background: {surface}; }}
+    QListWidget, QListView, QTreeWidget, QTreeView {{ background: {surface}; color: {text}; alternate-background-color: {surface_alt}; border: 1px solid {border}; border-radius: {corner_radius}px; outline: 0; padding: 4px; }}
+    QListWidget::item, QListView::item, QTreeWidget::item, QTreeView::item {{ background: transparent; padding: 7px 8px; border-radius: 5px; }}
+    QListWidget::item:hover, QListView::item:hover, QTreeWidget::item:hover, QTreeView::item:hover {{ background: {highlight}; color: {text}; }}
+    QListWidget::item:selected, QListView::item:selected, QTreeWidget::item:selected, QTreeView::item:selected {{ background: {selection}; color: {selection_text}; }}
+    QAbstractItemView {{ background: {surface}; alternate-background-color: {surface_alt}; color: {text}; selection-background-color: {selection}; selection-color: {selection_text}; outline: 0; }}
+    QComboBox QAbstractItemView {{ background: {surface}; color: {text}; border: 1px solid {border}; selection-background-color: {selection}; selection-color: {selection_text}; padding: 4px; }}
+    QScrollBar:vertical {{ background: {surface_alt}; width: 12px; margin: 2px; border: none; }}
+    QScrollBar::handle:vertical {{ background: {border}; min-height: 24px; border-radius: 5px; }}
+    QScrollBar::handle:vertical:hover {{ background: {muted}; }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical, QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; border: none; height: 0px; }}
+    QScrollBar:horizontal {{ background: {surface_alt}; height: 12px; margin: 2px; border: none; }}
+    QScrollBar::handle:horizontal {{ background: {border}; min-width: 24px; border-radius: 5px; }}
+    QScrollBar::handle:horizontal:hover {{ background: {muted}; }}
+    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal, QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{ background: transparent; border: none; width: 0px; }}
+    QToolTip {{ background: {sidebar}; color: {sidebar_text}; border: none; padding: 7px; }}
     QMessageBox {{ background: {surface}; }}
     """.format(**colors)
+    app = QApplication.instance()
+    if app is not None:
+        _apply_application_palette(mode, colors)
+    return _base_stylesheet(mode) + "\n" + app_stylesheet
