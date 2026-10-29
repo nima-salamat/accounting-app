@@ -125,7 +125,14 @@ class InvoiceNumberingPageTests(unittest.TestCase):
         self.app.processEvents()
 
     def test_numbering_has_its_own_page_and_is_not_shown_in_invoice_designer(self):
-        self.assertTrue(self.designer.invoice_number_card.isHidden())
+        self.assertIs(self.designer.invoice_number_card.parentWidget(), self.designer)
+        self.assertEqual(
+            self.designer.invoice_number_card.objectName(),
+            "InvoiceNumberingCompatibilityCard",
+        )
+        self.assertIsNone(self.designer.invoice_number_card.parentWidget().layout().indexOf(
+            self.designer.invoice_number_card
+        ))
         self.assertEqual(self.page.invoice_number_style.currentData(), "date_daily")
         self.assertEqual(self.page.title_label.text(), "شماره‌گذاری فاکتور")
 

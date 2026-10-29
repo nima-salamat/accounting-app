@@ -428,7 +428,7 @@ class InvoiceTemplatesPage(QFrame):
 
         self.invoice_number_card = QFrame(self)
         self.invoice_number_card.hide()
-        self.invoice_number_card.setObjectName("Card")
+        self.invoice_number_card.setObjectName("InvoiceNumberingCompatibilityCard")
         number_layout = QVBoxLayout(self.invoice_number_card)
         number_layout.setContentsMargins(12, 12, 12, 12)
         number_layout.setSpacing(8)
