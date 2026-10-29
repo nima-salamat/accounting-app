@@ -235,8 +235,10 @@ class SalesPage(QFrame):
         footer.addWidget(self.payment_method_label)
         footer.addWidget(self.payment_method_combo)
         footer.addStretch(1)
-        footer.addWidget(self.total_label)
+        # In the RTL footer the cancel action is inserted before the total so it
+        # appears immediately to the total's right on screen.
         footer.addWidget(self.cancel_edit_button)
+        footer.addWidget(self.total_label)
         footer.addWidget(self.submit_button)
         self.footer_layout = footer
         self.sales_layout.addWidget(footer_card)
