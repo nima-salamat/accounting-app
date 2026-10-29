@@ -814,7 +814,9 @@ class SalesPage(QFrame):
         in_table_mode = getattr(self, "_product_layout_mode", "grid") == "table"
         self.product_deselect_button.setVisible(in_table_mode)
         table = getattr(self, "product_table", None)
-        selected = bool(table and table.selectionModel().selectedRows())
+        # Use the selection model's state rather than selectedRows(): some Qt
+        # builds omit a row index when cell widgets and hidden columns are present.
+        selected = bool(table and table.selectionModel().hasSelection())
         self.product_deselect_button.setEnabled(in_table_mode and selected)
 
     def _restore_product_table_column_widths(self):
