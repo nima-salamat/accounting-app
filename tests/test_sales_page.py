@@ -30,6 +30,7 @@ class _PagedApi:
             for index in range(1, 102)
         ]
         self.list_calls = []
+        self.recent_calls = []
 
     def list_products_page(self, q=None, category_id=None, page=1, page_size=24):
         self.list_calls.append((q, category_id, page, page_size))
@@ -46,7 +47,8 @@ class _PagedApi:
             "total": len(matches),
         }
 
-    def list_recent_receipts_page(self, page=1, page_size=50):
+    def list_recent_receipts_page(self, q=None, page=1, page_size=50):
+        self.recent_calls.append((q, page, page_size))
         return {"items": [], "page": page, "page_size": page_size, "total": 0}
 
     def list_categories_page(self, page=1, page_size=200):
@@ -121,9 +123,10 @@ class SalesPageLayoutTests(unittest.TestCase):
         settings.setValue("sales/show_product_stock", True)
         settings.setValue("sales/show_product_add_button", True)
         settings.setValue("sales/product_stock_display_style", "text")
+        settings.setValue("sales/zoom_product_images", True)
         settings.setValue("sales/use_category_tabs", False)
         settings.setValue("sales/cart_collapsed", False)
-        settings.setValue("sales/history_preview_collapsed", False)
+        settings.setValue("sales/history_preview_collapsed", True)
         settings.remove("sales/history_splitter_sizes")
         settings.remove("sales/product_table_column_widths")
         settings.sync()
@@ -588,13 +591,10 @@ class SalesPageLayoutTests(unittest.TestCase):
             reopened.deleteLater()
             self.app.processEvents()
 
-    def test_invoice_preview_can_collapse_and_reopen_with_persisted_state(self):
+    def test_invoice_preview_is_closed_by_default_and_can_reopen(self):
         self.page.set_workspace_mode("history")
         self.app.processEvents()
         preview_panel = self.page.history_splitter.widget(1)
-        self.assertFalse(preview_panel.isHidden())
-        self.page._set_history_preview_visible(False)
-        self.app.processEvents()
         self.assertTrue(preview_panel.isHidden())
         self.assertTrue(self.page.history_preview_reopen_button.isVisible())
         self.assertTrue(self.page._local_settings.value(
@@ -604,9 +604,13 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.page._set_history_preview_visible(True)
         self.app.processEvents()
         self.assertFalse(preview_panel.isHidden())
-        self.assertTrue(self.page.history_preview_close_button.isVisible())
-        self.assertFalse(self.page._local_settings.value(
-            "sales/history_preview_collapsed", True, type=bool
+        self.assertEqual(self.page.history_preview_reopen_button.toolTip(), "بستن پیش‌نمایش فاکتور")
+        self.page._set_history_preview_visible(False)
+        self.app.processEvents()
+        self.assertTrue(preview_panel.isHidden())
+        self.assertEqual(self.page.history_preview_reopen_button.toolTip(), "بازکردن پیش‌نمایش فاکتور")
+        self.assertTrue(self.page._local_settings.value(
+            "sales/history_preview_collapsed", False, type=bool
         ))
 
     def test_invoice_deselect_clears_selection_and_preview(self):
@@ -639,6 +643,8 @@ class SalesPageLayoutTests(unittest.TestCase):
             "items": [{"product_id": "product-1", "product_name": "item-1", "sell_price": 50, "quantity": 1}],
         }
         self.page._set_history_invoice_preview({"receipt": receipt, "template": DEFAULT_TEMPLATE})
+        self.assertFalse(self.page.history_splitter.widget(1).isHidden())
+        self.assertTrue(self.page.history_preview_close_button.isVisible())
         self.assertEqual(self.page.history_preview_status.text(), "شماره: 44")
         self.assertIn(receipt_id, self.page.history_preview_status.toolTip())
         self.page.history_preview_status.click()
@@ -666,6 +672,36 @@ class SalesPageLayoutTests(unittest.TestCase):
                     self.assertGreater(os.path.getsize(path), 100)
         finally:
             preview.close()
+
+
+
+    def test_recent_invoice_search_passes_query_to_server_and_resets_page(self):
+        self.page.set_workspace_mode("history")
+        self.page.history_search_input.setText("invoice-17")
+        self.page.history_search_button.click()
+        q, page, page_size = self.window.api.recent_calls[-1]
+        self.assertEqual(q, "invoice-17")
+        self.assertEqual(page, 1)
+        self.assertEqual(page_size, self.page._history_page_size)
+        self.assertEqual(self.page._history_search_query, "invoice-17")
+
+    def test_list_layout_has_a_visible_add_button_and_zoom_can_be_disabled(self):
+        self.page.refresh_products()
+        self.page._apply_product_display_settings("list", True, "comfortable", 0)
+        self.app.processEvents()
+        card = self.page.product_grid.itemAt(0).widget()
+        add_button = card.findChild(QPushButton, "SalesProductAddButton")
+        self.assertIsNotNone(add_button)
+        self.assertTrue(add_button.isVisible())
+        self.assertGreater(add_button.width(), 0)
+
+        self.page._apply_product_display_settings(
+            "grid", True, "comfortable", 0, zoom_images=False
+        )
+        self.assertFalse(self.page._zoom_product_images)
+        self.assertFalse(self.page._local_settings.value(
+            "sales/zoom_product_images", True, type=bool
+        ))
 
 if __name__ == "__main__":
     unittest.main()
