@@ -21,7 +21,8 @@ class POSWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Accounting App · صندوق فروش")
+        self.setWindowTitle("Accounting App POS · صندوق فروش")
+        self.standalone_pos = True
         self.resize(1180, 780)
         self.setMinimumSize(880, 620)
         self.local_settings = QSettings("AccountingApp", "POSClient")
@@ -44,32 +45,26 @@ class POSWindow(QMainWindow):
         self.stack.addWidget(self.auth_page)
 
         self.sales_page = SalesPage(self)
-        sales_host = QWidget()
-        sales_host.setObjectName("AppRoot")
-        sales_layout = QVBoxLayout(sales_host)
-        sales_layout.setContentsMargins(12, 12, 12, 12)
-        sales_layout.setSpacing(10)
-        topbar = QFrame()
-        topbar.setObjectName("Card")
-        top_layout = QHBoxLayout(topbar)
-        top_layout.setContentsMargins(16, 10, 16, 10)
-        title = QLabel("صندوق فروش")
-        title.setObjectName("PageTitle")
+
         self.status = QLabel("برای شروع وارد حساب کاربری شوید.")
-        self.status.setObjectName("PageSubtitle")
-        top_layout.addWidget(title)
-        top_layout.addStretch(1)
-        top_layout.addWidget(self.status)
+        self.status.setObjectName("StatusPill")
+        self.status.setMaximumWidth(260)
+        self.status.setToolTip("وضعیت صندوق فروش")
+        self.sales_page.header_layout.addWidget(self.status)
+
         self.device_button = QPushButton("تنظیم دستگاه‌ها")
+        self.device_button.setObjectName("SalesToolbarButton")
+        self.device_button.setToolTip("تنظیم چاپگر و کارت‌خوان")
         self.device_button.clicked.connect(self.configure_devices)
-        top_layout.addWidget(self.device_button)
+        self.sales_page.header_layout.addWidget(self.device_button)
+
         self.logout_button = QPushButton("خروج")
-        self.logout_button.setObjectName("DangerButton")
+        self.logout_button.setObjectName("SalesToolbarButton")
+        self.logout_button.setToolTip("خروج از حساب کاربری")
         self.logout_button.clicked.connect(self.logout)
-        top_layout.addWidget(self.logout_button)
-        sales_layout.addWidget(topbar)
-        sales_layout.addWidget(self.sales_page, 1)
-        self.stack.addWidget(sales_host)
+        self.sales_page.header_layout.addWidget(self.logout_button)
+
+        self.stack.addWidget(self.sales_page)
         self.setCentralWidget(self.stack)
         self.stack.setCurrentWidget(self.auth_page)
         self.setStyleSheet(stylesheet(self.mode))
@@ -95,7 +90,8 @@ class POSWindow(QMainWindow):
             )
             return
         self.stack.setCurrentIndex(1)
-        self.set_status("صندوق آماده است · کاربر {}".format(user.get("username", "")))
+        self.sales_page.set_permissions(user)
+        self.set_status("صندوق آماده است · {}".format(user.get("username", "")))
         self.sales_page.refresh_products()
 
     def set_status(self, message):
@@ -180,6 +176,7 @@ class POSWindow(QMainWindow):
         self.local_settings.sync()
         self.setStyleSheet(stylesheet(mode))
         self.auth_page.set_mode(mode)
+        self.sales_page.sync_theme_button()
 
     def closeEvent(self, event):
         for worker in list(self._workers.values()):

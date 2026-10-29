@@ -5,7 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import unittest
 from PySide6.QtCore import Qt, QSettings
-from PySide6.QtWidgets import QApplication, QLabel, QSpinBox
+from PySide6.QtWidgets import QApplication, QLabel
 
 from client.ui.sales_page import SalesPage
 
@@ -203,9 +203,10 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.page.refresh_products()
         self.page.add_to_cart(self.page.products[0])
         self.app.processEvents()
-        quantity_spin = self.page.cart_items_host.findChildren(QSpinBox)[0]
-        quantity_spin.setValue(3)
-        self.assertEqual(self.page._cart_line_total_labels["product-1"].text(), "مجموع: 3.00")
+        self.page._cart_plus_buttons["product-1"].click()
+        self.page._cart_plus_buttons["product-1"].click()
+        self.assertEqual(self.page._cart_quantity_labels["product-1"].text(), "3")
+        self.assertEqual(self.page._cart_line_total_labels["product-1"].text(), "3.00")
         self.assertEqual(self.page.total_label.text(), "جمع تخمینی: 3.00")
 
     def test_search_suggestions_are_similar_results_and_load_more_is_paginated(self):
@@ -264,11 +265,8 @@ class SalesPageLayoutTests(unittest.TestCase):
         image = card.findChild(QLabel, "SalesProductImage")
         self.assertLessEqual(image.maximumHeight(), 74)
 
-    def test_POS_theme_toggle_is_visible_and_changes_the_mode(self):
-        self.assertTrue(self.page.theme_button.isVisible())
-        self.page.theme_button.click()
-        self.assertEqual(self.window.mode, "dark")
-        self.assertIn("تم روشن", self.page.theme_button.text())
+    def test_sales_page_does_not_duplicate_global_theme_control(self):
+        self.assertTrue(self.page.theme_button.isHidden())
 
     def test_image_visibility_is_user_configurable(self):
         self.assertTrue(self.page.show_images_checkbox.isChecked())

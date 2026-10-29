@@ -12,7 +12,7 @@ from client.ui.icons import apply_button_icons, set_button_icon
 
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QMessageBox, QPushButton, QScrollArea, QSpinBox, QSplitter, QTableWidget,
+    QMessageBox, QPushButton, QScrollArea, QSplitter, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QHeaderView, QWidget, QListWidget, QListWidgetItem,
 )
 
@@ -35,9 +35,13 @@ class SalesPage(QFrame):
         self._product_add_buttons = {}
         self._product_stock_labels = {}
         self._cart_line_total_labels = {}
+        self._cart_quantity_labels = {}
+        self._cart_plus_buttons = {}
+        self._cart_minus_buttons = {}
         self._category_names = {}
         self._rendered_columns = 0
         self._business_profile = {}
+        self._is_standalone_pos = bool(getattr(window, "standalone_pos", False))
         self._editing_receipt_id = None
         self._editing_receipt = None
         self._can_edit_receipts = False
@@ -51,7 +55,9 @@ class SalesPage(QFrame):
         self._search_timer.setInterval(280)
         self._search_timer.timeout.connect(self._run_search_suggestions)
 
-        self._local_settings = QSettings("AccountingApp", "DesktopClient")
+        self._local_settings = QSettings(
+            "AccountingApp", "POSClient" if self._is_standalone_pos else "DesktopClient"
+        )
         saved_sizes = self._local_settings.value("sales/splitter_sizes", [780, 360])
         try:
             self._saved_splitter_sizes = [max(1, int(saved_sizes[0])), max(1, int(saved_sizes[1]))]
@@ -61,57 +67,57 @@ class SalesPage(QFrame):
             "sales/show_product_images", True, type=bool
         )
 
-        self.setObjectName("Card")
+        self.setObjectName("POSWorkspace" if self._is_standalone_pos else "Card")
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(12)
+        if self._is_standalone_pos:
+            root.setContentsMargins(6, 6, 6, 6)
+        else:
+            root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(8)
 
-        # Keep global sale actions outside the splitter so they remain reachable
-        # when the cashier collapses the cart or resizes the product catalog.
+        # The host window already identifies the sales screen. Keep every action
+        # in one compact toolbar; never render a second page title here.
         header = QHBoxLayout()
-        title_box = QVBoxLayout()
-        title = QLabel("صندوق فروش")
-        title.setObjectName("PageTitle")
-        subtitle = QLabel("کالاها را انتخاب کنید و سبد را بررسی کنید؛ مبلغ قطعی و موجودی همیشه سمت سرور اعتبارسنجی می‌شود.")
-        subtitle.setObjectName("PageSubtitle")
-        subtitle.setWordWrap(True)
-        title_box.addWidget(title)
-        title_box.addWidget(subtitle)
-        header.addLayout(title_box, 1)
+        header.setContentsMargins(2, 0, 2, 0)
+        header.setSpacing(6)
+        self.header_layout = header
 
         self.invoice_mode_label = QLabel("فروش جدید")
         self.invoice_mode_label.setObjectName("StatusPill")
         header.addWidget(self.invoice_mode_label)
 
         self.theme_button = QPushButton("☾ تم تاریک")
-        self.theme_button.setObjectName("CompactActionButton")
-        self.theme_button.setToolTip("تغییر تم روشن / تاریک")
+        self.theme_button.setObjectName("SalesToolbarButton")
+        self.theme_button.setToolTip("تم برنامه از نوار ابزار اصلی کنترل می‌شود")
         self.theme_button.clicked.connect(self._toggle_theme)
-        header.addWidget(self.theme_button)
+        self.theme_button.hide()
 
         self.cancel_edit_button = QPushButton("لغو ویرایش")
-        self.cancel_edit_button.setToolTip("لغو ویرایش فاکتور و بازگشت به فروش جدید")
+        self.cancel_edit_button.setObjectName("SalesToolbarButton")
+        self.cancel_edit_button.setToolTip("لغو ویرایش و بازگشت به فروش جدید")
         self.cancel_edit_button.clicked.connect(self.cancel_invoice_edit)
         self.cancel_edit_button.hide()
         header.addWidget(self.cancel_edit_button)
 
-        self.refresh_button = QPushButton("بازخوانی کالاها")
+        self.refresh_button = QPushButton("بازخوانی")
+        self.refresh_button.setObjectName("SalesToolbarButton")
+        self.refresh_button.setToolTip("بازخوانی کالاها")
         self.refresh_button.clicked.connect(self.refresh_products)
         header.addWidget(self.refresh_button)
 
         self.history_button = QPushButton("فاکتورهای اخیر")
+        self.history_button.setObjectName("SalesToolbarButton")
         self.history_button.clicked.connect(self.show_recent_receipts)
         header.addWidget(self.history_button)
 
-        self.show_cart_button = QPushButton("نمایش سبد")
-        self.show_cart_button.setObjectName("PrimaryButton")
+        self.show_cart_button = QPushButton("سبد")
+        self.show_cart_button.setObjectName("SalesToolbarButton")
+        self.show_cart_button.setToolTip("نمایش پنل سبد خرید")
         self.show_cart_button.clicked.connect(lambda: self._set_cart_panel_visible(True))
         self.show_cart_button.hide()
-        set_button_icon(self.show_cart_button, "cart", getattr(self.window, "mode", "light"))
         header.addWidget(self.show_cart_button)
         root.addLayout(header)
-
         self.splitter = QSplitter(Qt.Orientation.Horizontal, self)
         self.splitter.setObjectName("SalesWorkspaceSplitter")
         self.splitter.setChildrenCollapsible(False)
@@ -188,8 +194,8 @@ class SalesPage(QFrame):
         panel.setObjectName("Card")
         panel.setMinimumWidth(300)
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
+        layout.setContentsMargins(9, 9, 9, 9)
+        layout.setSpacing(7)
 
         title_row = QHBoxLayout()
         title = QLabel("فهرست کالاها")
@@ -337,7 +343,8 @@ class SalesPage(QFrame):
     def _set_cart_panel_visible(self, visible):
         """Toggle the left cart without losing quantities or splitter proportions."""
         visible = bool(visible)
-        if visible == self.cart_panel.isVisible():
+        currently_visible = not self.cart_panel.isHidden()
+        if visible == currently_visible:
             return
         if not visible:
             sizes = self.splitter.sizes()
@@ -370,7 +377,8 @@ class SalesPage(QFrame):
     def sync_theme_button(self):
         mode = getattr(self.window, "mode", "light")
         self.theme_button.setText("☾ تم تاریک" if mode == "light" else "☀ تم روشن")
-        self.theme_button.setToolTip("تغییر تم روشن / تاریک")
+        self.theme_button.setToolTip("تم برنامه از نوار ابزار اصلی کنترل می‌شود")
+        self.theme_button.hide()
 
     def _payment_status_changed(self, paid):
         self.payment_method_combo.setEnabled(bool(paid))
@@ -811,7 +819,19 @@ class SalesPage(QFrame):
             line_total = self._cart_line_total_labels.get(product_key)
             if line_total is not None:
                 price = float(product.get("sell_price") or 0)
-                line_total.setText("مجموع: {:,.2f}".format(price * quantity))
+                line_total.setText("{:,.2f}".format(price * quantity))
+            quantity_label = self._cart_quantity_labels.get(product_key)
+            if quantity_label is not None:
+                quantity_label.setText(str(quantity))
+            minus_button = self._cart_minus_buttons.get(product_key)
+            if minus_button is not None:
+                minus_button.setEnabled(quantity > 1)
+            plus_button = self._cart_plus_buttons.get(product_key)
+            if plus_button is not None:
+                plus_button.setEnabled(
+                    not product.get("track_stock")
+                    or quantity < self._stock_capacity(product, product_key)
+                )
             self._refresh_cart_summary()
             self._refresh_product_stock_states()
 
@@ -834,8 +854,11 @@ class SalesPage(QFrame):
                 widget.deleteLater()
 
     def _render_cart(self):
-        """Render selected products separately from the currently visible catalog page."""
+        """Render a compact invoice-like cart line with small quantity and remove controls."""
         self._cart_line_total_labels = {}
+        self._cart_quantity_labels = {}
+        self._cart_plus_buttons = {}
+        self._cart_minus_buttons = {}
         while self.cart_items_layout.count():
             item = self.cart_items_layout.takeAt(0)
             widget = item.widget()
@@ -848,55 +871,92 @@ class SalesPage(QFrame):
         for key, entry in self._cart.items():
             product = entry["product"]
             quantity = int(entry["quantity"])
+            price = float(product.get("sell_price") or 0)
+
             card = QFrame()
             card.setObjectName("SalesCartItem")
-            row_layout = QVBoxLayout(card)
-            row_layout.setContentsMargins(10, 8, 10, 8)
+            card.setMinimumHeight(56)
+            card.setMaximumHeight(74)
+            row_layout = QHBoxLayout(card)
+            row_layout.setContentsMargins(8, 6, 8, 6)
             row_layout.setSpacing(6)
 
-            title_row = QHBoxLayout()
+            product_info = QWidget(card)
+            info_layout = QVBoxLayout(product_info)
+            info_layout.setContentsMargins(0, 0, 0, 0)
+            info_layout.setSpacing(1)
             title = QLabel(str(product.get("name") or "کالا"))
             title.setObjectName("SalesCartItemTitle")
             title.setWordWrap(True)
-            remove = QPushButton("حذف")
-            remove.setObjectName("DangerButton")
-            remove.setToolTip("حذف این کالا از سبد")
-            remove.clicked.connect(lambda _checked=False, item_key=key: self._remove_cart_item(item_key))
-            set_button_icon(remove, "delete", getattr(self.window, "mode", "light"))
-            title_row.addWidget(title, 1)
-            title_row.addWidget(remove)
-            row_layout.addLayout(title_row)
-
-            price = float(product.get("sell_price") or 0)
             unit_price = QLabel("هر واحد: {:,.2f}".format(price))
             unit_price.setObjectName("PageSubtitle")
-            row_layout.addWidget(unit_price)
+            info_layout.addWidget(title)
+            info_layout.addWidget(unit_price)
+            row_layout.addWidget(product_info, 1)
 
-            quantity_row = QHBoxLayout()
-            quantity_label = QLabel("تعداد")
-            quantity_label.setObjectName("PageSubtitle")
-            quantity_spin = QSpinBox()
-            quantity_spin.setMinimum(0)
-            quantity_spin.setMaximum(
-                max(0, int(float(product.get("stock_quantity") or 0)))
-                if product.get("track_stock") else 100000
+            minus = QPushButton("−")
+            minus.setObjectName("SalesQtyButton")
+            minus.setToolTip("کم‌کردن تعداد")
+            minus.setAccessibleName("کم‌کردن تعداد {}".format(product.get("name") or "کالا"))
+            minus.setFixedSize(27, 27)
+            minus.setEnabled(quantity > 1)
+            minus.clicked.connect(
+                lambda _checked=False, item_key=key: self._change_cart_quantity(item_key, -1)
             )
-            quantity_spin.setValue(quantity)
-            quantity_spin.valueChanged.connect(
-                lambda value, item_key=key: self._set_cart_quantity(item_key, value)
+            row_layout.addWidget(minus)
+            self._cart_minus_buttons[key] = minus
+
+            quantity_label = QLabel(str(quantity))
+            quantity_label.setObjectName("SalesCartQuantity")
+            quantity_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            quantity_label.setMinimumWidth(22)
+            quantity_label.setMaximumWidth(34)
+            row_layout.addWidget(quantity_label)
+            self._cart_quantity_labels[key] = quantity_label
+
+            plus = QPushButton("+")
+            plus.setObjectName("SalesQtyButton")
+            plus.setToolTip("زیادکردن تعداد")
+            plus.setAccessibleName("زیادکردن تعداد {}".format(product.get("name") or "کالا"))
+            plus.setFixedSize(27, 27)
+            plus.setEnabled(
+                not product.get("track_stock")
+                or quantity < self._stock_capacity(product, key)
             )
-            line_total = QLabel("مجموع: {:,.2f}".format(price * quantity))
+            plus.clicked.connect(
+                lambda _checked=False, item_key=key: self._change_cart_quantity(item_key, 1)
+            )
+            row_layout.addWidget(plus)
+            self._cart_plus_buttons[key] = plus
+
+            line_total = QLabel("{:,.2f}".format(price * quantity))
             line_total.setObjectName("SalesCartLineTotal")
+            line_total.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            line_total.setMinimumWidth(62)
             self._cart_line_total_labels[key] = line_total
-            quantity_row.addWidget(quantity_label)
-            quantity_row.addWidget(quantity_spin)
-            quantity_row.addStretch(1)
-            quantity_row.addWidget(line_total)
-            row_layout.addLayout(quantity_row)
+            row_layout.addWidget(line_total)
+
+            remove = QPushButton("×")
+            remove.setObjectName("SalesRemoveButton")
+            remove.setToolTip("حذف کالا از فاکتور")
+            remove.setAccessibleName("حذف {}".format(product.get("name") or "کالا"))
+            remove.setFixedSize(26, 26)
+            remove.clicked.connect(
+                lambda _checked=False, item_key=key: self._remove_cart_item(item_key)
+            )
+            row_layout.addWidget(remove)
 
             self.cart_items_layout.addWidget(card)
         self.cart_items_layout.addStretch(1)
         self._refresh_cart_summary()
+
+    def _change_cart_quantity(self, product_key, delta):
+        entry = self._cart.get(product_key)
+        if not entry:
+            return
+        self._set_cart_quantity(
+            product_key, int(entry.get("quantity") or 0) + int(delta)
+        )
 
     def _refresh_cart_summary(self):
         total = 0.0
@@ -1104,97 +1164,231 @@ class SalesPage(QFrame):
         InvoiceDialog(receipt, template, self.window).exec()
 
     def show_recent_receipts(self):
+        """Open a tabbed recent-invoice workspace with a consistent preview/edit flow."""
         if not self.window.api:
             return
-        hours = int((getattr(self.window, "company_profile", None) or {}).get("receipt_history_hours", 48))
-        from PySide6.QtWidgets import QDialog, QTableWidget, QTableWidgetItem, QVBoxLayout, QHeaderView
+
+        from PySide6.QtWidgets import QApplication, QDialog, QTabWidget
+
+        hours = int(
+            (getattr(self.window, "company_profile", None) or {}).get(
+                "receipt_history_hours", 48
+            )
+        )
         dialog = QDialog(self)
+        dialog.setObjectName("RecentInvoicesDialog")
         dialog.setWindowTitle("فاکتورهای اخیر")
-        dialog.resize(980, 580)
         dialog.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        screen = self.window.screen() if hasattr(self.window, "screen") else QApplication.primaryScreen()
+        if screen is None:
+            dialog.resize(1120, 760)
+        else:
+            available = screen.availableGeometry()
+            dialog.resize(
+                min(1480, max(800, int(available.width() * 0.92))),
+                min(1180, max(560, int(available.height() * 0.88))),
+            )
+        dialog.setMinimumSize(760, 480)
+
         root = QVBoxLayout(dialog)
-        title = QLabel("فاکتورهای {} ساعت اخیر".format(hours))
+        root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(8)
+
+        heading = QHBoxLayout()
+        title = QLabel("مدیریت فاکتورها")
         title.setObjectName("PageTitle")
-        hint = QLabel("فاکتورهای پرداخت‌نشده با رنگ قرمز علامت‌گذاری شده‌اند. این فهرست بر اساس بازه تنظیم‌شده در پنل مدیریت محدود است.")
-        hint.setObjectName("PageSubtitle")
-        hint.setWordWrap(True)
-        root.addWidget(title)
-        root.addWidget(hint)
-        table = QTableWidget(0, 6)
-        table.setHorizontalHeaderLabels(["شناسه", "وضعیت پرداخت", "تاریخ", "صندلی / میز", "مبلغ", "روش پرداخت"])
-        table.setColumnHidden(0, True)
-        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        table.setAlternatingRowColors(True)
-        table.verticalHeader().setVisible(False)
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        root.addWidget(table, 1)
+        subtitle = QLabel(
+            "سوابق {} ساعت اخیر · برای مشاهده دوبار کلیک کنید یا ویرایش را انتخاب کنید.".format(hours)
+        )
+        subtitle.setObjectName("PageSubtitle")
+        subtitle.setWordWrap(True)
+        heading.addWidget(title)
+        heading.addWidget(subtitle, 1)
+        root.addLayout(heading)
+
+        tabs = QTabWidget(dialog)
+        tabs.setObjectName("RecentInvoicesTabs")
+        tabs.setDocumentMode(True)
+        root.addWidget(tabs, 1)
+
+        tab_specs = (
+            ("all", "همهٔ فاکتورها"),
+            ("unpaid", "پرداخت‌نشده"),
+            ("paid", "پرداخت‌شده"),
+        )
+        tables = {}
+        tab_labels = {}
+        for key, label in tab_specs:
+            page = QWidget(tabs)
+            page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(4, 8, 4, 4)
+            page_layout.setSpacing(6)
+            table = QTableWidget(0, 7, page)
+            table.setObjectName("RecentInvoicesTable")
+            table.setHorizontalHeaderLabels([
+                "شناسه", "شماره فاکتور", "وضعیت", "تاریخ", "میز / صندلی", "مبلغ", "روش پرداخت"
+            ])
+            table.setColumnHidden(0, True)
+            table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+            table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+            table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+            table.setAlternatingRowColors(True)
+            table.verticalHeader().setVisible(False)
+            table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+            table.setWordWrap(False)
+            page_layout.addWidget(table, 1)
+            page_hint = QLabel("")
+            page_hint.setObjectName("PageSubtitle")
+            page_layout.addWidget(page_hint)
+            tabs.addTab(page, label)
+            tables[key] = table
+            tab_labels[key] = (page_hint, label)
+
         footer = QHBoxLayout()
-        status = QLabel("")
-        status.setObjectName("PageSubtitle")
-        open_button = QPushButton("نمایش و چاپ")
-        open_button.setObjectName("PrimaryButton")
+        history_status = QLabel("در حال بارگذاری فاکتورها…")
+        history_status.setObjectName("PageSubtitle")
+        load_more_button = QPushButton("بارگذاری فاکتورهای بیشتر")
+        load_more_button.setObjectName("SalesToolbarButton")
+        load_more_button.setToolTip("دریافت صفحهٔ بعدی فاکتورها")
+        refresh_history_button = QPushButton("بازخوانی")
+        refresh_history_button.setObjectName("SalesToolbarButton")
+        preview_button = QPushButton("پیش‌نمایش فاکتور")
+        preview_button.setObjectName("PrimaryButton")
         edit_button = QPushButton("بارگذاری برای ویرایش")
         edit_button.setObjectName("PrimaryButton")
         edit_button.setVisible(self._can_edit_receipts)
         close_button = QPushButton("بستن")
-        footer.addWidget(status, 1)
-        footer.addWidget(open_button)
+        close_button.setObjectName("SalesToolbarButton")
+        footer.addWidget(history_status, 1)
+        footer.addWidget(load_more_button)
+        footer.addWidget(refresh_history_button)
+        footer.addWidget(preview_button)
         footer.addWidget(edit_button)
         footer.addWidget(close_button)
         root.addLayout(footer)
         close_button.clicked.connect(dialog.reject)
 
-        def populate(payload):
-            records = list(payload.get("items") or [])
-            table.setRowCount(0)
-            for row, item in enumerate(records):
-                table.insertRow(row)
-                paid = bool(item.get("payed"))
-                created_at = str(item.get("created_at") or "—").replace("T", " ")[:19]
-                values = [
-                    str(item.get("id") or ""),
-                    "پرداخت‌شده" if paid else "پرداخت‌نشده",
-                    created_at,
-                    str(item.get("seat_number") or "—"),
-                    "{:,.2f}".format(float(item.get("total_price") or 0)),
-                    str(item.get("payment_method") or "—"),
-                ]
-                for col, value in enumerate(values):
-                    cell = QTableWidgetItem(value)
-                    if col == 0:
-                        cell.setData(Qt.ItemDataRole.UserRole, item)
-                    if not paid:
-                        cell.setBackground(QBrush(QColor("#FCE8E6")))
-                        cell.setForeground(QBrush(QColor("#9B1C1C")))
-                    table.setItem(row, col, cell)
-            status.setText("{} فاکتور · {} مورد پرداخت‌نشده".format(
-                len(records), sum(not bool(item.get("payed")) for item in records)
-            ))
+        page_size = 50
+        current_page = 0
+        total_records = 0
+        records = []
 
-        def selected_receipt():
+        def filtered_records(key):
+            if key == "unpaid":
+                return [item for item in records if not bool(item.get("payed"))]
+            if key == "paid":
+                return [item for item in records if bool(item.get("payed"))]
+            return list(records)
+
+        def render_tables():
+            for key, table in tables.items():
+                visible_records = filtered_records(key)
+                table.setRowCount(0)
+                for row, record in enumerate(visible_records):
+                    table.insertRow(row)
+                    receipt_id = str(record.get("id") or "")
+                    number = record.get("day_receipt_id") or receipt_id[:8] or "—"
+                    paid = bool(record.get("payed"))
+                    payment_method = {
+                        "cash": "نقدی",
+                        "card": "کارت",
+                        "bank_transfer": "انتقال بانکی",
+                        "store_credit": "اعتباری",
+                        "unpaid": "پرداخت‌نشده",
+                    }.get(str(record.get("payment_method") or ""), "—")
+                    values = [
+                        receipt_id,
+                        str(number),
+                        "پرداخت‌شده" if paid else "پرداخت‌نشده",
+                        str(record.get("created_at") or "—").replace("T", " ")[:19],
+                        str(record.get("seat_number") or "—"),
+                        "{:,.2f}".format(float(record.get("total_price") or 0)),
+                        payment_method,
+                    ]
+                    for column, value in enumerate(values):
+                        cell = QTableWidgetItem(value)
+                        if column == 0:
+                            cell.setData(Qt.ItemDataRole.UserRole, record)
+                        table.setItem(row, column, cell)
+
+                page_hint, label = tab_labels[key]
+                page_hint.setText("{} فاکتور در این تب".format(len(visible_records)))
+                tabs.setTabText(
+                    tabs.indexOf(table.parentWidget()),
+                    "{} ({})".format(label, len(visible_records)),
+                )
+
+            unpaid_count = sum(not bool(item.get("payed")) for item in records)
+            paid_count = len(records) - unpaid_count
+            history_status.setText(
+                "{} از {} فاکتور بارگذاری شده · {} پرداخت‌نشده · {} پرداخت‌شده".format(
+                    len(records), total_records, unpaid_count, paid_count
+                )
+            )
+            load_more_button.setVisible(len(records) < total_records)
+            load_more_button.setEnabled(len(records) < total_records)
+
+        def populate(payload, append=False):
+            nonlocal current_page, total_records, records
+            incoming = list(payload.get("items") or [])
+            if not append:
+                records = []
+            known_ids = {str(item.get("id") or "") for item in records}
+            for record in incoming:
+                record_id = str(record.get("id") or "")
+                if record_id and record_id not in known_ids:
+                    records.append(record)
+                    known_ids.add(record_id)
+            try:
+                total_records = max(0, int(payload.get("total", len(records)) or 0))
+                current_page = max(1, int(payload.get("page", current_page or 1) or 1))
+            except (TypeError, ValueError):
+                total_records = len(records)
+                current_page = max(1, current_page or 1)
+            render_tables()
+
+        def load_page(page, append=False):
+            load_more_button.setEnabled(False)
+            self.window.run_api(
+                lambda: self.window.api.list_recent_receipts_page(
+                    page=page, page_size=page_size
+                ),
+                lambda payload: populate(payload, append=append),
+                failure=lambda error: (
+                    history_status.setText("دریافت فاکتورها ناموفق بود."),
+                    QMessageBox.warning(dialog, "خطای دریافت فاکتورها", str(error)),
+                    load_more_button.setEnabled(True),
+                ),
+                busy=refresh_history_button if not append else load_more_button,
+            )
+
+        def selected_record():
+            key = next(
+                (name for name, table in tables.items() if tabs.currentWidget() is table.parentWidget()),
+                "all",
+            )
+            table = tables[key]
             row = table.currentRow()
             cell = table.item(row, 0) if row >= 0 else None
             record = cell.data(Qt.ItemDataRole.UserRole) if cell else None
             if not record:
-                QMessageBox.information(dialog, "انتخاب فاکتور", "ابتدا یک فاکتور را انتخاب کنید.")
+                QMessageBox.information(dialog, "انتخاب فاکتور", "ابتدا یک فاکتور را از تب جاری انتخاب کنید.")
                 return None
             return record
 
         def open_selected():
-            record = selected_receipt()
+            record = selected_record()
             if not record:
                 return
             self.window.run_api(
                 lambda: self._load_recent_invoice(record["id"]),
                 lambda result: self._show_recent_invoice(result, dialog),
                 failure=lambda error: QMessageBox.warning(dialog, "خطای دریافت فاکتور", str(error)),
-                busy=open_button,
+                busy=preview_button,
             )
 
         def edit_selected():
-            record = selected_receipt()
+            record = selected_record()
             if not record:
                 return
             self.window.run_api(
@@ -1204,15 +1398,16 @@ class SalesPage(QFrame):
                 busy=edit_button,
             )
 
-        open_button.clicked.connect(open_selected)
+        for key, table in tables.items():
+            table.cellDoubleClicked.connect(
+                lambda _row, _column, _key=key: open_selected()
+            )
+        preview_button.clicked.connect(open_selected)
         edit_button.clicked.connect(edit_selected)
-        table.cellDoubleClicked.connect(lambda _row, _column: open_selected())
-        dialog.setMinimumSize(760, 460)
-        self.window.run_api(
-            self.window.api.list_recent_receipts_page,
-            populate,
-            failure=lambda error: QMessageBox.warning(dialog, "خطای دریافت فاکتورها", str(error)),
-        )
+        load_more_button.clicked.connect(lambda: load_page(current_page + 1, append=True))
+        refresh_history_button.clicked.connect(lambda: load_page(1, append=False))
+
+        load_page(1, append=False)
         apply_button_icons(dialog, getattr(self.window, "mode", "light"))
         dialog.exec()
 

@@ -216,7 +216,17 @@ def stylesheet(mode="light", design=None):
     QFrame#Workbar {{ background: {surface}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
     QFrame#WorkbarPrimaryRow {{ background: transparent; border: none; }}
     QFrame#WorkbarSubmenuRow {{ background: {surface_alt}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
+    QFrame#POSWorkspace {{ background: transparent; border: none; }}
     QFrame#SalesProductCard, QFrame#SalesCartItem {{ background: {surface}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
+    QPushButton#SalesToolbarButton {{ min-height: 30px; max-height: 32px; padding: 5px 9px; border-radius: 7px; }}
+    QPushButton#SalesQtyButton {{ background: {surface_alt}; color: {text}; border: 1px solid {border}; border-radius: 7px; padding: 0; font-size: 16px; font-weight: 800; }}
+    QPushButton#SalesQtyButton:hover {{ background: {highlight}; border-color: {primary}; }}
+    QPushButton#SalesQtyButton:disabled {{ color: {muted}; background: {surface_alt}; }}
+    QPushButton#SalesRemoveButton {{ background: transparent; color: {danger}; border: 1px solid transparent; border-radius: 7px; padding: 0; font-size: 18px; font-weight: 700; }}
+    QPushButton#SalesRemoveButton:hover {{ background: {surface_alt}; border-color: {border}; }}
+    QLabel#SalesCartQuantity {{ color: {text}; font-size: 13px; font-weight: 800; }}
+    QTabWidget#RecentInvoicesTabs::pane {{ border: 1px solid {border}; border-radius: {corner_radius}px; background: {surface}; }}
+    QTabWidget#RecentInvoicesTabs QTabBar::tab {{ padding: 9px 16px; margin-right: 3px; }}
     QFrame#SalesSearchSuggestions {{ background: {surface_alt}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
     QListWidget#SalesSearchSuggestionList {{ background: {surface}; border: 1px solid {border}; border-radius: 7px; padding: 2px; }}
     QListWidget#SalesSearchSuggestionList::item {{ padding: 5px 8px; border-bottom: 1px solid {border}; }}
@@ -292,8 +302,10 @@ def stylesheet(mode="light", design=None):
     QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit, QDateTimeEdit, QTextEdit, QTextBrowser {{
         background: {surface}; color: {text}; border: 1px solid {border}; border-radius: {corner_radius}px;
         padding: {control_padding}px {horizontal_padding}px; min-height: {control_content_height}px;
-        selection-background-color: {primary};
+        selection-background-color: {selection}; selection-color: {selection_text};
     }}
+    QAbstractSpinBox QLineEdit {{ selection-background-color: {selection}; selection-color: {selection_text}; }}
+    QLineEdit::selection, QTextEdit::selection, QTextBrowser::selection {{ background: {selection}; color: {selection_text}; }}
     QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTextEdit:focus {{ border: 1px solid {primary}; }}
     QComboBox::drop-down {{ border: none; width: 24px; }}
     QTableWidget, QTableView {{ background: {surface}; alternate-background-color: {surface_alt}; border: 1px solid {border}; border-radius: {corner_radius}px; gridline-color: transparent; selection-background-color: {selection}; selection-color: {selection_text}; outline: 0; }}

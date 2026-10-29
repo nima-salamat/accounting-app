@@ -1,9 +1,9 @@
 """Exact-sized preview, PDF and printer output for positioned invoice elements."""
-from PySide6.QtCore import QRectF, QSizeF, QMarginsF, Qt
+from PySide6.QtCore import QRectF, QSizeF, QMarginsF, Qt, QTimer
 from PySide6.QtGui import QColor, QPageSize, QPageLayout, QPainter
 from PySide6.QtPrintSupport import QPrinter, QPrintDialog
 from PySide6.QtWidgets import (
-    QDialog, QFileDialog, QFrame, QGraphicsItem, QGraphicsScene, QGraphicsView,
+    QApplication, QDialog, QFileDialog, QFrame, QGraphicsItem, QGraphicsScene, QGraphicsView,
     QHBoxLayout, QMessageBox, QPushButton, QVBoxLayout,
 )
 
@@ -72,11 +72,19 @@ class InvoiceDialog(QDialog):
         self.current_page_index = 0
         self.template = dict(self.pages[0][1])
         self.setWindowTitle("پیش‌نمایش فاکتور · چاپ و PDF")
-        self.resize(1000, 820)
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            available = screen.availableGeometry()
+            self.resize(
+                min(1480, max(800, int(available.width() * 0.94))),
+                min(1180, max(600, int(available.height() * 0.92))),
+            )
+        else:
+            self.resize(1200, 900)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(10)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(6)
 
         self.scene = QGraphicsScene(self)
         page_receipt, page_template = self.pages[0]
@@ -87,7 +95,9 @@ class InvoiceDialog(QDialog):
         self.preview.setObjectName("InvoicePrintPreview")
         self.preview.setBackgroundBrush(QColor("#E9EDF4"))
         self.preview.setFrameShape(QFrame.Shape.NoFrame)
-        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
+        self.preview.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.preview.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.preview.setRenderHints(self.preview.renderHints())
         layout.addWidget(self.preview, 1)
 
@@ -99,6 +109,9 @@ class InvoiceDialog(QDialog):
         self.next_page_button = QPushButton("صفحهٔ بعد")
         self.previous_page_button.clicked.connect(lambda: self._show_page(self.current_page_index - 1))
         self.next_page_button.clicked.connect(lambda: self._show_page(self.current_page_index + 1))
+        self.fit_width_button = QPushButton("برازش عرض صفحه")
+        self.fit_width_button.setToolTip("بزرگ‌نمایی برگه تا عرض فضای پیش‌نمایش")
+        self.fit_width_button.clicked.connect(self._fit_page)
         self.pdf_button = QPushButton("ذخیره به PDF")
         self.print_button = QPushButton("چاپ فاکتور")
         self.close_button = QPushButton("بستن")
@@ -107,12 +120,18 @@ class InvoiceDialog(QDialog):
         self.print_button.clicked.connect(self.print_invoice)
         actions.addWidget(self.previous_page_button)
         actions.addWidget(self.next_page_button)
+        actions.addWidget(self.fit_width_button)
         actions.addStretch(1)
         actions.addWidget(self.pdf_button)
         actions.addWidget(self.print_button)
         actions.addWidget(self.close_button)
         layout.addLayout(actions)
         self._show_page(0)
+        QTimer.singleShot(0, self._fit_page)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self._fit_page)
 
     def _page_info_text(self):
         page_template = self.pages[self.current_page_index][1]
@@ -146,8 +165,16 @@ class InvoiceDialog(QDialog):
         self._fit_page()
 
     def _fit_page(self):
-        if hasattr(self, "page_item"):
-            self.preview.fitInView(self.page_item, Qt.AspectRatioMode.KeepAspectRatio)
+        """Fit paper to the available width, not the height of a wide preview window."""
+        if not hasattr(self, "page_item"):
+            return
+        viewport_width = max(1, self.preview.viewport().width() - 8)
+        page_width = max(1.0, self.page_item.boundingRect().width())
+        scale = viewport_width / page_width
+        self.preview.resetTransform()
+        self.preview.scale(scale, scale)
+        self.preview.horizontalScrollBar().setValue(0)
+        self.preview.verticalScrollBar().setValue(0)
 
     def _paint_invoice(self, printer):
         pages = prepare_invoice_pages(self.receipt, self.template)
