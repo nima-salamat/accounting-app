@@ -729,8 +729,16 @@ class SalesPage(QFrame):
                 ))
         if hasattr(self, "_history_records"):
             self._render_recent_receipt_tables()
-        if getattr(self, "_history_invoice_payload", None) and hasattr(self, "history_invoice_preview"):
-            self._set_history_invoice_preview(self._history_invoice_payload)
+        if (
+            getattr(self, "_history_invoice_payload", None)
+            and hasattr(self, "history_invoice_preview")
+            and not getattr(self, "_history_preview_collapsed", True)
+        ):
+            payload = self._history_invoice_payload
+            self.history_invoice_preview.set_invoice(
+                payload.get("receipt") or {},
+                payload.get("template") or DEFAULT_TEMPLATE,
+            )
 
     def _payment_status_changed(self, paid):
         self.payment_method_combo.setEnabled(bool(paid))
