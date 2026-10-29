@@ -759,9 +759,14 @@ class ReceiptsPage(QFrame):
         )
 
     def _load_invoice_template(self, receipt):
+        # A receipt must use the separately designed POS-receipt template, not
+        # the default "invoice" template used for full-page sales invoices.
         self.window.run_api(
-            self.window.api.get_invoice_template,
+            lambda: self.window.api.get_invoice_template(kind="pos_receipt"),
             lambda template: InvoiceDialog(receipt, template, self).exec(),
+            failure=lambda error: self.window.show_error(
+                "قالب رسید صندوق از تنظیمات ادمین بارگذاری نشد: {}".format(error)
+            ),
         )
 
     def delete_receipt(self):

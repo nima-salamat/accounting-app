@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QSizePolicy, QW
 from client.ui.invoice_dialog import InvoicePreviewWidget
 from client.ui.invoice_render import DEFAULT_TEMPLATE
 from client.ui.sales_page import SalesPage
+from client.ui.data_pages import ReceiptsPage
 
 
 class _PagedApi:
@@ -31,6 +32,7 @@ class _PagedApi:
         ]
         self.list_calls = []
         self.recent_calls = []
+        self.invoice_template_calls = []
 
     def list_products_page(self, q=None, category_id=None, page=1, page_size=24):
         self.list_calls.append((q, category_id, page, page_size))
@@ -72,6 +74,10 @@ class _PagedApi:
 
     def get_product_image_bytes(self, product_id):
         return None
+
+    def get_invoice_template(self, *, kind="invoice"):
+        self.invoice_template_calls.append(kind)
+        return {"kind": kind, "paper_size": "receipt80" if kind == "pos_receipt" else "A4"}
 
 
 class _WindowStub:
@@ -233,6 +239,31 @@ class SalesPageLayoutTests(unittest.TestCase):
         )
         self.page.add_to_cart(self.window.api.products[0])
         self.assertEqual(self.page.cart_status_label.text(), "1 نوع · 1 عدد")
+
+    def test_receipt_list_previews_the_admin_configured_pos_receipt_template(self):
+        receipts_page = ReceiptsPage(self.window)
+        receipt = {
+            "id": "receipt-1",
+            "day_receipt_id": 11,
+            "total_price": 125,
+            "payed": True,
+            "items": [],
+        }
+        try:
+            with patch("client.ui.data_pages.InvoiceDialog") as dialog:
+                receipts_page._load_invoice_template(receipt)
+
+            self.assertEqual(self.window.api.invoice_template_calls, ["pos_receipt"])
+            dialog.assert_called_once_with(
+                receipt,
+                {"kind": "pos_receipt", "paper_size": "receipt80"},
+                receipts_page,
+            )
+            dialog.return_value.exec.assert_called_once_with()
+        finally:
+            receipts_page.close()
+            receipts_page.deleteLater()
+            self.app.processEvents()
 
     def test_cart_quantity_updates_the_line_subtotal(self):
         self.page.refresh_products()
