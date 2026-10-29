@@ -479,11 +479,12 @@ class SalesPage(QFrame):
             self.cart_scroll.hide()
             self.clear_cart_button.hide()
             self.cart_empty_label.hide()
-            self.cart_panel.setMinimumWidth(160)
+            collapsed_width = 160
+            self.cart_panel.setMinimumWidth(collapsed_width)
             self.cart_panel_toggle.setText("›")
             self.cart_panel_toggle.setToolTip("بازکردن پنل سبد خرید")
             total = max(1, sum(sizes))
-            self.splitter.setSizes([max(1, total - 140), 140])
+            self.splitter.setSizes([max(1, total - collapsed_width), collapsed_width])
         self._refresh_cart_summary()
 
     def set_permissions(self, user):
@@ -540,6 +541,15 @@ class SalesPage(QFrame):
             mode,
             accessible_name="تغییر تم روشن یا تاریک",
         )
+        # Refresh icons are semantic too, so tint them whenever the theme changes.
+        for button_name, action in (
+            ("refresh_button", "refresh"),
+            ("history_refresh_button", "refresh"),
+            ("product_deselect_button", "clear"),
+        ):
+            button = getattr(self, button_name, None)
+            if button is not None:
+                set_button_icon(button, action, mode)
 
     def _payment_status_changed(self, paid):
         self.payment_method_combo.setEnabled(bool(paid))
