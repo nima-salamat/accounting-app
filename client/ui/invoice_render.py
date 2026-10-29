@@ -7,6 +7,11 @@ import re
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QBrush, QFont, QPainter, QPen
 
+from accounting_app.services.invoice_numbering import (
+    DEFAULT_INVOICE_NUMBER_FORMAT, DEFAULT_INVOICE_NUMBER_PADDING,
+    format_invoice_number, validate_invoice_number_format,
+)
+
 # Desktop POS sales and its receipts history share the admin-designed sales invoice.
 # Thermal kiosk receipts remain a separate print workflow.
 SALES_INVOICE_TEMPLATE_KIND = "invoice"
@@ -81,7 +86,10 @@ def default_elements_for_paper(paper_size="A4", orientation="portrait", margin_m
 DEFAULT_TEMPLATE = {
     "company_name": "نام کسب‌وکار", "legal_id": "", "address": "", "phone": "",
     "seat_number_label": "شماره صندلی / میز",
-    "footer": "از خرید شما سپاسگزاریم.", "paper_size": "A4", "orientation": "portrait",
+    "footer": "از خرید شما سپاسگزاریم.",
+    "invoice_number_format": DEFAULT_INVOICE_NUMBER_FORMAT,
+    "invoice_number_padding": DEFAULT_INVOICE_NUMBER_PADDING,
+    "paper_size": "A4", "orientation": "portrait",
     "font_family": "Vazirmatn", "font_size": 11, "header_font_size": 23,
     "line_height": 1.8, "text_direction": "rtl",
     "margin_mm": 12, "accent_color": "#3157A4", "show_border": True,
@@ -226,6 +234,18 @@ def _template_config(template=None):
     config["accent_color"] = _valid_color(config.get("accent_color"), DEFAULT_TEMPLATE["accent_color"])
     config["frame_border_color"] = _valid_color(config.get("frame_border_color"), DEFAULT_TEMPLATE["frame_border_color"])
     config["show_border"] = bool(config.get("show_border", True))
+    try:
+        config["invoice_number_format"] = validate_invoice_number_format(
+            config.get("invoice_number_format", DEFAULT_INVOICE_NUMBER_FORMAT)
+        )
+    except ValueError:
+        config["invoice_number_format"] = DEFAULT_INVOICE_NUMBER_FORMAT
+    try:
+        config["invoice_number_padding"] = max(
+            0, min(12, int(config.get("invoice_number_padding", DEFAULT_INVOICE_NUMBER_PADDING)))
+        )
+    except (TypeError, ValueError):
+        config["invoice_number_padding"] = DEFAULT_INVOICE_NUMBER_PADDING
     if config.get("roll_height_mm") is not None:
         try:
             config["roll_height_mm"] = max(1.0, min(MAX_THERMAL_ROLL_HEIGHT_MM, float(config["roll_height_mm"])))
@@ -239,7 +259,19 @@ def _template_config(template=None):
     return config
 
 
-def _receipt_number(receipt):
+def _receipt_number(receipt, config=None):
+    issued = receipt.get("invoice_number")
+    if issued not in (None, ""):
+        return str(issued)
+    # The designer sample opts into the format being edited. Historical receipts
+    # without a stored number retain their previous daily-number display.
+    if receipt.get("_use_template_number_format"):
+        settings = config or DEFAULT_TEMPLATE
+        return format_invoice_number(
+            receipt,
+            settings.get("invoice_number_format", DEFAULT_INVOICE_NUMBER_FORMAT),
+            settings.get("invoice_number_padding", DEFAULT_INVOICE_NUMBER_PADDING),
+        )
     return str(receipt.get("day_receipt_id") or str(receipt.get("id", ""))[:8] or "—")
 
 
@@ -279,7 +311,7 @@ def _text_for_element(element, receipt, config):
     kind = element["type"]
     label = element.get("label") or ""
     if kind == "invoice_number":
-        return "{}: {}".format(label or "شماره فاکتور", _fa_digits(_receipt_number(receipt)))
+        return "{}: {}".format(label or "شماره فاکتور", _fa_digits(_receipt_number(receipt, config)))
     if kind == "invoice_date":
         return "{}: {}".format(label or "تاریخ", _receipt_date(receipt))
     if kind == "payment_status":
@@ -303,7 +335,7 @@ def _text_for_element(element, receipt, config):
         replacements = {
             "{{page_number}}": _fa_digits(page_number),
             "{{page_count}}": _fa_digits(page_count),
-            "{{invoice_number}}": _fa_digits(_receipt_number(receipt)),
+            "{{invoice_number}}": _fa_digits(_receipt_number(receipt, config)),
             "{{date}}": _receipt_date(receipt),
             "{{total}}": _money(receipt.get("total_price")),
             "{{payment_status}}": _payment_label(receipt),

@@ -17,6 +17,7 @@ from manager.db import create_db
 from server.app.main import app
 from server.app.api.auth import _authorize_setup
 from server.app.schemas import SetupRequest
+from accounting_app.services.invoice_numbering import format_invoice_number, validate_invoice_number_format
 
 
 class ApiTests(unittest.TestCase):
@@ -299,6 +300,78 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/v1/auth/me", headers={"Authorization": "Bearer " + token_three}).status_code, 200)
         self.assertEqual(self.client.get("/api/v1/auth/me", headers={"Authorization": "Bearer " + token_four}).status_code, 200)
         self.assertEqual(self.client.get("/api/v1/auth/me", headers={"Authorization": "Bearer " + token_two}).status_code, 401)
+
+    def test_invoice_number_format_helpers_support_examples_and_overflow(self):
+        receipt = {
+            "created_at": "2026-10-30T16:45:00",
+            "day_receipt_id": 1,
+            "invoice_sequence": 100001,
+        }
+        self.assertEqual(format_invoice_number(receipt, "{DATE}-{NUM}", 5), "2026-10-30-00001")
+        self.assertEqual(format_invoice_number(receipt, "{YYYY}-{MM}-{D}-NUM-{NUM}", 5), "2026-10-3-NUM-00001")
+        self.assertEqual(format_invoice_number(receipt, "{SEQ}", 5), "100001")
+        self.assertEqual(
+            format_invoice_number(dict(receipt, day_receipt_id=100001), "{DATE}-{NUM}", 5),
+            "2026-10-30-100001",
+        )
+        with self.assertRaises(ValueError):
+            validate_invoice_number_format("INV-{DD}")
+
+    def test_invoice_number_format_is_persisted_and_invalid_patterns_are_rejected(self):
+        headers = self.setup_admin()
+        saved = self.client.put(
+            "/api/v1/invoices/template", headers=headers,
+            json={"invoice_number_format": "INV-{YYYY}-{MM}-{D}-{NUM}", "invoice_number_padding": 7},
+        )
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json()["invoice_number_format"], "INV-{YYYY}-{MM}-{D}-{NUM}")
+        self.assertEqual(saved.json()["invoice_number_padding"], 7)
+        fetched = self.client.get("/api/v1/invoices/template", headers=headers)
+        self.assertEqual(fetched.status_code, 200, fetched.text)
+        self.assertEqual(fetched.json()["invoice_number_format"], "INV-{YYYY}-{MM}-{D}-{NUM}")
+        self.assertEqual(fetched.json()["invoice_number_padding"], 7)
+        invalid = self.client.put(
+            "/api/v1/invoices/template", headers=headers, json={"invoice_number_format": "INV-{DD}"}
+        )
+        self.assertEqual(invalid.status_code, 422, invalid.text)
+
+    def test_new_sales_persist_invoice_numbers_and_format_changes_do_not_renumber_history(self):
+        headers = self.setup_admin()
+        product = self.client.post(
+            "/api/v1/products",
+            headers=headers,
+            json={"name": "کالا", "buy_price": "3", "sell_price": "6.25"},
+        ).json()
+        saved = self.client.put(
+            "/api/v1/invoices/template", headers=headers,
+            json={"invoice_number_format": "{DATE}-{NUM}", "invoice_number_padding": 5},
+        )
+        self.assertEqual(saved.status_code, 200, saved.text)
+        first = self.client.post(
+            "/api/v1/sales", headers=dict(headers, **{"Idempotency-Key": "number-sale-1"}),
+            json={"items": [{"product_id": product["id"], "quantity": 1}], "paid": True},
+        )
+        self.assertEqual(first.status_code, 201, first.text)
+        first_payload = first.json()
+        self.assertRegex(first_payload["invoice_number"], r"^\d{4}-\d{2}-\d{2}-00001$")
+        with DBManager():
+            first_row = Receipt.get_by_id(first_payload["id"])
+            self.assertEqual(first_row.invoice_sequence, 1)
+
+        changed = self.client.put(
+            "/api/v1/invoices/template", headers=headers,
+            json={"invoice_number_format": "INV-{SEQ}", "invoice_number_padding": 5},
+        )
+        self.assertEqual(changed.status_code, 200, changed.text)
+        second = self.client.post(
+            "/api/v1/sales", headers=dict(headers, **{"Idempotency-Key": "number-sale-2"}),
+            json={"items": [{"product_id": product["id"], "quantity": 1}], "paid": True},
+        )
+        self.assertEqual(second.status_code, 201, second.text)
+        self.assertEqual(second.json()["invoice_number"], "INV-00002")
+        old = self.client.get("/api/v1/receipts/{}".format(first_payload["id"]), headers=headers)
+        self.assertEqual(old.status_code, 200, old.text)
+        self.assertEqual(old.json()["invoice_number"], first_payload["invoice_number"])
 
     def test_invoice_template_persists_dragged_element_positions(self):
         headers = self.setup_admin()

@@ -14,6 +14,10 @@ from client.ui.invoice_render import (
     DEFAULT_TEMPLATE, ELEMENT_TYPES, default_elements_for_paper, draw_invoice_element,
     normalize_elements, page_dimensions, render_invoice_html,
 )
+from accounting_app.services.invoice_numbering import (
+    DEFAULT_INVOICE_NUMBER_FORMAT, DEFAULT_INVOICE_NUMBER_PADDING,
+    format_invoice_number, validate_invoice_number_format,
+)
 from client.ui.permissions import can_access
 
 
@@ -26,6 +30,8 @@ SAMPLE_RECEIPT = {
         {"product_name": "لوازم جانبی", "quantity": 1, "sell_price": 85000},
     ],
     "seat_number": "۱۲",
+    "invoice_sequence": 10001,
+    "_use_template_number_format": True,
 }
 ELEMENT_LABELS = {
     "company": "نام و مشخصات مجموعه",
@@ -365,6 +371,42 @@ class InvoiceTemplatesPage(QFrame):
         business_form.addRow("اندازهٔ پایه", self.global_font_size)
         business_layout.addLayout(business_form)
         properties_layout.addWidget(business_card)
+
+        self.invoice_number_card = QFrame()
+        self.invoice_number_card.setObjectName("Card")
+        number_layout = QVBoxLayout(self.invoice_number_card)
+        number_layout.setContentsMargins(12, 12, 12, 12)
+        number_layout.setSpacing(8)
+        number_title = QLabel("شماره‌گذاری فاکتور")
+        number_title.setObjectName("PageTitle")
+        number_layout.addWidget(number_title)
+        number_form = QFormLayout()
+        number_form.setSpacing(8)
+        self.invoice_number_format = QLineEdit()
+        self.invoice_number_format.setMaxLength(120)
+        self.invoice_number_format.setPlaceholderText("{DATE}-{NUM}")
+        self.invoice_number_format.setToolTip(
+            "متغیرها: {DATE}، {YYYY}، {YY}، {MM}، {M}، {DD}، {D}، {NUM} و {SEQ}"
+        )
+        self.invoice_number_padding = self._spin(0, 12, " رقم")
+        self.invoice_number_example = QLabel()
+        self.invoice_number_example.setObjectName("PageSubtitle")
+        self.invoice_number_example.setWordWrap(True)
+        self.invoice_number_example.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        number_help = QLabel(
+            "مثال: {DATE}-{NUM} → 2026-10-30-00001. "
+            "{NUM} شمارهٔ روزانه و {SEQ} شمارندهٔ سراسری است. "
+            "طول رقم حداقل است؛ با بزرگ‌تر شدن شمارنده، رقم اضافه می‌شود. "
+            "برای یکتایی، از {SEQ} یا تاریخ کامل همراه {NUM} استفاده کنید."
+        )
+        number_help.setObjectName("PageSubtitle")
+        number_help.setWordWrap(True)
+        number_form.addRow("فرمت شماره", self.invoice_number_format)
+        number_form.addRow("حداقل رقم شمارنده", self.invoice_number_padding)
+        number_form.addRow("نمونهٔ فعلی", self.invoice_number_example)
+        number_layout.addLayout(number_form)
+        number_layout.addWidget(number_help)
+        properties_layout.addWidget(self.invoice_number_card)
         properties_layout.addStretch(1)
         properties_scroll.setWidget(properties)
 
@@ -476,6 +518,8 @@ class InvoiceTemplatesPage(QFrame):
             control.textChanged.connect(self._global_setting_changed)
         self.address.textChanged.connect(self._global_setting_changed)
         self.footer.textChanged.connect(self._global_setting_changed)
+        self.invoice_number_format.textChanged.connect(self._global_setting_changed)
+        self.invoice_number_padding.valueChanged.connect(self._global_setting_changed)
         self.font_family.currentTextChanged.connect(self._global_setting_changed)
         self.global_font_size.valueChanged.connect(self._global_setting_changed)
         self.document_kind.currentIndexChanged.connect(self._document_kind_changed)
@@ -527,6 +571,8 @@ class InvoiceTemplatesPage(QFrame):
             "phone": self.phone.text().strip(),
             "seat_number_label": "شماره میز / صندلی",
             "footer": self.footer.toPlainText().strip(),
+            "invoice_number_format": self.invoice_number_format.text().strip(),
+            "invoice_number_padding": self.invoice_number_padding.value(),
             "paper_size": self.paper_size.currentData() or "A4",
             "orientation": self.orientation.currentData() or "portrait",
             "margin_mm": self.margin_mm.value(),
@@ -556,6 +602,15 @@ class InvoiceTemplatesPage(QFrame):
             control.setText(str(values.get(key, fallback) or ""))
         self.address.setPlainText(str(values.get("address", "") or ""))
         self.footer.setPlainText(str(values.get("footer", "") or ""))
+        self.invoice_number_format.setText(str(
+            values.get("invoice_number_format", DEFAULT_INVOICE_NUMBER_FORMAT)
+            or DEFAULT_INVOICE_NUMBER_FORMAT
+        ))
+        try:
+            padding = int(values.get("invoice_number_padding", DEFAULT_INVOICE_NUMBER_PADDING))
+        except (TypeError, ValueError):
+            padding = DEFAULT_INVOICE_NUMBER_PADDING
+        self.invoice_number_padding.setValue(max(0, min(12, padding)))
         self.paper_size.setCurrentIndex(max(0, self.paper_size.findData(values.get("paper_size", "A4"))))
         paper_value = values.get("paper_size", "A4")
         self.orientation.setCurrentIndex(max(0, self.orientation.findData(values.get("orientation", "portrait"))))
@@ -588,6 +643,8 @@ class InvoiceTemplatesPage(QFrame):
         self._load_selected_properties(None)
         self._update_page_info()
         self._update_canvas_appearance()
+        self._update_invoice_number_example()
+        self.invoice_number_card.setVisible(self._template_kind == "invoice")
 
     def _rebuild_canvas(self):
         self.scene.clear()
@@ -636,6 +693,7 @@ class InvoiceTemplatesPage(QFrame):
         if kind == self._template_kind:
             return
         self._template_kind = kind
+        self.invoice_number_card.setVisible(kind == "invoice")
         if self.window.api is None:
             self._load_template(self._local_default_for_kind(kind))
             return
@@ -905,6 +963,22 @@ class InvoiceTemplatesPage(QFrame):
             item.page = self
             item.update()
         self._update_page_info()
+        self._update_invoice_number_example()
+
+    def _update_invoice_number_example(self):
+        if not hasattr(self, "invoice_number_example"):
+            return
+        try:
+            values = self._values()
+            sample = format_invoice_number(
+                SAMPLE_RECEIPT,
+                values.get("invoice_number_format", DEFAULT_INVOICE_NUMBER_FORMAT),
+                values.get("invoice_number_padding", DEFAULT_INVOICE_NUMBER_PADDING),
+            )
+            sample = sample.translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
+            self.invoice_number_example.setText(sample)
+        except ValueError as error:
+            self.invoice_number_example.setText("فرمت نامعتبر: {}".format(error))
 
     def add_element(self):
         kind = self.new_kind.currentData() or "text"
@@ -1014,6 +1088,13 @@ class InvoiceTemplatesPage(QFrame):
 
     def save_template(self):
         values = self._values()
+        try:
+            values["invoice_number_format"] = validate_invoice_number_format(
+                values["invoice_number_format"]
+            )
+        except ValueError as error:
+            self.window.show_error(error)
+            return
         if not values["company_name"]:
             self.window.show_error("نام کسب‌وکار نباید خالی باشد.")
             return

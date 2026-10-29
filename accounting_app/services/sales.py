@@ -1,12 +1,18 @@
 """Transactional sales operations shared by checkout workers and tests."""
 from datetime import datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
+import json
 import uuid
 
 from peewee import fn
 
 from accounting_app.database.connection import DBManager
+from accounting_app.database.extension_models import AppSetting
 from accounting_app.database.models import Product, Receipt, ReceiptProduct, StockMovement
+from accounting_app.services.invoice_numbering import (
+    DEFAULT_INVOICE_NUMBER_FORMAT, DEFAULT_INVOICE_NUMBER_PADDING,
+    format_invoice_number, validate_invoice_number_format,
+)
 from accounting_app.services.validation import validate_money, validate_quantity
 from accounting_app.services.audit import record_audit
 from accounting_app.services.accounting_controls import ensure_period_open
@@ -15,6 +21,27 @@ from accounting_app.services.ledger_posting import post_sale_journal
 
 class InsufficientStockError(ValueError):
     """Raised when a tracked item does not have enough available stock."""
+
+
+def _next_persistent_counter(key, minimum=0):
+    """Increment a server-wide counter that survives receipt deletion."""
+    try:
+        minimum = max(0, int(minimum or 0))
+    except (TypeError, ValueError):
+        minimum = 0
+    setting = AppSetting.get_or_none(AppSetting.key == key)
+    if setting is None:
+        value = minimum + 1
+        AppSetting.create(key=key, value=str(value))
+        return value
+    try:
+        current = max(0, int(setting.value or 0))
+    except (TypeError, ValueError):
+        current = 0
+    value = max(current, minimum) + 1
+    setting.value = str(value)
+    setting.save(only=[AppSetting.value, AppSetting.updated_at])
+    return value
 
 
 def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None, payment_method="cash"):
@@ -96,12 +123,49 @@ def record_sale(cart, user, payed, *, edit_mode=False, receipt_to_edit=None, pay
                 .scalar()
                 or 0
             )
+            highest_global_id = Receipt.select(fn.MAX(Receipt.invoice_sequence)).scalar() or 0
+            daily_number = _next_persistent_counter(
+                "invoice_daily_sequence_{}".format(now.strftime("%Y%m%d")), highest_daily_id
+            )
+            global_number = _next_persistent_counter("invoice_global_sequence", highest_global_id)
+            setting = AppSetting.get_or_none(AppSetting.key == "invoice_template")
+            template_settings = {}
+            if setting is not None:
+                try:
+                    decoded = json.loads(setting.value or "{}")
+                    if isinstance(decoded, dict):
+                        template_settings = decoded
+                except (TypeError, ValueError):
+                    template_settings = {}
+            number_format = template_settings.get(
+                "invoice_number_format", DEFAULT_INVOICE_NUMBER_FORMAT
+            )
+            try:
+                number_format = validate_invoice_number_format(number_format)
+            except ValueError:
+                number_format = DEFAULT_INVOICE_NUMBER_FORMAT
+            try:
+                number_padding = max(
+                    0, min(12, int(template_settings.get(
+                        "invoice_number_padding", DEFAULT_INVOICE_NUMBER_PADDING
+                    )))
+                )
+            except (TypeError, ValueError):
+                number_padding = DEFAULT_INVOICE_NUMBER_PADDING
+            issued_number = format_invoice_number({
+                "created_at": now, "day_receipt_id": daily_number,
+                "invoice_sequence": global_number,
+            }, number_format, number_padding)
             receipt = Receipt.create(
                 user=user,
                 payed=bool(payed),
                 payment_method=payment_method,
                 total_price=float(total),
-                day_receipt_id=int(highest_daily_id) + 1,
+                day_receipt_id=daily_number,
+                invoice_sequence=global_number,
+                invoice_number=issued_number,
+                created_at=now,
+                updated_at=now,
             )
 
         # Conditional SQL update protects against two clients selling the same final units.

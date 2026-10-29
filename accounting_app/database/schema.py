@@ -96,7 +96,7 @@ def _migrate_existing_sale_return_line_table(database):
 
 
 def _migrate_existing_receipt_table(database):
-    """Add explicit tender-method snapshots to existing receipts without data loss."""
+    """Add receipt numbering columns without changing any already-issued invoice number."""
     table = Receipt._meta.table_name
     columns = {column.name for column in database.get_columns(table)}
     if "payment_method" not in columns:
@@ -107,3 +107,32 @@ def _migrate_existing_receipt_table(database):
         database.execute_sql(
             'ALTER TABLE "{}" ADD COLUMN "seat_number" VARCHAR(32)'.format(table)
         )
+    if "invoice_sequence" not in columns:
+        database.execute_sql(
+            'ALTER TABLE "{}" ADD COLUMN "invoice_sequence" INTEGER'.format(table)
+        )
+    if "invoice_number" not in columns:
+        database.execute_sql(
+            'ALTER TABLE "{}" ADD COLUMN "invoice_number" VARCHAR(120)'.format(table)
+        )
+    # Backfill global counters but keep old printed numbers unchanged.
+    highest = database.execute_sql(
+        'SELECT COALESCE(MAX("invoice_sequence"), 0) FROM "{}"'.format(table)
+    ).fetchone()[0] or 0
+    missing = database.execute_sql(
+        'SELECT "id" FROM "{}" WHERE "invoice_sequence" IS NULL ORDER BY "created_at", "id"'.format(table)
+    ).fetchall()
+    for (receipt_id,) in missing:
+        highest += 1
+        database.execute_sql(
+            'UPDATE "{}" SET "invoice_sequence" = ? WHERE "id" = ?'.format(table),
+            (highest, receipt_id),
+        )
+    database.execute_sql(
+        'CREATE UNIQUE INDEX IF NOT EXISTS "idx_receipts_invoice_sequence_unique" '
+        'ON "{}" ("invoice_sequence") WHERE "invoice_sequence" IS NOT NULL'.format(table)
+    )
+    database.execute_sql(
+        'CREATE UNIQUE INDEX IF NOT EXISTS "idx_receipts_invoice_number_unique" '
+        'ON "{}" ("invoice_number") WHERE "invoice_number" IS NOT NULL'.format(table)
+    )

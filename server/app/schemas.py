@@ -304,6 +304,7 @@ class ReceiptOut(BaseModel):
     total_price: float
     user_id: UUID
     day_receipt_id: int
+    invoice_number: Optional[str] = None
     seat_number: Optional[str] = None
     created_at: datetime
     updated_at: datetime

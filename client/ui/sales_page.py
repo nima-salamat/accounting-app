@@ -2215,7 +2215,8 @@ class SalesPage(QFrame):
         editing = self._editing_receipt_id is not None
         if editing:
             prompt = "تغییرات فاکتور {} ذخیره شود؟ مبلغ و موجودی دوباره در سرور اعتبارسنجی می‌شوند.".format(
-                (self._editing_receipt or {}).get("day_receipt_id")
+                (self._editing_receipt or {}).get("invoice_number")
+                or (self._editing_receipt or {}).get("day_receipt_id")
                 or str(self._editing_receipt_id)[:8]
             )
         else:
@@ -2322,13 +2323,14 @@ class SalesPage(QFrame):
         self._refresh_cart_summary()
         if updated:
             message = "فاکتور شمارهٔ {} با مبلغ {:,.2f} به‌روزرسانی شد.".format(
-                receipt.get("day_receipt_id", "—"), float(receipt.get("total_price") or 0)
+                receipt.get("invoice_number") or receipt.get("day_receipt_id", "—"),
+                float(receipt.get("total_price") or 0),
             )
         else:
             message = "فروش شمارهٔ {} با مبلغ {:,.2f} ثبت شد.".format(
-                receipt.get("day_receipt_id", "—"), float(receipt.get("total_price") or 0)
-            )
-        self.window.set_status(message)
+                receipt.get("invoice_number") or receipt.get("day_receipt_id", "—"),
+                float(receipt.get("total_price") or 0),
+            )        self.window.set_status(message)
         self.refresh_products()
         refresh_dashboard = getattr(self.window, "refresh_dashboard_data", None)
         if callable(refresh_dashboard):
@@ -2591,7 +2593,7 @@ class SalesPage(QFrame):
             for row, record in enumerate(records):
                 table.insertRow(row)
                 receipt_id = str(record.get("id") or "")
-                number = record.get("day_receipt_id") or receipt_id[:8] or "—"
+                number = record.get("invoice_number") or record.get("day_receipt_id") or receipt_id[:8] or "—"
                 paid = bool(record.get("payed"))
                 payment_method = {
                     "cash": "نقدی",
@@ -2819,7 +2821,7 @@ class SalesPage(QFrame):
         if self._history_preview_collapsed:
             self._set_history_preview_visible(True)
         receipt = payload.get("receipt") or {}
-        number = receipt.get("day_receipt_id") or str(receipt.get("id") or "")[:8] or "—"
+        number = receipt.get("invoice_number") or receipt.get("day_receipt_id") or str(receipt.get("id") or "")[:8] or "—"
         receipt_id = str(receipt.get("id") or "")
         self.history_preview_status.setText("شماره: {}".format(number))
         self.history_preview_status.setProperty("receiptId", receipt_id)
@@ -2960,7 +2962,7 @@ class SalesPage(QFrame):
         self._refresh_product_stock_states()
         self.window.set_status(
             "فاکتور شمارهٔ {} برای ویرایش بارگذاری شد.".format(
-                receipt.get("day_receipt_id") or receipt_id[:8]
+                receipt.get("invoice_number") or receipt.get("day_receipt_id") or receipt_id[:8]
             )
         )
         if dialog is not None:

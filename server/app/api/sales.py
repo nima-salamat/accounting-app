@@ -250,6 +250,7 @@ def list_recent_receipts(
             # Search common receipt fields as well as products that belong to a receipt.
             search_filter = (
                 Receipt.day_receipt_id.cast("text").contains(term)
+                | Receipt.invoice_number.contains(term)
                 | Receipt.id.cast("text").contains(term)
                 | Receipt.seat_number.contains(term)
                 | Receipt.payment_method.contains(term)

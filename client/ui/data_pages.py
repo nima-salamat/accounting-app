@@ -546,7 +546,7 @@ class ReceiptsPage(QFrame):
         self.current_page, self.page_size = 1, 25
         self.total_records = 0
         self.base_columns = [
-            ("id", "شناسه"), ("day_receipt_id", "شماره روزانه"),
+            ("id", "شناسه"), ("invoice_number", "شماره فاکتور"),
             ("total_price", "مبلغ کل"), ("payed", "پرداخت"), ("created_at", "زمان"),
         ]
         self.columns = list(self.base_columns)
@@ -656,6 +656,8 @@ class ReceiptsPage(QFrame):
                     value = display_value(key, record.get(key))
                 elif key == "payed":
                     value = "پرداخت‌شده" if record.get(key) else "پرداخت‌نشده"
+                elif key == "invoice_number":
+                    value = record.get("invoice_number") or record.get("day_receipt_id")
                 else:
                     value = record.get(key)
                 item = QTableWidgetItem(display_value(key, value))
@@ -697,7 +699,7 @@ class ReceiptsPage(QFrame):
         self.window.run_api(lambda:self.window.api.get_receipt(record["id"]),self.show_details)
 
     def show_details(self, receipt):
-        lines=["شماره روزانه: {}".format(receipt["day_receipt_id"]),
+        lines=["شماره فاکتور: {}".format(receipt.get("invoice_number") or receipt["day_receipt_id"]),
                "مبلغ کل: {}".format(receipt["total_price"]),
                "پرداخت: {}".format("بله" if receipt["payed"] else "خیر"),"","اقلام:"]
         lines += ["{} × {} | خرید {} | فروش {}".format(item.get("product_name") or "محصول حذف‌شده",

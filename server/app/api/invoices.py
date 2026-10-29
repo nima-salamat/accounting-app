@@ -10,6 +10,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from accounting_app.database.connection import DBManager
 from accounting_app.database.extension_models import AppSetting
 from server.app.permissions import require_permission
+from accounting_app.services.invoice_numbering import (
+    DEFAULT_INVOICE_NUMBER_FORMAT, DEFAULT_INVOICE_NUMBER_PADDING,
+    validate_invoice_number_format,
+)
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 
@@ -21,6 +25,8 @@ DEFAULT_TEMPLATE = {
     "phone": "",
     "seat_number_label": "شماره صندلی / میز",
     "footer": "از خرید شما سپاسگزاریم.",
+    "invoice_number_format": DEFAULT_INVOICE_NUMBER_FORMAT,
+    "invoice_number_padding": DEFAULT_INVOICE_NUMBER_PADDING,
     "font_family": "Vazirmatn",
     "font_size": 11,
     "header_font_size": 23,
@@ -87,6 +93,8 @@ class InvoiceTemplateInput(BaseModel):
     phone: str = Field(default="", max_length=80)
     seat_number_label: str = Field(default="شماره صندلی / میز", max_length=80)
     footer: str = Field(default="از خرید شما سپاسگزاریم.", max_length=500)
+    invoice_number_format: str = Field(default=DEFAULT_INVOICE_NUMBER_FORMAT, min_length=1, max_length=120)
+    invoice_number_padding: int = Field(default=DEFAULT_INVOICE_NUMBER_PADDING, ge=0, le=12)
     font_family: str = Field(default="Vazirmatn", min_length=1, max_length=80, pattern=r"^[\w .()\-]{1,80}$")
     font_size: int = Field(default=11, ge=8, le=18)
     header_font_size: int = Field(default=23, ge=14, le=32)
@@ -124,6 +132,10 @@ class InvoiceTemplateInput(BaseModel):
         ]
         if len(element_ids) != len(set(element_ids)):
             raise ValueError("شناسهٔ هر المان فاکتور باید یکتا باشد.")
+        try:
+            validate_invoice_number_format(self.invoice_number_format)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
         return self
 
 

@@ -5,9 +5,43 @@ from client.ui.invoice_render import (
     DEFAULT_TEMPLATE, default_elements_for_paper, page_dimensions,
     prepare_invoice_pages, render_invoice_html,
 )
+from accounting_app.services.invoice_numbering import format_invoice_number, validate_invoice_number_format
 
 
 class InvoiceRenderTests(unittest.TestCase):
+    def test_invoice_number_formats_support_date_daily_counter_and_minimum_padding(self):
+        receipt = {
+            "created_at": "2026-10-30T16:45:00",
+            "day_receipt_id": 1,
+            "invoice_sequence": 100001,
+        }
+        self.assertEqual(format_invoice_number(receipt, "{DATE}-{NUM}", 5), "2026-10-30-00001")
+        self.assertEqual(format_invoice_number(receipt, "{YYYY}-{MM}-{D}-NUM-{NUM}", 5), "2026-10-3-NUM-00001")
+        self.assertEqual(format_invoice_number(receipt, "{SEQ}", 5), "100001")
+        self.assertEqual(
+            format_invoice_number(dict(receipt, day_receipt_id=100001), "{DATE}-{NUM}", 5),
+            "2026-10-30-100001",
+        )
+
+    def test_invoice_number_format_requires_a_unique_counter_pattern(self):
+        self.assertEqual(validate_invoice_number_format("INV-{SEQ}"), "INV-{SEQ}")
+        with self.assertRaises(ValueError):
+            validate_invoice_number_format("INV-{DD}")
+        with self.assertRaises(ValueError):
+            validate_invoice_number_format("{DATE}-{UNKNOWN}")
+
+    def test_stored_invoice_number_is_immutable_when_template_format_changes(self):
+        receipt = {
+            "id": "old-receipt", "day_receipt_id": 1,
+            "invoice_number": "INV-2026-10-30-00001",
+            "created_at": "2026-10-30T12:00:00", "items": [],
+        }
+        html = render_invoice_html(
+            receipt, dict(DEFAULT_TEMPLATE, invoice_number_format="{SEQ}", invoice_number_padding=2)
+        )
+        self.assertIn("INV-۲۰۲۶-۱۰-۳۰-۰۰۰۰۱", html)
+        self.assertNotIn("شماره فاکتور: ۰۱", html)
+
     def test_invoice_escapes_untrusted_template_and_product_text(self):
         html = render_invoice_html(
             {

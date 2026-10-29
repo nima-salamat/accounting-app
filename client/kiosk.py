@@ -1203,7 +1203,8 @@ class KioskWindow(QMainWindow):
         subtitle.setObjectName("PageSubtitle")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         reference_text = "شماره فاکتور: {}    ·    مبلغ: {:,.2f}".format(
-            receipt.get("day_receipt_id", "—"), float(receipt.get("total_price") or 0)
+            receipt.get("invoice_number") or receipt.get("day_receipt_id", "—"),
+            float(receipt.get("total_price") or 0),
         )
         if receipt.get("seat_number"):
             reference_text += "    ·    صندلی / میز: {}".format(receipt["seat_number"])

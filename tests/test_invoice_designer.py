@@ -105,6 +105,19 @@ class InvoiceDesignerTests(unittest.TestCase):
         self.assertEqual(self.page._template_kind, "return_slip")
         self.assertEqual(self.page.paper_size.currentData(), "A5")
 
+    def test_invoice_number_settings_are_included_in_template_and_restore(self):
+        self.page.invoice_number_format.setText("{YYYY}-{MM}-{D}-NUM-{NUM}")
+        self.page.invoice_number_padding.setValue(5)
+        values = self.page._values()
+        self.assertEqual(values["invoice_number_format"], "{YYYY}-{MM}-{D}-NUM-{NUM}")
+        self.assertEqual(values["invoice_number_padding"], 5)
+        self.assertIn("۲۰۲۶-۱۰-۲۹-NUM-۰۱۰۰۱", self.page.invoice_number_example.text())
+        self.page._load_template({
+            **DEFAULT_TEMPLATE, "invoice_number_format": "{SEQ}", "invoice_number_padding": 7,
+        })
+        self.assertEqual(self.page.invoice_number_format.text(), "{SEQ}")
+        self.assertEqual(self.page.invoice_number_padding.value(), 7)
+
     def test_custom_elements_can_be_added_duplicated_and_removed(self):
         before = len(self.page._values()["elements"])
         self.page.new_kind.setCurrentIndex(self.page.new_kind.findData("text"))
