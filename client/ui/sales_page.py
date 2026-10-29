@@ -394,6 +394,7 @@ class SalesPage(QFrame):
         self._product_table_width_save_timer.timeout.connect(self._save_product_table_column_widths)
         table_header.sectionResized.connect(self._schedule_product_table_width_save)
         self.product_table.itemSelectionChanged.connect(self._update_product_table_selection_controls)
+        self.product_table.currentCellChanged.connect(self._update_product_table_selection_controls)
         self.product_table.doubleClicked.connect(self._add_table_selection_to_cart)
         self._update_product_table_selection_controls()
         self.catalog_results_stack.addWidget(self.product_table)
@@ -814,9 +815,14 @@ class SalesPage(QFrame):
         in_table_mode = getattr(self, "_product_layout_mode", "grid") == "table"
         self.product_deselect_button.setVisible(in_table_mode)
         table = getattr(self, "product_table", None)
-        # Use the selection model's state rather than selectedRows(): some Qt
-        # builds omit a row index when cell widgets and hidden columns are present.
-        selected = bool(table and table.selectionModel().hasSelection())
+        # Prefer a real selection; a valid current cell is also actionable because
+        # Qt can move the current row without exposing it through selectedRows().
+        selected = bool(
+            table and (
+                table.selectionModel().hasSelection()
+                or table.currentIndex().isValid()
+            )
+        )
         self.product_deselect_button.setEnabled(in_table_mode and selected)
 
     def _restore_product_table_column_widths(self):
