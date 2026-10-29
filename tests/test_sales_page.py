@@ -41,6 +41,9 @@ class _PagedApi:
             "total": len(matches),
         }
 
+    def list_recent_receipts_page(self, page=1, page_size=50):
+        return {"items": [], "page": page, "page_size": page_size, "total": 0}
+
     def list_categories_page(self, page=1, page_size=200):
         return {
             "items": [
@@ -193,13 +196,16 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.page.add_to_cart(self.page.products[0])
 
         self.page._set_cart_panel_visible(False)
-        self.assertFalse(self.page.cart_panel.isVisible())
-        self.assertTrue(self.page.show_cart_button.isVisible())
+        self.assertTrue(self.page.cart_panel.isVisible())
+        self.assertTrue(self.page._cart_collapsed)
+        self.assertTrue(self.page.cart_scroll.isHidden())
+        self.assertEqual(self.page.cart_panel_toggle.text(), "›")
         self.assertEqual(self.page.collect_items()[0]["quantity"], 1)
 
         self.page._set_cart_panel_visible(True)
-        self.assertTrue(self.page.cart_panel.isVisible())
-        self.assertFalse(self.page.show_cart_button.isVisible())
+        self.assertFalse(self.page._cart_collapsed)
+        self.assertFalse(self.page.cart_scroll.isHidden())
+        self.assertEqual(self.page.cart_panel_toggle.text(), "‹")
         self.assertEqual(self.page.collect_items()[0]["quantity"], 1)
 
     def test_cart_quantity_updates_the_line_subtotal(self):
@@ -263,7 +269,7 @@ class SalesPageLayoutTests(unittest.TestCase):
     def test_product_cards_use_a_compact_width_and_shorter_image_area(self):
         self.page.refresh_products()
         card = self.page.product_grid.itemAt(0).widget()
-        self.assertLessEqual(card.maximumWidth(), 218)
+        self.assertEqual(card.maximumWidth(), 16777215)
         self.assertLess(card.minimumWidth(), 140)
         image = card.findChild(QLabel, "SalesProductImage")
         self.assertLessEqual(image.maximumHeight(), 74)
@@ -289,10 +295,15 @@ class SalesPageLayoutTests(unittest.TestCase):
 
     def test_grid_column_setting_never_overflows_the_available_catalog_width(self):
         self.page.refresh_products()
-        width = max(260, self.page.catalog_scroll.viewport().width())
         self.page._apply_product_display_settings("grid", True, "compact", 6)
-        available = max(1, min(6, width // 132))
-        self.assertLessEqual(self.page._rendered_columns, available)
+        self.app.processEvents()
+        self.assertEqual(self.page._rendered_columns, 6)
+        widths = [
+            self.page.product_grid.itemAt(index).widget().width()
+            for index in range(min(6, self.page.product_grid.count()))
+        ]
+        self.assertEqual(len(widths), 6)
+        self.assertLessEqual(max(widths) - min(widths), 4)
 
     def test_catalog_supports_horizontal_list_and_table_layouts(self):
         self.page.refresh_products()
@@ -300,6 +311,13 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.assertEqual(self.page._product_layout_mode, "horizontal")
         self.assertIs(self.page.catalog_results_stack.currentWidget(), self.page.catalog_scroll)
         self.assertEqual(self.page.product_grid.count(), len(self.page.products))
+        card = self.page.product_grid.itemAt(0).widget()
+        price = card.findChild(QLabel, "SalesProductPrice")
+        stock = card.findChild(QLabel, "SalesProductStock")
+        add = next(button for button in card.findChildren(QPushButton)
+                   if button.objectName() == "SalesProductAddButton")
+        self.assertIs(price.parentWidget(), stock.parentWidget())
+        self.assertIs(price.parentWidget().parentWidget(), add.parentWidget())
 
         self.page._apply_product_display_settings("table", True, "compact", 0)
         self.assertIs(self.page.catalog_results_stack.currentWidget(), self.page.product_table)
@@ -336,6 +354,20 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.assertEqual(self.page.catalog_panel.layout().indexOf(self.page.search_suggestions_frame), -1)
         self.assertTrue(self.page.search_suggestions_frame.isVisible())
         self.assertGreater(self.page.search_suggestions_frame.height(), 0)
+
+    def test_recent_invoices_are_a_mode_with_inline_preview(self):
+        self.page.refresh_products()
+        self.assertIs(self.page.workspace_stack.currentWidget(), self.page.sales_workspace)
+        self.page.set_workspace_mode("history")
+        self.assertIs(self.page.workspace_stack.currentWidget(), self.page.history_workspace)
+        self.assertIsNotNone(self.page.history_invoice_preview)
+        self.assertIs(
+            self.page.history_invoice_preview.parentWidget(),
+            self.page.history_splitter.widget(1),
+        )
+        self.assertEqual(self.page._history_current_page, 1)
+        self.page.set_workspace_mode("sales")
+        self.assertIs(self.page.workspace_stack.currentWidget(), self.page.sales_workspace)
 
     def test_new_sale_label_is_not_duplicated_in_the_pos_toolbar(self):
         self.assertFalse(hasattr(self.page, "invoice_mode_label"))
