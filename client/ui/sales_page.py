@@ -227,10 +227,10 @@ class SalesPage(QFrame):
         self.search.setPlaceholderText("نام کالا را جست‌وجو کنید…")
         self.search.setClearButtonEnabled(True)
         self.search.installEventFilter(self)
-        self.search.returnPressed.connect(self.refresh_products)
+        self.search.returnPressed.connect(self._commit_search)
         self.search_button = QPushButton("جست‌وجو")
-        self.search_button.setToolTip("جست‌وجوی کالا")
-        self.search_button.clicked.connect(self.refresh_products)
+        self.search_button.setToolTip("نمایش نتایج جست‌وجو در فهرست کالاها")
+        self.search_button.clicked.connect(self._commit_search)
         self.search.textChanged.connect(self._search_text_changed)
         filters.addWidget(self.search, 1)
         filters.addWidget(self.search_button)
@@ -507,6 +507,13 @@ class SalesPage(QFrame):
         self.search_suggestions_frame.raise_()
         self.search_suggestion_status.setText("در حال جست‌وجوی نام‌های مشابه…")
         self._search_timer.start()
+
+    def _commit_search(self):
+        """Show committed search results in the catalog and dismiss the overlay."""
+        self._search_timer.stop()
+        self.search_suggestions_frame.hide()
+        self.product_page = 1
+        self.refresh_products()
 
     def _run_search_suggestions(self):
         query = self.search.text().strip()

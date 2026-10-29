@@ -301,6 +301,18 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.page.product_table.cellWidget(0, 5).click()
         self.assertEqual(self.page.collect_items()[0]["product_id"], "product-1")
 
+    def test_committed_search_shows_results_in_catalog_and_closes_suggestions(self):
+        self.page.search.setText("item-10")
+        self.page._request_search_suggestions("item-10", 1)
+        self.assertTrue(self.page.search_suggestions_frame.isVisible())
+        self.page.search_button.click()
+        self.assertFalse(self.page.search_suggestions_frame.isVisible())
+        self.assertEqual(self.page.total_products, 3)
+        self.assertEqual(
+            [product["name"] for product in self.page.products],
+            ["item-10", "item-100", "item-101"],
+        )
+
     def test_search_suggestions_overlay_the_catalog_instead_of_reflowing_it(self):
         self.page.search.setText("item")
         self.page._request_search_suggestions("item", 1)
