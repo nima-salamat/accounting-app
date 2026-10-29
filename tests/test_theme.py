@@ -25,6 +25,21 @@ class ThemeConfigurationTests(unittest.TestCase):
         self.assertIn("font-size: 15px", qss)
         self.assertIn("QMenu", qss)
 
+    def test_surface_styles_cover_radio_buttons_lists_and_scroll_areas(self):
+        for mode in ("light", "dark"):
+            qss = stylesheet(mode)
+            self.assertIn("QRadioButton", qss)
+            self.assertIn("QListWidget", qss)
+            self.assertIn("QAbstractItemView", qss)
+            self.assertIn("QScrollBar::handle:vertical", qss)
+            self.assertIn("background-color: transparent", qss)
+
+    def test_icon_helper_maps_common_actions_to_semantic_icons(self):
+        from client.ui.icons import icon_for_action
+        self.assertEqual(icon_for_action("products"), "fa5s.boxes")
+        self.assertEqual(icon_for_action("صفحهٔ بعد"), "fa5s.chevron-left")
+        self.assertEqual(icon_for_action("افزودن به سبد"), "fa5s.cart-plus")
+
 
 if __name__ == "__main__":
     unittest.main()
