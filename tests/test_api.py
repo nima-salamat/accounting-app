@@ -787,6 +787,41 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(recent.json()[0]["seat_number"], "4")
         self.assertFalse(recent.json()[0]["payed"])
 
+    def test_recent_receipt_search_filters_by_number_seat_name_and_payment(self):
+        headers = self.setup_admin()
+        product_response = self.client.post(
+            "/api/v1/products", headers=headers,
+            json={"name": "Tea Search Term", "buy_price": 1, "sell_price": 3.5},
+        )
+        self.assertEqual(product_response.status_code, 201, product_response.text)
+        product = product_response.json()
+        sale_response = self.client.post(
+            "/api/v1/sales",
+            headers=dict(headers, **{"Idempotency-Key": "recent-receipt-search-001"}),
+            json={
+                "items": [{"product_id": product["id"], "quantity": 1}],
+                "paid": False,
+                "seat_number": "TABLE-17",
+            },
+        )
+        self.assertEqual(sale_response.status_code, 201, sale_response.text)
+        receipt = sale_response.json()
+
+        for query in (
+            str(receipt["day_receipt_id"]),
+            "TABLE-17",
+            "Tea Search Term",
+            "پرداخت‌نشده",
+        ):
+            with self.subTest(query=query):
+                response = self.client.get(
+                    "/api/v1/sales/recent-receipts",
+                    headers=headers,
+                    params={"q": query, "page": 1, "page_size": 25},
+                )
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertIn(receipt["id"], [row["id"] for row in response.json()])
+
     def test_product_creator_can_upload_image_without_update_permission(self):
         admin_headers = self.setup_admin()
         created_user = self.client.post(
