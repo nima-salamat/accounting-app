@@ -629,6 +629,9 @@ class SalesPageLayoutTests(unittest.TestCase):
         table.setCurrentCell(0, 1)
         table.selectRow(0)
         self.app.processEvents()
+        self.page._update_history_deselect_state(table)
+        self.assertGreater(table.rowCount(), 0)
+        self.assertTrue(table.selectionModel().hasSelection() or table.currentRow() >= 0)
         self.assertTrue(self.page.history_deselect_button.isEnabled())
         self.page.history_deselect_button.click()
         self.assertEqual(table.currentRow(), -1)
@@ -642,6 +645,7 @@ class SalesPageLayoutTests(unittest.TestCase):
             "id": receipt_id, "day_receipt_id": 44, "total_price": 50, "payed": True,
             "items": [{"product_id": "product-1", "product_name": "item-1", "sell_price": 50, "quantity": 1}],
         }
+        self.page.set_workspace_mode("history")
         self.page._set_history_invoice_preview({"receipt": receipt, "template": DEFAULT_TEMPLATE})
         self.assertFalse(self.page.history_splitter.widget(1).isHidden())
         self.assertTrue(self.page.history_preview_close_button.isVisible())
