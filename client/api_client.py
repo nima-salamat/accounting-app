@@ -597,9 +597,10 @@ class AccountingApiClient:
     def get_kiosk_config(self):
         return self._request("GET", "/api/v1/kiosk/config")
 
-    def list_recent_receipts_page(self, page=1, page_size=25):
+    def list_recent_receipts_page(self, q=None, page=1, page_size=25):
         return self._request_page(
-            "GET", "/api/v1/sales/recent-receipts", page=page, page_size=page_size
+            "GET", "/api/v1/sales/recent-receipts", page=page, page_size=page_size,
+            params={"q": q},
         )
 
     def list_partners_page(self, q=None, partner_type=None, page=1, page_size=25):
