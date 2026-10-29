@@ -127,7 +127,7 @@ class InvoiceNumberingPageTests(unittest.TestCase):
     def test_numbering_has_its_own_page_and_is_not_shown_in_invoice_designer(self):
         self.assertTrue(self.designer.invoice_number_card.isHidden())
         self.assertEqual(self.page.invoice_number_style.currentData(), "date_daily")
-        self.assertIn("شماره‌گذاری فاکتور", self.page.findChild(type(self.page.findChild), "missing").text() if False else "شماره‌گذاری فاکتور")
+        self.assertEqual(self.page.title_label.text(), "شماره‌گذاری فاکتور")
 
     def test_friendly_builder_generates_format_and_preview(self):
         self.page.invoice_number_style.setCurrentIndex(

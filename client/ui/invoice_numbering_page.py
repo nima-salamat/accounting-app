@@ -41,14 +41,14 @@ class InvoiceNumberingPage(QFrame):
 
         heading = QHBoxLayout()
         title_group = QVBoxLayout()
-        title = QLabel("شماره‌گذاری فاکتور")
-        title.setObjectName("PageTitle")
+        self.title_label = QLabel("شماره‌گذاری فاکتور")
+        self.title_label.setObjectName("PageTitle")
         subtitle = QLabel(
             "قالب شماره‌ها و شمارنده‌ها را مستقل از طراحی و چیدمان برگه تنظیم کنید."
         )
         subtitle.setObjectName("PageSubtitle")
         subtitle.setWordWrap(True)
-        title_group.addWidget(title)
+        title_group.addWidget(self.title_label)
         title_group.addWidget(subtitle)
         heading.addLayout(title_group, 1)
 

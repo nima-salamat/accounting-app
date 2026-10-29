@@ -35,10 +35,10 @@ def _humanize_validation_message(message):
         return "مقدار واردشده باید عدد باشد."
     if value.lower() == "input should be a valid boolean":
         return "مقدار واردشده باید درست یا نادرست باشد."
-    match = re.search(r"should have at least (\\d+) characters", value, re.IGNORECASE)
+    match = re.search(r"should have at least (\d+) characters", value, re.IGNORECASE)
     if match:
         return "باید حداقل {} نویسه باشد.".format(match.group(1))
-    match = re.search(r"should have at most (\\d+) characters", value, re.IGNORECASE)
+    match = re.search(r"should have at most (\d+) characters", value, re.IGNORECASE)
     if match:
         return "باید حداکثر {} نویسه باشد.".format(match.group(1))
     return value
