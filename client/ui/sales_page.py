@@ -33,6 +33,8 @@ class SalesPage(QFrame):
         self._cart = {}
         self._product_cache = {}
         self._product_add_buttons = {}
+        self._product_stock_labels = {}
+        self._cart_line_total_labels = {}
         self._category_names = {}
         self._rendered_columns = 0
         self._saved_splitter_sizes = [780, 360]
@@ -411,6 +413,7 @@ class SalesPage(QFrame):
         # Reflow only when the viewport's available column count changes or data changes.
         self._rendered_columns = columns
         self._product_add_buttons = {}
+        self._product_stock_labels = {}
         while self.product_grid.count():
             item = self.product_grid.takeAt(0)
             widget = item.widget()
@@ -496,6 +499,7 @@ class SalesPage(QFrame):
         stock_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         stock_badge.setProperty("outOfStock", bool(tracked and available <= 0))
         card_layout.addWidget(stock_badge)
+        self._product_stock_labels[key] = stock_badge
 
         add = QPushButton("افزودن به سبد")
         add.setObjectName("PrimaryButton")
@@ -513,12 +517,21 @@ class SalesPage(QFrame):
         for product in self.products:
             key = str(product.get("id") or "")
             button = self._product_add_buttons.get(key)
-            if button is None:
-                continue
+            stock_badge = self._product_stock_labels.get(key)
             tracked = bool(product.get("track_stock"))
             stock = float(product.get("stock_quantity") or 0)
             selected = int(self._cart.get(key, {}).get("quantity", 0))
-            button.setEnabled(not tracked or selected < stock)
+            available = max(0, stock - selected)
+            if stock_badge is not None:
+                stock_badge.setText(
+                    ("ناموجود" if available <= 0 else "موجودی: {:g}".format(available))
+                    if tracked else "آماده فروش"
+                )
+                stock_badge.setProperty("outOfStock", bool(tracked and available <= 0))
+                stock_badge.style().unpolish(stock_badge)
+                stock_badge.style().polish(stock_badge)
+            if button is not None:
+                button.setEnabled(not tracked or selected < stock)
 
     def add_to_cart(self, product):
         """Add one unit, enforcing known stock limits without replacing server validation."""
@@ -551,6 +564,10 @@ class SalesPage(QFrame):
             self._render_cart()
         else:
             entry["quantity"] = quantity
+            line_total = self._cart_line_total_labels.get(product_key)
+            if line_total is not None:
+                price = float(product.get("sell_price") or 0)
+                line_total.setText("مجموع: {:,.2f}".format(price * quantity))
             self._refresh_cart_summary()
             self._refresh_product_stock_states()
 
@@ -574,6 +591,7 @@ class SalesPage(QFrame):
 
     def _render_cart(self):
         """Render selected products separately from the currently visible catalog page."""
+        self._cart_line_total_labels = {}
         while self.cart_items_layout.count():
             item = self.cart_items_layout.takeAt(0)
             widget = item.widget()
@@ -625,6 +643,7 @@ class SalesPage(QFrame):
             )
             line_total = QLabel("مجموع: {:,.2f}".format(price * quantity))
             line_total.setObjectName("SalesCartLineTotal")
+            self._cart_line_total_labels[key] = line_total
             quantity_row.addWidget(quantity_label)
             quantity_row.addWidget(quantity_spin)
             quantity_row.addStretch(1)
