@@ -777,7 +777,7 @@ class ReceiptsPage(QFrame):
     def delete_receipt(self):
         record=self.selected()
         if not record:self.window.show_error("ابتدا یک رسید را انتخاب کنید.");return
-        answer=QMessageBox.question(self,"حذف رسید","رسید {} حذف شود؟".format(record["day_receipt_id"]),
+        answer=QMessageBox.question(self,"حذف رسید","رسید {} حذف شود؟".format(record.get("invoice_number") or record["day_receipt_id"]),
                 QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)
         if answer!=QMessageBox.StandardButton.Yes:return
         self.window.run_api(lambda:self.window.api.delete_receipt(record["id"]),lambda _r:self._deleted(),busy=self.delete_button)
