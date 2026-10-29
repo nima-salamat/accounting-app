@@ -594,6 +594,10 @@ class SalesPage(QFrame):
             ("refresh_button", "refresh"),
             ("history_refresh_button", "refresh"),
             ("product_deselect_button", "clear"),
+            ("history_deselect_button", "clear"),
+            ("history_preview_close_button", "previous"),
+            ("history_preview_reopen_button", "next"),
+            ("history_export_button", "download"),
         ):
             button = getattr(self, button_name, None)
             if button is not None:
@@ -2139,6 +2143,7 @@ class SalesPage(QFrame):
         self.history_tabs = QTabWidget(list_panel)
         self.history_tabs.setObjectName("RecentInvoicesTabs")
         self.history_tabs.setDocumentMode(True)
+        self.history_tabs.currentChanged.connect(self._update_history_deselect_state)
         list_layout.addWidget(self.history_tabs, 1)
 
         self._history_tables = {}
