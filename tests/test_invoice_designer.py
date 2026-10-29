@@ -46,6 +46,14 @@ class InvoiceDesignerTests(unittest.TestCase):
         self.assertEqual(elements["invoice_date"]["align"], "left")
         self.assertEqual(elements["invoice_number"]["align"], "right")
 
+    def test_document_kind_and_preset_menus_keep_a_readable_minimum_width(self):
+        self.assertEqual(self.page.document_kind.objectName(), "InvoiceDocumentKind")
+        self.assertGreaterEqual(self.page.document_kind.minimumWidth(), 210)
+        self.assertGreaterEqual(self.page.preset.minimumWidth(), 240)
+        self.assertGreaterEqual(self.page.paper_size.minimumWidth(), 185)
+        self.assertEqual(self.page.document_kind.count(), 5)
+        self.assertEqual(self.page.preset.count(), 7)
+
     def test_orientation_and_paper_size_change_the_actual_canvas(self):
         self.assertEqual(page_dimensions(self.page._values()), (210.0, 297.0))
         self.page.orientation.setCurrentIndex(self.page.orientation.findData("landscape"))
