@@ -965,8 +965,8 @@ class SalesPage(QFrame):
         dialog.setObjectName("ProductDisplaySettingsDialog")
         dialog.setWindowTitle("تنظیمات نمایش کالاها")
         dialog.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        dialog.setMinimumSize(560, 560)
-        dialog.resize(680, 640)
+        dialog.setMinimumSize(560, 600)
+        dialog.resize(680, 700)
         root = QVBoxLayout(dialog)
         intro = QLabel("چیدمان کارت کالاها را انتخاب کنید؛ پیش‌نمایش با تغییر گزینه‌ها به‌روز می‌شود.")
         intro.setObjectName("PageSubtitle")
@@ -992,6 +992,8 @@ class SalesPage(QFrame):
         image_checkbox.setChecked(self._show_product_images)
         stock_checkbox = QCheckBox("نمایش موجودی کالا")
         stock_checkbox.setChecked(self._show_product_stock)
+        category_tabs_checkbox = QCheckBox("نمایش دسته‌بندی‌ها به صورت تب")
+        category_tabs_checkbox.setChecked(self._use_category_tabs)
         add_button_checkbox = QCheckBox("نمایش دکمهٔ افزودن به سبد (در حالت کارت)")
         add_button_checkbox.setChecked(self._show_product_add_button)
         stock_style_label = QLabel("شیوهٔ نمایش موجودی")
@@ -1025,12 +1027,13 @@ class SalesPage(QFrame):
         controls.addWidget(image_checkbox, 1, 0, 1, 2)
         controls.addWidget(stock_checkbox, 2, 0, 1, 2)
         controls.addWidget(add_button_checkbox, 3, 0, 1, 2)
-        controls.addWidget(stock_style_label, 4, 0)
-        controls.addWidget(stock_style_combo, 4, 1)
-        controls.addWidget(density_label, 5, 0)
-        controls.addWidget(density_combo, 5, 1)
-        controls.addWidget(columns_label, 6, 0)
-        controls.addWidget(columns_combo, 6, 1)
+        controls.addWidget(category_tabs_checkbox, 4, 0, 1, 2)
+        controls.addWidget(stock_style_label, 5, 0)
+        controls.addWidget(stock_style_combo, 5, 1)
+        controls.addWidget(density_label, 6, 0)
+        controls.addWidget(density_combo, 6, 1)
+        controls.addWidget(columns_label, 7, 0)
+        controls.addWidget(columns_combo, 7, 1)
         root.addLayout(controls)
 
         preview_title = QLabel("پیش‌نمایش")
@@ -1149,6 +1152,7 @@ class SalesPage(QFrame):
                 show_stock=stock_checkbox.isChecked(),
                 show_add_button=add_button_checkbox.isChecked(),
                 stock_display_style=stock_style_combo.currentData(),
+                use_category_tabs=category_tabs_checkbox.isChecked(),
             )
             dialog.accept()
 
