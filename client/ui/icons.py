@@ -92,7 +92,7 @@ def icon_for_action(action, text=""):
 def _icon_color(button, mode):
     colors = DARK if mode == "dark" else LIGHT
     name = button.objectName()
-    if name in {"PrimaryButton", "AuthLoginButton", "KioskAddButton", "SalesProductAddButton"}:
+    if name in {"PrimaryButton", "AuthLoginButton", "KioskAddButton", "SalesProductAddButton", "SalesExitButton"}:
         return "#FFFFFF"
     if name == "SalesToolbarButton" and button.isCheckable() and button.isChecked():
         return "#FFFFFF"
