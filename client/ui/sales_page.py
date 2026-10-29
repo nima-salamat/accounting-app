@@ -1534,7 +1534,7 @@ class SalesPage(QFrame):
             return
 
         compact = self._product_card_density == "compact"
-        image_side = 82 if compact else 104
+        image_side = 104  # Fill the image column even when other table controls are compact.
         row_height = image_side + 14 if self._show_product_images else (42 if compact else 52)
         for row, product in enumerate(self.products):
             key = str(product.get("id") or "")
