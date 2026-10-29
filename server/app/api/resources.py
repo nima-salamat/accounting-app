@@ -37,6 +37,7 @@ from server.app.schemas import (
 router = APIRouter(tags=["resources"])
 
 DEFAULT_APPEARANCE_SETTINGS = {
+    "currency_unit": "toman",
     "font_family": "Vazirmatn", "font_size": 13, "heading_scale": 1.0,
     "density": "comfortable", "corner_radius": 10, "control_height": 36,
     "control_padding": 8, "horizontal_padding": 12, "section_spacing": 12,
