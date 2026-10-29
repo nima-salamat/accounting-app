@@ -2250,8 +2250,12 @@ class SalesPage(QFrame):
             table.cellDoubleClicked.connect(
                 lambda _row, _column: self._preview_selected_recent_receipt()
             )
-            table.itemSelectionChanged.connect(self._update_history_deselect_state)
-            table.currentCellChanged.connect(self._update_history_deselect_state)
+            table.itemSelectionChanged.connect(
+                lambda *_args, selected_table=table: self._update_history_deselect_state(selected_table)
+            )
+            table.currentCellChanged.connect(
+                lambda *_args, selected_table=table: self._update_history_deselect_state(selected_table)
+            )
             tab_layout.addWidget(table, 1)
             hint = QLabel("")
             hint.setObjectName("PageSubtitle")
@@ -2486,12 +2490,19 @@ class SalesPage(QFrame):
             self.history_splitter.setSizes([max(1, sum(sizes)), 0])
         self._local_settings.sync()
 
-    def _update_history_deselect_state(self, *_args):
+    def _update_history_deselect_state(self, selected_table=None, *_args):
         if not hasattr(self, "history_deselect_button"):
             return
-        table = self._current_history_table()
-        selected = bool(
-            table and (table.selectionModel().hasSelection() or table.currentRow() >= 0)
+        # Selection can remain in a tab while Qt is switching widgets. The X clears
+        # every tab's selection, so enable it when any table has a current/selected row.
+        tables = list(getattr(self, "_history_tables", {}).values())
+        if isinstance(selected_table, QTableWidget) and selected_table not in tables:
+            tables.append(selected_table)
+        selected = any(
+            table.currentIndex().isValid()
+            or table.selectionModel().hasSelection()
+            or table.currentRow() >= 0
+            for table in tables
         )
         self.history_deselect_button.setEnabled(selected)
 
@@ -2503,12 +2514,12 @@ class SalesPage(QFrame):
         )
 
     def _deselect_recent_receipt(self):
-        table = self._current_history_table()
-        if table is not None:
+        for table in self._history_tables.values():
             table.clearSelection()
             table.setCurrentCell(-1, -1)
         self._history_invoice_payload = None
         self.history_invoice_preview.clear_invoice()
+        self.history_preview_close_button.hide()
         self.history_preview_status.setText("شماره: —")
         self.history_preview_status.setProperty("receiptId", "")
         self.history_preview_status.setToolTip("ابتدا یک فاکتور را پیش‌نمایش کنید.")
