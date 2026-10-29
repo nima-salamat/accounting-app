@@ -233,15 +233,49 @@ def list_recent_receipts(
     response: Response,
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
+    q: Optional[str] = Query(None, max_length=200),
     user=Depends(require_permission("receipts", "read")),
 ):
-    """Receipts within the administrator-configured history window for the POS."""
+    """Receipts within the configured history window, optionally filtered by query."""
     with DBManager():
         hours = load_kiosk_settings()["receipt_history_hours"]
         cutoff = datetime.now() - timedelta(hours=hours)
         query = Receipt.select().where(Receipt.created_at >= cutoff)
         if not user.is_admin:
             query = query.where(Receipt.user == user.id)
+
+        term = str(q or "").strip()
+        if term:
+            normalized = term.replace("ي", "ی").replace("ك", "ک").replace("\u200c", " ")
+            # Search common receipt fields as well as products that belong to a receipt.
+            search_filter = (
+                Receipt.day_receipt_id.cast("text").contains(term)
+                | Receipt.id.cast("text").contains(term)
+                | Receipt.seat_number.contains(term)
+                | Receipt.payment_method.contains(term)
+                | Receipt.created_at.cast("text").contains(term)
+                | Receipt.total_price.cast("text").contains(term)
+                | Receipt.id.in_(
+                    ReceiptProduct.select(ReceiptProduct.receipt).where(
+                        ReceiptProduct.product_name.contains(term)
+                    )
+                )
+            )
+            payment_aliases = (
+                ("نقدی", "cash"),
+                ("کارت", "card"),
+                ("انتقال بانکی", "bank_transfer"),
+                ("اعتباری", "store_credit"),
+            )
+            for label, method in payment_aliases:
+                if normalized and normalized in label:
+                    search_filter |= Receipt.payment_method == method
+            if "پرداخت" in normalized and ("نشده" in normalized or "نشد" in normalized):
+                search_filter |= Receipt.payed == False
+            elif "پرداخت" in normalized and "شده" in normalized:
+                search_filter |= Receipt.payed == True
+            query = query.where(search_filter)
+
         total = query.count()
         response.headers["X-Total-Count"] = str(total)
         response.headers["X-Page"] = str(page)
