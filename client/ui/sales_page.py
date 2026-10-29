@@ -431,10 +431,6 @@ class SalesPage(QFrame):
     def _update_invoice_mode_controls(self):
         editing = self._editing_receipt_id is not None
         if editing:
-            receipt_number = (
-                (self._editing_receipt or {}).get("day_receipt_id")
-                or str(self._editing_receipt_id)[:8]
-            )
             self.submit_button.setText("ذخیرهٔ تغییرات فاکتور")
             self.cancel_edit_button.show()
         else:
@@ -690,23 +686,41 @@ class SalesPage(QFrame):
             self._clear_layout(preview_layout)
             mode = mode_combo.currentData()
             if mode == "table":
-                table_preview = QTableWidget(1, 4)
+                with_image = image_checkbox.isChecked()
+                table_preview = QTableWidget(1, 5 if with_image else 4)
                 table_preview.setObjectName("SalesProductTable")
-                table_preview.setHorizontalHeaderLabels(["نام کالا", "قیمت", "موجودی", ""])
+                headers = ["تصویر", "نام کالا", "قیمت", "موجودی", ""] if with_image else [
+                    "نام کالا", "قیمت", "موجودی", ""
+                ]
+                table_preview.setHorizontalHeaderLabels(headers)
                 table_preview.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
                 table_preview.verticalHeader().setVisible(False)
+                name_column = 1 if with_image else 0
                 table_preview.horizontalHeader().setSectionResizeMode(
-                    0, QHeaderView.ResizeMode.Stretch
+                    name_column, QHeaderView.ResizeMode.Stretch
                 )
-                for column in (1, 2, 3):
-                    table_preview.horizontalHeader().setSectionResizeMode(
-                        column, QHeaderView.ResizeMode.ResizeToContents
-                    )
+                for column in range(table_preview.columnCount()):
+                    if column != name_column:
+                        table_preview.horizontalHeader().setSectionResizeMode(
+                            column, QHeaderView.ResizeMode.ResizeToContents
+                        )
                 table_preview.setRowCount(1)
-                table_preview.setItem(0, 0, QTableWidgetItem(str(sample.get("name") or "نمونهٔ کالا")))
-                table_preview.setItem(0, 1, QTableWidgetItem("{:,.2f}".format(float(sample.get("sell_price") or 0))))
-                table_preview.setItem(0, 2, QTableWidgetItem("موجودی: ۷"))
-                table_preview.setItem(0, 3, QTableWidgetItem("افزودن"))
+                if with_image:
+                    image_item = QTableWidgetItem()
+                    raw_image = sample.get("_image_bytes")
+                    if raw_image:
+                        pixmap = QPixmap()
+                        if pixmap.loadFromData(raw_image):
+                            image_item.setIcon(QIcon(pixmap.scaled(
+                                32, 32, Qt.AspectRatioMode.KeepAspectRatio,
+                                Qt.TransformationMode.SmoothTransformation,
+                            )))
+                    table_preview.setItem(0, 0, image_item)
+                offset = 1 if with_image else 0
+                table_preview.setItem(0, offset, QTableWidgetItem(str(sample.get("name") or "نمونهٔ کالا")))
+                table_preview.setItem(0, offset + 1, QTableWidgetItem("{:,.2f}".format(float(sample.get("sell_price") or 0))))
+                table_preview.setItem(0, offset + 2, QTableWidgetItem("موجودی: ۷"))
+                table_preview.setItem(0, offset + 3, QTableWidgetItem("افزودن"))
                 table_preview.setFixedHeight(90)
                 preview_layout.addWidget(table_preview)
                 return
@@ -901,7 +915,7 @@ class SalesPage(QFrame):
         for row in range(max(2, len(self.products) // columns + 3)):
             self.product_grid.setRowStretch(row, 0)
         for column in range(6):
-            self.product_grid.setColumnStretch(column, 0)
+            self.product_grid.setColumnStretch(column, 1 if column < columns else 0)
         while self.product_grid.count():
             item = self.product_grid.takeAt(0)
             widget = item.widget()
