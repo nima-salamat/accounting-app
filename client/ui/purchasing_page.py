@@ -161,6 +161,7 @@ class PurchaseInvoiceDialog(QDialog):
         cost.setRange(0, 999999999999.99)
         cost.setDecimals(2)
         cost.setSingleStep(1)
+        cost.setSuffix(" " + currency_label())
         total = QLabel(format_display_amount(0))
         total.setAlignment(Qt.AlignmentFlag.AlignCenter)
         product.currentIndexChanged.connect(
@@ -268,6 +269,7 @@ class PurchasePaymentDialog(QDialog):
         display_remaining = float(to_display_amount(total - paid))
         self.amount.setRange(0.01, max(0.01, display_remaining))
         self.amount.setDecimals(2)
+        self.amount.setSuffix(" " + currency_label())
         self.amount.setValue(display_remaining)
         self.paid_on = QDateEdit(QDate.currentDate())
         self.paid_on.setCalendarPopup(True)
