@@ -28,6 +28,11 @@ def get_currency_unit():
     return _context.unit
 
 
+def currency_context():
+    """Return the process-wide notifier for widgets that cache formatted labels."""
+    return _context
+
+
 def currency_label(unit=None):
     chosen = str(unit or get_currency_unit()).strip().lower()
     return _UNIT_LABELS.get(chosen, _UNIT_LABELS["toman"])
