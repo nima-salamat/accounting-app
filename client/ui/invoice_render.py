@@ -7,6 +7,10 @@ import re
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QBrush, QFont, QPainter, QPen
 
+# Desktop POS sales and its receipts history share the admin-designed sales invoice.
+# Thermal kiosk receipts remain a separate print workflow.
+SALES_INVOICE_TEMPLATE_KIND = "invoice"
+
 BLOCKS = ("company", "metadata", "items", "totals", "footer")
 ELEMENT_TYPES = (
     "company", "invoice_number", "invoice_date", "payment_status",

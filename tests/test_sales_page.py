@@ -11,7 +11,7 @@ from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QSizePolicy, QWidget
 
 from client.ui.invoice_dialog import InvoicePreviewWidget
-from client.ui.invoice_render import DEFAULT_TEMPLATE
+from client.ui.invoice_render import DEFAULT_TEMPLATE, SALES_INVOICE_TEMPLATE_KIND
 from client.ui.sales_page import SalesPage
 from client.ui.data_pages import ReceiptsPage
 
@@ -33,6 +33,8 @@ class _PagedApi:
         self.list_calls = []
         self.recent_calls = []
         self.invoice_template_calls = []
+        self.invoice_templates = {}
+        self.invoice_template_error = None
 
     def list_products_page(self, q=None, category_id=None, page=1, page_size=24):
         self.list_calls.append((q, category_id, page, page_size))
@@ -75,9 +77,20 @@ class _PagedApi:
     def get_product_image_bytes(self, product_id):
         return None
 
+    def get_receipt(self, receipt_id):
+        return {
+            "id": receipt_id, "day_receipt_id": 11, "total_price": 125,
+            "payed": True, "items": [],
+        }
+
     def get_invoice_template(self, *, kind="invoice"):
         self.invoice_template_calls.append(kind)
-        return {"kind": kind, "paper_size": "receipt80" if kind == "pos_receipt" else "A4"}
+        if self.invoice_template_error is not None:
+            raise self.invoice_template_error
+        return self.invoice_templates.get(kind) or {
+            "kind": kind,
+            "paper_size": "receipt80" if kind == "pos_receipt" else "A4",
+        }
 
 
 class _WindowStub:
@@ -240,30 +253,82 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.page.add_to_cart(self.window.api.products[0])
         self.assertEqual(self.page.cart_status_label.text(), "1 نوع · 1 عدد")
 
-    def test_receipt_list_previews_the_admin_configured_pos_receipt_template(self):
+    def test_receipt_list_uses_the_exact_admin_saved_sales_invoice_template(self):
         receipts_page = ReceiptsPage(self.window)
-        receipt = {
-            "id": "receipt-1",
-            "day_receipt_id": 11,
-            "total_price": 125,
-            "payed": True,
-            "items": [],
+        receipt = self.window.api.get_receipt("receipt-1")
+        template = {
+            "company_name": "قالب ذخیره‌شده توسط ادمین",
+            "paper_size": "A5",
+            "elements": [{
+                "id": "admin-title", "type": "text", "label": "عنوان دلخواه",
+                "x_mm": 17, "y_mm": 23, "w_mm": 61, "h_mm": 12,
+                "font_size": 14, "align": "center", "bold": True,
+                "visible": True, "text": "متن دقیق ادمین",
+            }],
         }
+        self.window.api.invoice_templates[SALES_INVOICE_TEMPLATE_KIND] = template
         try:
             with patch("client.ui.data_pages.InvoiceDialog") as dialog:
                 receipts_page._load_invoice_template(receipt)
 
-            self.assertEqual(self.window.api.invoice_template_calls, ["pos_receipt"])
-            dialog.assert_called_once_with(
-                receipt,
-                {"kind": "pos_receipt", "paper_size": "receipt80"},
-                receipts_page,
-            )
+            self.assertEqual(self.window.api.invoice_template_calls, ["invoice"])
+            dialog.assert_called_once_with(receipt, template, receipts_page)
             dialog.return_value.exec.assert_called_once_with()
         finally:
             receipts_page.close()
             receipts_page.deleteLater()
             self.app.processEvents()
+
+    def test_checkout_preview_and_auto_print_share_exact_admin_saved_template(self):
+        receipt = self.window.api.get_receipt("receipt-2")
+        template = {
+            "company_name": "قالب ادمین",
+            "paper_size": "A5",
+            "elements": [{
+                "id": "custom-position", "type": "text", "label": "دلخواه",
+                "x_mm": 31, "y_mm": 42, "w_mm": 55, "h_mm": 8,
+                "font_size": 13, "align": "left", "bold": False,
+                "visible": True, "text": "همان قالب",
+            }],
+        }
+        self.window.api.invoice_templates[SALES_INVOICE_TEMPLATE_KIND] = template
+        with patch("client.ui.sales_page.auto_print_invoice") as print_invoice, \
+             patch("client.ui.sales_page.InvoiceDialog") as dialog:
+            self.page._show_sale_invoice(receipt)
+
+        self.assertEqual(self.window.api.invoice_template_calls, ["invoice"])
+        print_invoice.assert_called_once_with(receipt, template, self.window)
+        dialog.assert_called_once_with(receipt, template, self.window)
+        dialog.return_value.exec.assert_called_once_with()
+
+    def test_recent_invoice_preview_loads_exact_admin_template_without_fallback(self):
+        template = {
+            "company_name": "پیش‌نمایش از قالب ادمین",
+            "paper_size": "A6",
+            "elements": [{
+                "id": "positioned", "type": "text", "label": "جایگاه",
+                "x_mm": 9, "y_mm": 33, "w_mm": 51, "h_mm": 9,
+                "font_size": 10, "align": "right", "bold": True,
+                "visible": True, "text": "متن نمونه",
+            }],
+        }
+        self.window.api.invoice_templates[SALES_INVOICE_TEMPLATE_KIND] = template
+        payload = self.page._load_recent_invoice("receipt-3")
+        self.assertEqual(self.window.api.invoice_template_calls, ["invoice"])
+        self.assertIs(payload["template"], template)
+        self.assertEqual(payload["template"]["elements"][0]["x_mm"], 9)
+        self.assertEqual(payload["template"]["elements"][0]["y_mm"], 33)
+
+    def test_checkout_does_not_silently_use_default_when_admin_template_fails(self):
+        self.window.api.invoice_template_error = RuntimeError("template endpoint unavailable")
+        receipt = self.window.api.get_receipt("receipt-4")
+        with patch("client.ui.sales_page.auto_print_invoice") as print_invoice, \
+             patch("client.ui.sales_page.InvoiceDialog") as dialog:
+            self.page._show_sale_invoice(receipt)
+
+        print_invoice.assert_not_called()
+        dialog.assert_not_called()
+        self.assertTrue(any("قالب «فاکتور فروش»" in error for error in self.window.errors))
 
     def test_cart_quantity_updates_the_line_subtotal(self):
         self.page.refresh_products()

@@ -7,7 +7,7 @@ import json
 from client.payment_terminal import authorize_payment, void_payment
 from client.ui.device_settings import device_settings
 from client.ui.invoice_dialog import InvoiceDialog, InvoicePreviewWidget, auto_print_invoice
-from client.ui.invoice_render import DEFAULT_TEMPLATE
+from client.ui.invoice_render import DEFAULT_TEMPLATE, SALES_INVOICE_TEMPLATE_KIND
 from client.ui.permissions import can_access
 from client.ui.icons import apply_button_icons, set_button_icon
 
@@ -2336,16 +2336,28 @@ class SalesPage(QFrame):
         receipts_page = getattr(self.window, "receipts_page", None)
         if receipts_page is not None:
             receipts_page.refresh()
-        if self.window.api:
-            self.window.run_api(
-                lambda: self.window.api.get_invoice_template(kind="pos_receipt"),
-                lambda template: self._present_invoice(receipt, template, auto_print=not updated),
-                failure=lambda _error: self._present_invoice(
-                    receipt, DEFAULT_TEMPLATE, auto_print=not updated
-                ),
+        self._show_sale_invoice(receipt, updated=updated)
+
+    def _show_sale_invoice(self, receipt, updated=False):
+        """Load the admin-created sales invoice template for both preview and printing."""
+        if not self.window.api:
+            self.window.show_error(
+                "فروش ثبت شد، اما برای دریافت قالب فاکتور ذخیره‌شده، اتصال سرور در دسترس نیست. "
+                "از بخش رسیدها برای تلاش دوباره استفاده کنید."
             )
-        else:
-            self._present_invoice(receipt, DEFAULT_TEMPLATE, auto_print=not updated)
+            return
+        self.window.run_api(
+            lambda: self.window.api.get_invoice_template(
+                kind=SALES_INVOICE_TEMPLATE_KIND
+            ),
+            lambda template: self._present_invoice(
+                receipt, template, auto_print=not updated
+            ),
+            failure=lambda error: self.window.show_error(
+                "فروش ثبت شد، اما قالب «فاکتور فروش» ذخیره‌شده در تنظیمات ادمین بارگذاری نشد؛ "
+                "برای جلوگیری از نمایش/چاپ با قالب اشتباه، عملیات انجام نشد. {}".format(error)
+            ),
+        )
 
     def _present_invoice(self, receipt, template, auto_print=True):
         if auto_print:
@@ -2829,7 +2841,7 @@ class SalesPage(QFrame):
             self.history_preview_status.setText("ابتدا فاکتوری را برای ویرایش انتخاب کنید.")
             return
         self.window.run_api(
-            lambda: self._load_recent_invoice(record["id"]),
+            lambda: self._load_recent_invoice(record["id"], include_template=False),
             lambda payload: self._load_invoice_into_editor(payload),
             failure=lambda error: QMessageBox.warning(
                 self.history_workspace, "خطای بارگذاری برای ویرایش", str(error)
@@ -2837,7 +2849,7 @@ class SalesPage(QFrame):
             busy=self.history_edit_button,
         )
 
-    def _load_recent_invoice(self, receipt_id):
+    def _load_recent_invoice(self, receipt_id, *, include_template=True):
         api = self.window.api
         receipt = api.get_receipt(receipt_id)
         products = {}
@@ -2867,10 +2879,12 @@ class SalesPage(QFrame):
                 except Exception:
                     product["_image_bytes"] = None
             products[product_id] = product
-        try:
-            template = api.get_invoice_template(kind="pos_receipt")
-        except Exception:
-            template = DEFAULT_TEMPLATE
+        # The POS preview uses exactly the saved "فاکتور فروش" design. Do not
+        # silently replace it with a default layout if template retrieval fails.
+        template = (
+            api.get_invoice_template(kind=SALES_INVOICE_TEMPLATE_KIND)
+            if include_template else None
+        )
         return {"receipt": receipt, "products": products, "template": template}
 
     def _load_invoice_into_editor(self, payload, dialog=None):

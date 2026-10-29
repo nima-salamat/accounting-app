@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 from client.ui.forms import RecordDialog
 from client.ui.permissions import can_access
 from client.ui.invoice_dialog import InvoiceDialog
+from client.ui.invoice_render import SALES_INVOICE_TEMPLATE_KIND
 from client.ui.returns_page import ReturnDialog
 
 
@@ -759,13 +760,15 @@ class ReceiptsPage(QFrame):
         )
 
     def _load_invoice_template(self, receipt):
-        # A receipt must use the separately designed POS-receipt template, not
-        # the default "invoice" template used for full-page sales invoices.
+        # The POS checkout preview, recent-invoice preview and receipt-list print
+        # dialog all use the same admin-designed "فاکتور فروش" template.
         self.window.run_api(
-            lambda: self.window.api.get_invoice_template(kind="pos_receipt"),
+            lambda: self.window.api.get_invoice_template(
+                kind=SALES_INVOICE_TEMPLATE_KIND
+            ),
             lambda template: InvoiceDialog(receipt, template, self).exec(),
             failure=lambda error: self.window.show_error(
-                "قالب رسید صندوق از تنظیمات ادمین بارگذاری نشد: {}".format(error)
+                "قالب «فاکتور فروش» ذخیره‌شده در تنظیمات ادمین بارگذاری نشد: {}".format(error)
             ),
         )
 
