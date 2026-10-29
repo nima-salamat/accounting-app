@@ -356,15 +356,15 @@ class SalesPageLayoutTests(unittest.TestCase):
         )
         self.assertEqual(self.page.cart_panel_toggle.toolTip(), "جمع‌کردن پنل سبد خرید")
 
-    def test_product_table_columns_fit_the_viewport_when_page_resizes(self):
+    def test_product_table_columns_and_images_resize_automatically_without_refresh(self):
+        self.page.resize(1180, 780)
         self.page.refresh_products()
         self.page._apply_product_display_settings("table", True, "comfortable", 0)
-        for page_width in (1180, 980, 880):
-            self.page.resize(page_width, 780)
-            self.app.processEvents()
-            self.page._fit_product_table_columns()
-            self.app.processEvents()
-            table = self.page.product_table
+        self.app.processEvents()
+        self.app.processEvents()
+        table = self.page.product_table
+
+        def assert_table_fills_viewport():
             visible_width = sum(
                 table.columnWidth(column)
                 for column in range(table.columnCount())
@@ -373,6 +373,22 @@ class SalesPageLayoutTests(unittest.TestCase):
             self.assertLessEqual(abs(visible_width - table.viewport().width()), 2)
             self.assertFalse(table.horizontalScrollBar().isVisible())
             self.assertGreater(table.columnWidth(1), 0)
+            expected_image_size = min(160, max(40, table.columnWidth(0) - 12))
+            image_cell = table.cellWidget(0, 0)
+            image = image_cell.findChild(QLabel, "SalesProductImage") if image_cell else None
+            self.assertIsNotNone(image)
+            self.assertEqual(image.width(), expected_image_size)
+            self.assertEqual(table.rowHeight(0), expected_image_size + 14)
+
+        assert_table_fills_viewport()
+        previous_viewport_width = table.viewport().width()
+        for page_width in (980, 880, 1180):
+            self.page.resize(page_width, 780)
+            self.app.processEvents()
+            self.app.processEvents()
+            self.assertNotEqual(table.viewport().width(), previous_viewport_width)
+            assert_table_fills_viewport()
+            previous_viewport_width = table.viewport().width()
 
     def test_cancel_loaded_invoice_button_is_in_the_footer_next_to_total(self):
         self.assertGreaterEqual(self.page.footer_layout.indexOf(self.page.total_label), 0)

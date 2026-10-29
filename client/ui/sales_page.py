@@ -205,6 +205,9 @@ class SalesPage(QFrame):
         self.splitter.addWidget(self.cart_panel)
         self.splitter.setStretchFactor(0, 1)
         self.splitter.setStretchFactor(1, 0)
+        self.splitter.installEventFilter(self)
+        self.sales_workspace.installEventFilter(self)
+        self.workspace_stack.installEventFilter(self)
         self.splitter.setSizes(self._saved_splitter_sizes)
         self.splitter.splitterMoved.connect(self._splitter_moved)
         self.sales_layout.addWidget(self.splitter, 1)
@@ -401,6 +404,7 @@ class SalesPage(QFrame):
 
         self.catalog_results_stack = QStackedWidget()
         self.catalog_results_stack.setObjectName("SalesCatalogResults")
+        self.catalog_results_stack.installEventFilter(self)
         self.catalog_results_stack.addWidget(self.catalog_scroll)
 
         self.product_table = QTableWidget(0, 6)
@@ -418,6 +422,7 @@ class SalesPage(QFrame):
         self.product_table.setShowGrid(False)
         self.product_table.setSortingEnabled(False)
         self.product_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.product_table.installEventFilter(self)
         table_header = self.product_table.horizontalHeader()
         table_header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         table_header.setStretchLastSection(False)
@@ -427,6 +432,12 @@ class SalesPage(QFrame):
         for column, width in enumerate(self._product_table_column_weights):
             self.product_table.setColumnWidth(column, width)
         self.product_table.viewport().installEventFilter(self)
+        # Refit after Qt has propagated a resize through the stacked widgets and
+        # splitter; this keeps the table responsive even when no products refresh.
+        self._product_table_refit_timer = QTimer(self)
+        self._product_table_refit_timer.setSingleShot(True)
+        self._product_table_refit_timer.setInterval(0)
+        self._product_table_refit_timer.timeout.connect(self._fit_product_table_columns)
         self._product_table_column_adjust_timer = QTimer(self)
         self._product_table_column_adjust_timer.setSingleShot(True)
         self._product_table_column_adjust_timer.setInterval(120)
@@ -704,6 +715,19 @@ class SalesPage(QFrame):
                 self._position_product_stock_circle(watched)
             elif object_name == "SalesProductDetails":
                 self._adapt_product_details_layout(watched)
+            if self._product_layout_mode == "table" and any(
+                watched is target
+                for target in (
+                    getattr(self, "catalog_panel", None),
+                    getattr(self, "catalog_results_stack", None),
+                    getattr(self, "product_table", None),
+                    getattr(getattr(self, "product_table", None), "viewport", lambda: None)(),
+                    getattr(self, "splitter", None),
+                    getattr(self, "sales_workspace", None),
+                    getattr(self, "workspace_stack", None),
+                )
+            ):
+                self._schedule_product_table_refit()
         if (
             event.type() == QEvent.Type.MouseButtonRelease
             and event.button() == Qt.MouseButton.LeftButton
@@ -732,8 +756,11 @@ class SalesPage(QFrame):
                 QTimer.singleShot(0, self._position_search_suggestions)
             elif watched is getattr(getattr(self, "catalog_scroll", None), "viewport", lambda: None)():
                 QTimer.singleShot(0, self._reflow_products_for_resize)
-            elif watched is getattr(getattr(self, "product_table", None), "viewport", lambda: None)():
-                QTimer.singleShot(0, self._fit_product_table_columns)
+            elif (
+                watched is getattr(getattr(self, "product_table", None), "viewport", lambda: None)()
+                or watched is getattr(self, "product_table", None)
+            ):
+                self._schedule_product_table_refit()
         return super().eventFilter(watched, event)
 
     def _position_product_stock_circle(self, card):
@@ -780,9 +807,15 @@ class SalesPage(QFrame):
             return max(1, min(6, self._product_columns))
         return max(1, min(6, width // 165))
 
+    def _schedule_product_table_refit(self):
+        """Coalesce parent/table/viewport resizes and fit after Qt finishes layout."""
+        timer = getattr(self, "_product_table_refit_timer", None)
+        if timer is not None:
+            timer.start()
+
     def _reflow_products_for_resize(self):
         if self._product_layout_mode == "table":
-            QTimer.singleShot(0, self._fit_product_table_columns)
+            self._schedule_product_table_refit()
             return
         if not getattr(self, "products", None) or self._product_layout_mode != "grid":
             return
@@ -2150,6 +2183,12 @@ class SalesPage(QFrame):
         super().resizeEvent(event)
         self._position_search_suggestions()
         self._reflow_products_for_resize()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # A page revealed from a stacked widget may receive its final geometry
+        # after the parent resize event; ensure the visible table catches up.
+        self._schedule_product_table_refit()
 
     def checkout(self):
         items = self.collect_items()
