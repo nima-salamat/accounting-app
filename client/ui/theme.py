@@ -215,6 +215,16 @@ def stylesheet(mode="light", design=None):
     QFrame#Workbar {{ background: {surface}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
     QFrame#WorkbarPrimaryRow {{ background: transparent; border: none; }}
     QFrame#WorkbarSubmenuRow {{ background: {surface_alt}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
+    QFrame#SalesProductCard, QFrame#SalesCartItem {{ background: {surface}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
+    QFrame#SalesProductCard:hover {{ border-color: {primary}; }}
+    QLabel#SalesProductImage {{ background: {surface_alt}; color: {muted}; border: 1px dashed {border}; border-radius: 8px; padding: 5px; }}
+    QLabel#SalesProductTitle {{ color: {text}; font-size: {font_size}px; font-weight: 750; }}
+    QLabel#SalesProductPrice {{ color: {primary}; font-size: {font_size + 3}px; font-weight: 850; }}
+    QLabel#SalesProductStock {{ background: {highlight}; color: {accent}; border-radius: 7px; padding: 4px 7px; font-size: 11px; }}
+    QLabel#SalesProductStock[outOfStock="true"] {{ background: {surface_alt}; color: {danger}; }}
+    QLabel#SalesCartItemTitle {{ color: {text}; font-size: {font_size}px; font-weight: 750; }}
+    QLabel#SalesCartLineTotal {{ color: {primary}; font-weight: 800; }}
+    QSplitter#SalesWorkspaceSplitter::handle {{ background: {border}; width: 6px; margin: 3px 0; border-radius: 3px; }}
     QWidget#HomeBlank {{ background: {window}; }}
     QFrame#Sidebar {{ background: {sidebar}; border: none; }}
     QLabel#Brand {{ font-size: 20px; font-weight: 800; color: {text}; }}
