@@ -4,7 +4,8 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import unittest
-from PySide6.QtCore import Qt, QSettings
+from PySide6.QtCore import Qt, QSettings, QEvent, QPointF
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
 from client.ui.invoice_dialog import InvoicePreviewWidget
@@ -75,6 +76,7 @@ class _WindowStub:
         self.errors = []
         self.status = ""
         self.mode = "light"
+        self.standalone_pos = False
         self.company_profile = {}
 
     def run_api(self, operation, callback, failure=None, busy=None):
@@ -114,6 +116,9 @@ class SalesPageLayoutTests(unittest.TestCase):
         settings.setValue("sales/product_layout_mode", "grid")
         settings.setValue("sales/product_card_density", "comfortable")
         settings.setValue("sales/product_columns", 0)
+        settings.setValue("sales/show_product_stock", True)
+        settings.setValue("sales/show_product_add_button", True)
+        settings.remove("sales/product_table_column_widths")
         settings.sync()
         self.window = _WindowStub()
         self.page = SalesPage(self.window)
@@ -324,8 +329,10 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.page._apply_product_display_settings("table", True, "compact", 0)
         self.assertIs(self.page.catalog_results_stack.currentWidget(), self.page.product_table)
         self.assertEqual(self.page.product_table.rowCount(), len(self.page.products))
-        self.assertIn("product-1", self.page._product_add_buttons)
-        self.page.product_table.cellWidget(0, 5).click()
+        self.assertEqual(self.page.product_table.columnCount(), 5)
+        self.assertEqual(self.page._product_add_buttons, {})
+        self.assertIsNone(self.page.product_table.cellWidget(0, 5))
+        self.page.product_table.doubleClicked.emit(self.page.product_table.model().index(0, 1))
         self.assertEqual(self.page.collect_items()[0]["product_id"], "product-1")
 
     def test_committed_search_shows_results_in_catalog_and_closes_suggestions(self):
@@ -409,6 +416,69 @@ class SalesPageLayoutTests(unittest.TestCase):
     def test_new_sale_label_is_not_duplicated_in_the_pos_toolbar(self):
         self.assertFalse(hasattr(self.page, "invoice_mode_label"))
 
+
+    def test_stock_and_add_button_visibility_settings_apply_to_cards(self):
+        self.page.refresh_products()
+        self.page._apply_product_display_settings(
+            "grid", True, "comfortable", 0,
+            show_stock=False, show_add_button=False,
+        )
+        card = self.page.product_grid.itemAt(0).widget()
+        self.assertFalse(card.findChildren(QLabel, "SalesProductStock"))
+        self.assertFalse(card.findChildren(QPushButton, "SalesProductAddButton"))
+
+        title = card.findChild(QLabel, "SalesProductTitle")
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            QPointF(2.0, 2.0),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        self.assertTrue(self.page.eventFilter(title, event))
+        self.assertEqual(self.page.collect_items()[0]["product_id"], "product-1")
+
+    def test_table_selection_can_be_cleared_and_action_is_disabled_without_selection(self):
+        self.page.refresh_products()
+        self.page._apply_product_display_settings("table", True, "comfortable", 0)
+        self.assertTrue(self.page.product_deselect_button.isVisible())
+        self.assertFalse(self.page.product_deselect_button.isEnabled())
+
+        self.page.product_table.selectRow(0)
+        self.assertTrue(self.page.product_deselect_button.isEnabled())
+        self.page.product_deselect_button.click()
+        self.assertEqual(self.page.product_table.selectionModel().selectedRows(), [])
+        self.assertFalse(self.page.product_deselect_button.isEnabled())
+
+    def test_table_column_widths_are_saved_and_restored(self):
+        self.page.refresh_products()
+        self.page._apply_product_display_settings("table", True, "comfortable", 0)
+        self.page.product_table.setColumnWidth(1, 333)
+        self.page._save_product_table_column_widths()
+        self.assertIn("333", self.page._local_settings.value(
+            "sales/product_table_column_widths"
+        ))
+
+        another_page = SalesPage(self.window)
+        try:
+            self.assertEqual(another_page.product_table.columnWidth(1), 333)
+        finally:
+            another_page.close()
+            another_page.deleteLater()
+            self.app.processEvents()
+
+    def test_standalone_pos_exposes_theme_icon_but_desktop_client_does_not(self):
+        self.assertTrue(self.page.theme_button.isHidden())
+        standalone = _WindowStub()
+        standalone.standalone_pos = True
+        standalone_page = SalesPage(standalone)
+        try:
+            self.assertFalse(standalone_page.theme_button.isHidden())
+            self.assertTrue(standalone_page.theme_button.toolTip())
+        finally:
+            standalone_page.close()
+            standalone_page.deleteLater()
+            self.app.processEvents()
 
 if __name__ == "__main__":
     unittest.main()
