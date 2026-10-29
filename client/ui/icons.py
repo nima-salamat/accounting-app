@@ -94,6 +94,8 @@ def _icon_color(button, mode):
     name = button.objectName()
     if name in {"PrimaryButton", "AuthLoginButton", "KioskAddButton", "SalesProductAddButton"}:
         return "#FFFFFF"
+    if name == "SalesToolbarButton" and button.isCheckable() and button.isChecked():
+        return "#FFFFFF"
     if name == "DangerButton":
         return colors["danger"]
     if name == "NavigationButton":

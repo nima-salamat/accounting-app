@@ -1,10 +1,27 @@
 """Tests for the shared client typography/design-token configuration."""
 import unittest
 
+from PySide6.QtWidgets import QApplication, QPushButton
+
 from client.ui.theme import DEFAULT_DESIGN, normalize_design_config, stylesheet
 
 
 class ThemeConfigurationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_selected_pos_mode_icons_have_contrast_on_primary_background(self):
+        from client.ui.icons import _icon_color
+
+        button = QPushButton("فاکتورهای اخیر")
+        button.setObjectName("SalesToolbarButton")
+        button.setCheckable(True)
+        button.setChecked(True)
+        self.assertEqual(_icon_color(button, "light"), "#FFFFFF")
+        button.setChecked(False)
+        self.assertNotEqual(_icon_color(button, "light"), "#FFFFFF")
+
     def test_valid_font_family_and_layout_options_are_kept(self):
         settings = normalize_design_config({
             "font_family": "Noto Sans Arabic", "font_size": 16,
