@@ -2192,14 +2192,31 @@ class SalesPage(QFrame):
         self.history_preview_reopen_button.setObjectName("HistoryPreviewToggleButton")
         self.history_preview_reopen_button.setFixedSize(32, 32)
         self.history_preview_reopen_button.setToolTip("بازکردن پیش‌نمایش فاکتور")
-        self.history_preview_reopen_button.setAccessibleName("بازکردن پیش‌نمایش فاکتور")
+        self.history_preview_reopen_button.setAccessibleName("باز یا بستن پیش‌نمایش فاکتور")
         set_button_icon(self.history_preview_reopen_button, "next", getattr(self.window, "mode", "light"))
-        self.history_preview_reopen_button.hide()
-        self.history_preview_reopen_button.clicked.connect(lambda: self._set_history_preview_visible(True))
+        self.history_preview_reopen_button.clicked.connect(self._toggle_history_preview)
+        # RTL placement puts the preview toggle just left of the refresh button.
         history_heading.addWidget(self.history_deselect_button)
-        history_heading.addWidget(self.history_preview_reopen_button)
         history_heading.addWidget(self.history_refresh_button)
+        history_heading.addWidget(self.history_preview_reopen_button)
         list_layout.addLayout(history_heading)
+
+        search_row = QHBoxLayout()
+        self.history_search_input = QLineEdit(list_panel)
+        self.history_search_input.setObjectName("RecentInvoicesSearch")
+        self.history_search_input.setPlaceholderText(
+            "شماره، شناسه، تاریخ، مبلغ، میز، روش پرداخت یا نام کالا…"
+        )
+        self.history_search_input.setClearButtonEnabled(True)
+        self.history_search_input.returnPressed.connect(self._commit_recent_receipt_search)
+        self.history_search_button = QPushButton("جست‌وجو", list_panel)
+        self.history_search_button.setObjectName("SalesToolbarButton")
+        self.history_search_button.setToolTip("جست‌وجوی فاکتورها")
+        self.history_search_button.clicked.connect(self._commit_recent_receipt_search)
+        search_row.addWidget(self.history_search_input, 1)
+        search_row.addWidget(self.history_search_button)
+        list_layout.addLayout(search_row)
+
         self.history_tabs = QTabWidget(list_panel)
         self.history_tabs.setObjectName("RecentInvoicesTabs")
         self.history_tabs.setDocumentMode(True)
@@ -2294,10 +2311,10 @@ class SalesPage(QFrame):
         self.history_preview_close_button.setAccessibleName("بستن پیش‌نمایش فاکتور")
         set_button_icon(self.history_preview_close_button, "previous", getattr(self.window, "mode", "light"))
         self.history_preview_close_button.clicked.connect(lambda: self._set_history_preview_visible(False))
+        preview_heading.addWidget(self.history_preview_close_button)
         preview_heading.addWidget(preview_title)
         preview_heading.addWidget(self.history_preview_status, 1)
         preview_heading.addWidget(self.history_export_button)
-        preview_heading.addWidget(self.history_preview_close_button)
         preview_layout.addLayout(preview_heading)
         self.history_invoice_preview = InvoicePreviewWidget(preview_panel)
         self.history_invoice_preview.setMinimumWidth(300)
@@ -2402,17 +2419,25 @@ class SalesPage(QFrame):
         self._history_loaded = True
         self._render_recent_receipt_tables()
 
+    def _commit_recent_receipt_search(self):
+        self._history_search_query = self.history_search_input.text().strip()
+        self._history_current_page = 0
+        self._deselect_recent_receipt()
+        self._load_recent_receipt_page(1, append=False)
+
     def _load_recent_receipt_page(self, page, append=False):
         if not self.window.api:
             self.history_status.setText("برای دریافت فاکتورها ابتدا به سرور وصل شوید.")
             return
+        query = self.history_search_input.text().strip()
+        self._history_search_query = query
         if not append:
-            self.history_status.setText("در حال بارگذاری فاکتورها…")
+            self.history_status.setText("در حال جست‌وجو و بارگذاری فاکتورها…")
             self.history_refresh_button.setEnabled(False)
         self.history_load_more_button.setEnabled(False)
         self.window.run_api(
             lambda: self.window.api.list_recent_receipts_page(
-                page=page, page_size=self._history_page_size
+                q=query or None, page=page, page_size=self._history_page_size
             ),
             lambda payload: self._populate_recent_receipts(payload, append=append),
             failure=lambda error: (
@@ -2429,6 +2454,9 @@ class SalesPage(QFrame):
             self._history_splitter_sizes = sizes
             self._local_settings.setValue("sales/history_splitter_sizes", sizes)
 
+    def _toggle_history_preview(self):
+        self._set_history_preview_visible(self._history_preview_collapsed)
+
     def _set_history_preview_visible(self, visible):
         visible = bool(visible)
         if visible == (not self._history_preview_collapsed):
@@ -2439,8 +2467,10 @@ class SalesPage(QFrame):
             self._history_preview_collapsed = False
             self._local_settings.setValue("sales/history_preview_collapsed", False)
             preview_panel.show()
-            self.history_preview_close_button.show()
-            self.history_preview_reopen_button.hide()
+            self.history_preview_close_button.setVisible(bool(self._history_invoice_payload))
+            self.history_preview_reopen_button.setToolTip("بستن پیش‌نمایش فاکتور")
+            self.history_preview_reopen_button.setAccessibleName("بستن پیش‌نمایش فاکتور")
+            set_button_icon(self.history_preview_reopen_button, "previous", getattr(self.window, "mode", "light"))
             self.history_splitter.setSizes(self._history_splitter_sizes or [780, 520])
         else:
             if len(sizes) == 2 and sizes[1] > 0 and sum(sizes) > 200:
@@ -2450,7 +2480,9 @@ class SalesPage(QFrame):
             self._local_settings.setValue("sales/history_preview_collapsed", True)
             preview_panel.hide()
             self.history_preview_close_button.hide()
-            self.history_preview_reopen_button.show()
+            self.history_preview_reopen_button.setToolTip("بازکردن پیش‌نمایش فاکتور")
+            self.history_preview_reopen_button.setAccessibleName("بازکردن پیش‌نمایش فاکتور")
+            set_button_icon(self.history_preview_reopen_button, "next", getattr(self.window, "mode", "light"))
             self.history_splitter.setSizes([max(1, sum(sizes)), 0])
         self._local_settings.sync()
 
@@ -2539,6 +2571,8 @@ class SalesPage(QFrame):
 
     def _set_history_invoice_preview(self, payload):
         self._history_invoice_payload = payload
+        if self._history_preview_collapsed:
+            self._set_history_preview_visible(True)
         receipt = payload.get("receipt") or {}
         number = receipt.get("day_receipt_id") or str(receipt.get("id") or "")[:8] or "—"
         receipt_id = str(receipt.get("id") or "")
@@ -2549,6 +2583,9 @@ class SalesPage(QFrame):
         )
         self.history_preview_status.setEnabled(bool(receipt_id))
         self.history_export_button.setEnabled(bool(receipt_id))
+        self.history_preview_close_button.setVisible(
+            not self._history_preview_collapsed and bool(receipt_id)
+        )
         self.history_invoice_preview.set_invoice(
             receipt, payload.get("template") or DEFAULT_TEMPLATE
         )
