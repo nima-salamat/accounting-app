@@ -509,8 +509,11 @@ class SalesPage(QFrame):
             self._local_settings.setValue("sales/cart_collapsed", False)
             self.cart_panel.setMaximumWidth(16777215)
             self.cart_panel.setMinimumWidth(320)
+            self.cart_status_label.setObjectName("StatusPill")
             self.cart_status_label.setMinimumWidth(58)
             self.cart_status_label.setMaximumWidth(180)
+            self.cart_status_label.style().unpolish(self.cart_status_label)
+            self.cart_status_label.style().polish(self.cart_status_label)
             for index in range(self.cart_title_box.count()):
                 widget = self.cart_title_box.itemAt(index).widget()
                 if widget is not None:
@@ -535,11 +538,14 @@ class SalesPage(QFrame):
             self.cart_scroll.hide()
             self.clear_cart_button.hide()
             self.cart_empty_label.hide()
-            collapsed_width = 88
+            collapsed_width = 92
             self.cart_panel.setMinimumWidth(collapsed_width)
             self.cart_panel.setMaximumWidth(collapsed_width)
+            self.cart_status_label.setObjectName("SalesCartCountBadge")
             self.cart_status_label.setMinimumWidth(32)
-            self.cart_status_label.setMaximumWidth(40)
+            self.cart_status_label.setMaximumWidth(32)
+            self.cart_status_label.style().unpolish(self.cart_status_label)
+            self.cart_status_label.style().polish(self.cart_status_label)
             self.cart_panel_toggle.setText("›")
             self.cart_panel_toggle.setToolTip("بازکردن پنل سبد خرید")
             total = max(1, self.splitter.width(), sum(sizes))
@@ -612,7 +618,7 @@ class SalesPage(QFrame):
             ("history_refresh_button", "refresh"),
             ("product_deselect_button", "clear"),
             ("history_deselect_button", "clear"),
-            ("history_preview_close_button", "previous"),
+            ("history_preview_close_button", "clear"),
             ("history_preview_reopen_button", "previous" if not self._history_preview_collapsed else "next"),
             ("history_export_button", "download"),
             ("catalog_mode_button", "sales"),
@@ -2209,6 +2215,13 @@ class SalesPage(QFrame):
         )
         self.history_search_input.setClearButtonEnabled(True)
         self.history_search_input.returnPressed.connect(self._commit_recent_receipt_search)
+        self.history_search_timer = QTimer(self)
+        self.history_search_timer.setSingleShot(True)
+        self.history_search_timer.setInterval(350)
+        self.history_search_timer.timeout.connect(self._commit_recent_receipt_search)
+        self.history_search_input.textChanged.connect(
+            lambda _value: self.history_search_timer.start()
+        )
         self.history_search_button = QPushButton("جست‌وجو", list_panel)
         self.history_search_button.setObjectName("SalesToolbarButton")
         self.history_search_button.setToolTip("جست‌وجوی فاکتورها")
@@ -2254,6 +2267,9 @@ class SalesPage(QFrame):
                 lambda *_args, selected_table=table: self._update_history_deselect_state(selected_table)
             )
             table.currentCellChanged.connect(
+                lambda *_args, selected_table=table: self._update_history_deselect_state(selected_table)
+            )
+            table.cellClicked.connect(
                 lambda *_args, selected_table=table: self._update_history_deselect_state(selected_table)
             )
             tab_layout.addWidget(table, 1)
@@ -2311,10 +2327,10 @@ class SalesPage(QFrame):
         self.history_preview_close_button = QPushButton("", preview_panel)
         self.history_preview_close_button.setObjectName("HistoryPreviewToggleButton")
         self.history_preview_close_button.setFixedSize(32, 32)
-        self.history_preview_close_button.setToolTip("بستن پیش‌نمایش فاکتور")
-        self.history_preview_close_button.setAccessibleName("بستن پیش‌نمایش فاکتور")
-        set_button_icon(self.history_preview_close_button, "previous", getattr(self.window, "mode", "light"))
-        self.history_preview_close_button.clicked.connect(lambda: self._set_history_preview_visible(False))
+        self.history_preview_close_button.setToolTip("لغو پیش‌نمایش فاکتور")
+        self.history_preview_close_button.setAccessibleName("لغو پیش‌نمایش فاکتور")
+        set_button_icon(self.history_preview_close_button, "clear", getattr(self.window, "mode", "light"))
+        self.history_preview_close_button.clicked.connect(self._deselect_recent_receipt)
         preview_heading.addWidget(self.history_preview_close_button)
         preview_heading.addWidget(preview_title)
         preview_heading.addWidget(self.history_preview_status, 1)
@@ -2424,6 +2440,7 @@ class SalesPage(QFrame):
         self._render_recent_receipt_tables()
 
     def _commit_recent_receipt_search(self):
+        self.history_search_timer.stop()
         self._history_search_query = self.history_search_input.text().strip()
         self._history_current_page = 0
         self._deselect_recent_receipt()
@@ -2443,7 +2460,10 @@ class SalesPage(QFrame):
             lambda: self.window.api.list_recent_receipts_page(
                 q=query or None, page=page, page_size=self._history_page_size
             ),
-            lambda payload: self._populate_recent_receipts(payload, append=append),
+            lambda payload, requested_query=query: (
+                self._populate_recent_receipts(payload, append=append)
+                if requested_query == self.history_search_input.text().strip() else None
+            ),
             failure=lambda error: (
                 self.history_status.setText("دریافت فاکتورها ناموفق بود."),
                 QMessageBox.warning(self.history_workspace, "خطای دریافت فاکتورها", str(error)),
