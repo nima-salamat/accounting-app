@@ -1,6 +1,7 @@
 """Exact-sized preview, PDF and printer output for positioned invoice elements."""
+import os
 from PySide6.QtCore import QRectF, QSizeF, QMarginsF, Qt, QTimer
-from PySide6.QtGui import QColor, QPageSize, QPageLayout, QPainter
+from PySide6.QtGui import QColor, QImage, QPageSize, QPageLayout, QPainter
 from PySide6.QtPrintSupport import QPrinter, QPrintDialog
 from PySide6.QtWidgets import (
     QApplication, QDialog, QFileDialog, QFrame, QGraphicsItem, QGraphicsScene, QGraphicsView,
@@ -217,6 +218,106 @@ class InvoicePreviewWidget(QFrame):
         super().resizeEvent(event)
         if self._page_item is not None:
             QTimer.singleShot(0, self.fit_width)
+
+    def export_invoice(self, file_format):
+        """Save all pages as PDF, or as one numbered image file per page."""
+        fmt = str(file_format or "").strip().lower()
+        if fmt not in {"pdf", "png", "jpg", "jpeg"}:
+            return False
+        fmt = "jpg" if fmt == "jpeg" else fmt
+        if not self.receipt or not self.pages:
+            QMessageBox.information(self, "فاکتور انتخاب نشده", "ابتدا فاکتوری را برای پیش‌نمایش انتخاب کنید.")
+            return False
+        number = self.receipt.get("day_receipt_id") or "invoice"
+        extension = "jpg" if fmt == "jpg" else fmt
+        filters = {
+            "pdf": "PDF (*.pdf)",
+            "png": "PNG image (*.png)",
+            "jpg": "JPEG image (*.jpg *.jpeg)",
+        }
+        path, _ = QFileDialog.getSaveFileName(
+            self, "ذخیرهٔ فاکتور",
+            "invoice-{}.{}".format(number, extension), filters[fmt],
+        )
+        if not path:
+            return False
+        if not path.lower().endswith(("." + extension, ".jpeg" if fmt == "jpg" else "." + extension)):
+            path += "." + extension
+        try:
+            if fmt == "pdf":
+                self._export_pages_to_pdf(path)
+            else:
+                self._export_pages_to_images(path, fmt)
+        except Exception as exc:
+            QMessageBox.warning(self, "خطا در ذخیرهٔ فاکتور", str(exc))
+            return False
+        QMessageBox.information(
+            self, "فاکتور ذخیره شد",
+            "{} صفحه به فرمت {} ذخیره شد.\n{}".format(len(self.pages), extension.upper(), path),
+        )
+        return True
+
+    def _export_pages_to_pdf(self, path):
+        pages = self.pages or [(self.receipt, self.template)]
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+        printer.setOutputFileName(path)
+        configure_invoice_printer(printer, pages[0][1])
+        painter = QPainter()
+        if not painter.begin(printer):
+            raise RuntimeError("ایجاد فایل PDF ناموفق بود.")
+        try:
+            scale = float(printer.resolution()) / 25.4
+            for page_index, (page_receipt, page_template) in enumerate(pages):
+                if page_index:
+                    if not printer.newPage():
+                        raise RuntimeError("ایجاد صفحهٔ بعدی در فایل PDF ناموفق بود.")
+                    painter.resetTransform()
+                    painter.scale(scale, scale)
+                width, height = page_dimensions(page_template)
+                draw_invoice_page(
+                    painter, QRectF(0, 0, width, height), page_receipt, page_template
+                )
+        finally:
+            painter.end()
+
+    def _export_pages_to_images(self, path, image_format, dpi=150):
+        pages = self.pages or [(self.receipt, self.template)]
+        extension = "jpg" if image_format == "jpg" else "png"
+        base, _ = os.path.splitext(path)
+        for index, (page_receipt, page_template) in enumerate(pages):
+            width_mm, height_mm = page_dimensions(page_template)
+            pixels_per_mm = float(dpi) / 25.4
+            width_px = max(1, int(round(width_mm * pixels_per_mm)))
+            height_px = max(1, int(round(height_mm * pixels_per_mm)))
+            # Avoid pathological memory use for very long thermal rolls.
+            dimension_scale = min(1.0, 12000.0 / max(width_px, height_px))
+            area_scale = min(1.0, (40_000_000.0 / (width_px * height_px)) ** 0.5)
+            dimension_scale = min(dimension_scale, area_scale)
+            width_px = max(1, int(width_px * dimension_scale))
+            height_px = max(1, int(height_px * dimension_scale))
+            pixels_per_mm *= dimension_scale
+            image = QImage(width_px, height_px, QImage.Format.Format_RGB32)
+            image.fill(QColor("white"))
+            painter = QPainter(image)
+            try:
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+                painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
+                painter.scale(pixels_per_mm, pixels_per_mm)
+                draw_invoice_page(
+                    painter, QRectF(0, 0, width_mm, height_mm),
+                    page_receipt, page_template,
+                )
+            finally:
+                painter.end()
+            if len(pages) == 1:
+                output_path = path
+            else:
+                output_path = "{}-page-{:02d}.{}".format(base, index + 1, extension)
+            save_format = "JPEG" if image_format == "jpg" else "PNG"
+            quality = 94 if image_format == "jpg" else -1
+            if not image.save(output_path, save_format, quality):
+                raise RuntimeError("ذخیرهٔ تصویر فاکتور ناموفق بود: {}".format(output_path))
 
 
 class InvoiceDialog(QDialog):
