@@ -34,6 +34,7 @@ from client.ui.purchasing_page import PurchasingPage
 from client.ui.kiosk_settings_page import KioskSettingsPage
 from client.ui.permissions import can_access
 from client.ui.theme import stylesheet
+from client.ui.icons import apply_button_icons, set_button_icon
 from client.ui.worker import ApiWorker
 
 
@@ -135,7 +136,7 @@ class AccountingMainWindow(QMainWindow):
         main_layout.addWidget(self.page_stack,1)
         self.status_bar_frame=QFrame();self.status_bar_frame.setObjectName("Card")
         status_layout=QHBoxLayout(self.status_bar_frame);status_layout.setContentsMargins(14,8,14,8)
-        self.status_icon=QLabel("●");self.status_icon.setStyleSheet("color:#0F9D83;")
+        self.status_icon=QLabel("●");self.status_icon.setObjectName("StatusDot");self.status_icon.setProperty("state", "ok")
         self.status_label=QLabel("آماده")
         self.status_label.setObjectName("PageSubtitle")
         status_layout.addWidget(self.status_icon);status_layout.addWidget(self.status_label,1)
@@ -166,8 +167,7 @@ class AccountingMainWindow(QMainWindow):
     def _build_sidebar(self):
         side=QFrame(self.root);side.setObjectName("Sidebar");side.setMinimumWidth(218);side.setMaximumWidth(252)
         layout=QVBoxLayout(side);layout.setContentsMargins(13,20,13,17);layout.setSpacing(5)
-        brand=QLabel("A");brand.setAlignment(Qt.AlignmentFlag.AlignCenter);brand.setFixedSize(45,45)
-        brand.setStyleSheet("background:#4169E1;color:white;border-radius:13px;font-size:23px;font-weight:900;")
+        brand=QLabel("A");brand.setObjectName("SidebarBrandmark");brand.setAlignment(Qt.AlignmentFlag.AlignCenter);brand.setFixedSize(45,45)
         layout.addWidget(brand,0,Qt.AlignmentFlag.AlignRight)
         name=QLabel("Accounting App");name.setObjectName("SidebarBrand");layout.addWidget(name)
         sub=QLabel("SECURE  ·  API EDITION");sub.setObjectName("SidebarSub");layout.addWidget(sub)
@@ -250,7 +250,8 @@ class AccountingMainWindow(QMainWindow):
         ]
         self._workbar_groups = groups
         for group_id, label, glyph, _entries in groups:
-            button = QPushButton("{}  {}".format(glyph, label), primary_row)
+            button = QPushButton(label, primary_row)
+            set_button_icon(button, group_id, self.mode)
             button.setObjectName("WorkbarGroupButton")
             button.setCheckable(True)
             button.setProperty("active", False)
@@ -344,6 +345,7 @@ class AccountingMainWindow(QMainWindow):
 
             button = QPushButton(label, self.workbar_submenu_frame)
             button.setObjectName("WorkbarItemButton")
+            set_button_icon(button, key, self.mode)
             button.setCheckable(True)
             button.setMinimumHeight(32)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -624,7 +626,9 @@ class AccountingMainWindow(QMainWindow):
 
     def set_status(self,message):
         self.status_label.setText(str(message))
-        self.status_icon.setStyleSheet("color:#0F9D83;" if "خطا" not in str(message) else "color:#D64045;")
+        self.status_icon.setProperty("state", "error" if "خطا" in str(message) else "ok")
+        self.status_icon.style().unpolish(self.status_icon)
+        self.status_icon.style().polish(self.status_icon)
 
     def change_theme(self,mode):
         if mode not in ("light","dark"):return
@@ -643,6 +647,7 @@ class AccountingMainWindow(QMainWindow):
         if hasattr(self,"theme_button"):
             self.theme_button.setText("☀" if self.mode=="dark" else "☾")
             self.theme_button.setToolTip("تغییر تم روشن / تاریک")
+        apply_button_icons(self, self.mode)
 
     def connect_to_api(self,url):
         try:
