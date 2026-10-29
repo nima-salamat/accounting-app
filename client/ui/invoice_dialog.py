@@ -268,6 +268,7 @@ class InvoicePreviewWidget(QFrame):
             raise RuntimeError("ایجاد فایل PDF ناموفق بود.")
         try:
             scale = float(printer.resolution()) / 25.4
+            painter.scale(scale, scale)
             for page_index, (page_receipt, page_template) in enumerate(pages):
                 if page_index:
                     if not printer.newPage():
