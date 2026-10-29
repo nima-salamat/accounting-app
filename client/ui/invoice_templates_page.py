@@ -5,7 +5,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QBrush, QPainter, QPen
 from PySide6.QtWidgets import (
     QCheckBox, QColorDialog, QComboBox, QFormLayout, QFrame, QGraphicsItem,
-    QGraphicsRectItem, QGraphicsScene, QGraphicsView, QHBoxLayout, QLabel,
+    QGraphicsLineItem, QGraphicsRectItem, QGraphicsScene, QGraphicsView, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
     QScrollArea, QSpinBox, QSplitter, QTextEdit, QVBoxLayout, QWidget,
 )
@@ -120,6 +120,49 @@ TEMPLATE_KINDS = [
 class _DesignerScene(QGraphicsScene):
     elementMoved = Signal(object)
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._alignment_guide_items = []
+
+    def set_alignment_guides(self, vertical_positions=(), horizontal_positions=()):
+        """Paint temporary, non-interactive smart guides over the page canvas."""
+        self.clear_alignment_guides()
+        if self.sceneRect().isEmpty():
+            return
+        pen = QPen(QColor("#E11D48"))
+        pen.setWidthF(0.35)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        bounds = self.sceneRect()
+        for x in vertical_positions:
+            line = QGraphicsLineItem(float(x), bounds.top(), float(x), bounds.bottom())
+            line.setPen(pen)
+            line.setZValue(500)
+            line.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+            self.addItem(line)
+            self._alignment_guide_items.append(line)
+        for y in horizontal_positions:
+            line = QGraphicsLineItem(bounds.left(), float(y), bounds.right(), float(y))
+            line.setPen(pen)
+            line.setZValue(500)
+            line.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+            self.addItem(line)
+            self._alignment_guide_items.append(line)
+        self.update()
+
+    def clear_alignment_guides(self):
+        for guide in self._alignment_guide_items:
+            if guide.scene() is self:
+                self.removeItem(guide)
+        self._alignment_guide_items.clear()
+        self.update()
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        self.clear_alignment_guides()
+        page = self.parent()
+        if page is not None and hasattr(page, "_reset_alignment_hint"):
+            page._reset_alignment_hint()
+
 
 class _PanZoomGraphicsView(QGraphicsView):
     """Canvas with wheel zoom and middle-button drag panning."""
@@ -213,10 +256,7 @@ class _DesignerElementItem(QGraphicsRectItem):
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():
-            bounds = self.scene().sceneRect()
-            x = max(0.0, min(float(value.x()), max(0.0, bounds.width() - self.rect().width())))
-            y = max(0.0, min(float(value.y()), max(0.0, bounds.height() - self.rect().height())))
-            return QPointF(x, y)
+            return self.page._snap_item_position(self, value)
         result = super().itemChange(change, value)
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged and self.scene():
             self.scene().elementMoved.emit(self)
@@ -492,9 +532,11 @@ class InvoiceTemplatesPage(QFrame):
         self.canvas.setMinimumHeight(400)
         self.scene.selectionChanged.connect(self._canvas_selection_changed)
         canvas_layout.addWidget(self.canvas, 1)
-        self.canvas_help = QLabel(
-            "برای زوم از چرخ موس، برای جابه‌جایی برگه دکمهٔ وسط موس را نگه دارید و بکشید؛ «برازش صفحه» نمای کامل را برمی‌گرداند."
+        self._alignment_hint_default = (
+            "برای تراز دقیق، المان را بکشید؛ خطوط راهنمای صورتی لبه‌ها و مرکز المان‌های دیگر را نشان می‌دهند. "
+            "برای زوم از چرخ موس و برای جابه‌جایی صفحه دکمهٔ وسط موس را بکشید."
         )
+        self.canvas_help = QLabel(self._alignment_hint_default)
         self.canvas_help.setObjectName("PageSubtitle")
         self.canvas_help.setWordWrap(True)
         canvas_layout.addWidget(self.canvas_help)
@@ -683,6 +725,7 @@ class InvoiceTemplatesPage(QFrame):
         self._update_canvas_appearance()
 
     def _rebuild_canvas(self):
+        self.scene.clear_alignment_guides()
         self.scene.clear()
         self._items_by_id.clear()
         self._paper_item = None
@@ -719,6 +762,78 @@ class InvoiceTemplatesPage(QFrame):
             return
         if force or not self.canvas._user_zoomed:
             self.canvas.fit_page(self.scene.sceneRect())
+
+    def _reset_alignment_hint(self):
+        if hasattr(self, "canvas_help"):
+            self.canvas_help.setText(self._alignment_hint_default)
+
+    def _snap_item_position(self, item, proposed):
+        """Magnetically align an element's edges/center with nearby elements."""
+        bounds = self.scene.sceneRect()
+        width = float(item.rect().width())
+        height = float(item.rect().height())
+        x = max(0.0, min(float(proposed.x()), max(0.0, bounds.width() - width)))
+        y = max(0.0, min(float(proposed.y()), max(0.0, bounds.height() - height)))
+
+        scale = max(0.01, abs(float(self.canvas.transform().m11())))
+        # Keep the snapping zone close to 7 screen pixels across different zoom levels.
+        threshold = max(1.0, min(5.0, 7.0 / scale))
+        x_candidates = []
+        y_candidates = []
+        x_refs = (("لبهٔ چپ", x), ("مرکز", x + width / 2), ("لبهٔ راست", x + width))
+        y_refs = (("لبهٔ بالا", y), ("مرکز", y + height / 2), ("لبهٔ پایین", y + height))
+
+        for other in self._items_by_id.values():
+            if other is item or other.scene() is not self.scene:
+                continue
+            other_x = float(other.pos().x())
+            other_y = float(other.pos().y())
+            other_w = float(other.rect().width())
+            other_h = float(other.rect().height())
+            target_x = (
+                ("لبهٔ چپ", other_x),
+                ("مرکز", other_x + other_w / 2),
+                ("لبهٔ راست", other_x + other_w),
+            )
+            target_y = (
+                ("لبهٔ بالا", other_y),
+                ("مرکز", other_y + other_h / 2),
+                ("لبهٔ پایین", other_y + other_h),
+            )
+            for own_name, own_value in x_refs:
+                for target_name, target_value in target_x:
+                    delta = target_value - own_value
+                    candidate_x = x + delta
+                    if abs(delta) <= threshold and -0.001 <= candidate_x <= bounds.width() - width + 0.001:
+                        x_candidates.append((abs(delta), candidate_x, target_value, own_name, target_name))
+            for own_name, own_value in y_refs:
+                for target_name, target_value in target_y:
+                    delta = target_value - own_value
+                    candidate_y = y + delta
+                    if abs(delta) <= threshold and -0.001 <= candidate_y <= bounds.height() - height + 0.001:
+                        y_candidates.append((abs(delta), candidate_y, target_value, own_name, target_name))
+
+        x_match = min(x_candidates, key=lambda value: value[0]) if x_candidates else None
+        y_match = min(y_candidates, key=lambda value: value[0]) if y_candidates else None
+        if x_match:
+            x = max(0.0, min(x_match[1], bounds.width() - width))
+        if y_match:
+            y = max(0.0, min(y_match[1], bounds.height() - height))
+
+        self.scene.set_alignment_guides(
+            vertical_positions=[x_match[2]] if x_match else (),
+            horizontal_positions=[y_match[2]] if y_match else (),
+        )
+        if x_match or y_match:
+            active = []
+            if x_match:
+                active.append("تراز افقی")
+            if y_match:
+                active.append("تراز عمودی")
+            self.canvas_help.setText("راهنمای هوشمند فعال: " + " و ".join(active) + " · با رها کردن موس بسته می‌شود.")
+        else:
+            self._reset_alignment_hint()
+        return QPointF(x, y)
 
     def _zoom_label_changed(self, zoom):
         percent = int(round(float(zoom) * 100))
