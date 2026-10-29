@@ -326,6 +326,26 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.assertGreaterEqual(self.page.catalog_title_row.indexOf(self.page.cart_panel_toggle), 0)
         self.assertEqual(self.page.cart_header_layout.indexOf(self.page.cart_panel_toggle), -1)
 
+    def test_cart_toggle_button_collapses_and_reopens_the_panel(self):
+        self.page.refresh_products()
+        self.assertFalse(self.page._cart_collapsed)
+
+        self.page.cart_panel_toggle.click()
+        self.app.processEvents()
+        self.assertTrue(self.page._cart_collapsed)
+        cart_index = self.page.splitter.indexOf(self.page.cart_panel)
+        self.assertLessEqual(self.page.splitter.sizes()[cart_index], 120)
+        self.assertEqual(self.page.cart_panel_toggle.toolTip(), "بازکردن پنل سبد خرید")
+
+        self.page.cart_panel_toggle.click()
+        self.app.processEvents()
+        self.assertFalse(self.page._cart_collapsed)
+        self.assertFalse(self.page.cart_scroll.isHidden())
+        self.assertGreaterEqual(
+            self.page.splitter.sizes()[cart_index], self.page.cart_panel.minimumWidth()
+        )
+        self.assertEqual(self.page.cart_panel_toggle.toolTip(), "جمع‌کردن پنل سبد خرید")
+
     def test_cancel_loaded_invoice_button_is_in_the_footer_next_to_total(self):
         self.assertGreaterEqual(self.page.footer_layout.indexOf(self.page.total_label), 0)
         self.assertGreaterEqual(self.page.footer_layout.indexOf(self.page.cancel_edit_button), 0)
@@ -385,14 +405,23 @@ class SalesPageLayoutTests(unittest.TestCase):
             no_add_card.findChild(QWidget, "SalesProductDetails").property("stackStockBelowPrice")
         )
 
-        self.page._apply_product_display_settings("table", True, "compact", 0)
+        self.page._apply_product_display_settings("table", True, "comfortable", 0)
+        self.app.processEvents()
         self.assertIs(self.page.catalog_results_stack.currentWidget(), self.page.product_table)
         self.assertEqual(self.page.product_table.rowCount(), len(self.page.products))
-        self.assertEqual(self.page.product_table.columnCount(), 5)
-        self.assertEqual(self.page._product_add_buttons, {})
-        self.assertFalse(self.page.product_table.findChildren(QPushButton, "SalesProductAddButton"))
-        self.page.product_table.doubleClicked.emit(self.page.product_table.model().index(0, 1))
+        self.assertEqual(self.page.product_table.columnCount(), 6)
+        add_button = self.page._product_add_buttons["product-1"]
+        self.assertTrue(add_button.isVisible())
+        self.assertGreater(add_button.width(), 0)
+        image_cell = self.page.product_table.cellWidget(0, 0)
+        image_label = image_cell.findChild(QLabel, "SalesProductImage")
+        self.assertIsNotNone(image_label)
+        self.assertGreaterEqual(image_label.width(), 100)
+        self.assertGreaterEqual(self.page.product_table.rowHeight(0), 110)
+        add_button.click()
         self.assertEqual(self.page.collect_items()[0]["product_id"], "product-1")
+        self.page.product_table.doubleClicked.emit(self.page.product_table.model().index(0, 1))
+        self.assertEqual(self.page.collect_items()[0]["quantity"], 2)
 
     def test_committed_search_shows_results_in_catalog_and_closes_suggestions(self):
         self.page.search.setText("item-10")
