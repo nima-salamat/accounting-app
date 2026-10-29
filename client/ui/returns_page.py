@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 )
 
 from client.ui.permissions import can_access
+from client.ui.currency import format_currency
 from client.ui.invoice_dialog import InvoiceDialog
 
 
@@ -38,8 +39,8 @@ class ReturnDialog(QDialog):
         title = QLabel("ثبت مرجوعی از فاکتور")
         title.setObjectName("PageTitle")
         subtitle = QLabel(
-            "فاکتور روزانهٔ {} · مبلغ اصلی {:,.2f}".format(
-                receipt.get("day_receipt_id", "—"), float(receipt.get("total_price") or 0)
+            "فاکتور روزانهٔ {} · مبلغ اصلی {}".format(
+                receipt.get("day_receipt_id", "—"), format_currency(receipt.get("total_price"))
             )
         )
         subtitle.setObjectName("PageSubtitle")
@@ -137,7 +138,7 @@ class ReturnDialog(QDialog):
         total = 0.0
         for item, quantity in self.quantity_inputs.values():
             total += float(item.get("sell_price") or 0) * quantity.value()
-        self.total_label.setText("مبلغ قابل استرداد: {:,.2f}".format(total))
+        self.total_label.setText("مبلغ قابل استرداد: {}".format(format_currency(total)))
 
     def _validate(self):
         if not self.selected_items():
@@ -238,7 +239,7 @@ class ReturnsPage(QFrame):
                 item.get("created_at", "—"),
                 item.get("operator_name", "—"),
                 REFUND_METHODS.get(item.get("refund_method"), item.get("refund_method", "—")),
-                "{:,.2f}".format(float(item.get("total_amount") or 0)),
+                format_currency(item.get("total_amount")),
             ]
             for col, value in enumerate(values):
                 cell = QTableWidgetItem(str(value or "—"))
@@ -308,14 +309,14 @@ class ReturnsPage(QFrame):
         lines = [
             "مرجوعی از فاکتور روزانهٔ {}".format(item.get("day_receipt_id", "—")),
             "روش ثبت استرداد: {}".format(REFUND_METHODS.get(item.get("refund_method"), "—")),
-            "مبلغ کل: {:,.2f}".format(float(item.get("total_amount") or 0)),
+            "مبلغ کل: {}".format(format_currency(item.get("total_amount"))),
             "علت: {}".format(item.get("reason", "—")),
             "",
         ]
         for row in item.get("items") or []:
-            lines.append("{} × {} · {:,.2f}".format(
+            lines.append("{} × {} · {}".format(
                 row.get("product_name", "کالا"), row.get("quantity", 0),
-                float(row.get("line_total") or 0),
+                format_currency(row.get("line_total")),
             ))
         if item.get("notes"):
             lines.extend(["", "یادداشت: " + item["notes"]])
