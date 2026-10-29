@@ -35,6 +35,7 @@ from client.ui.purchasing_page import PurchasingPage
 from client.ui.kiosk_settings_page import KioskSettingsPage
 from client.ui.permissions import can_access
 from client.ui.theme import stylesheet
+from client.ui.currency import set_currency_unit
 from client.ui.icons import apply_button_icons, set_button_icon
 from client.ui.worker import ApiWorker
 
@@ -491,6 +492,11 @@ class AccountingMainWindow(QMainWindow):
         self.api=self.auth_page.api
         self.company_profile = {}
         if self.api is not None:
+            self.run_api(
+                self.api.get_appearance_settings,
+                lambda values: set_currency_unit((values or {}).get("currency_unit", "toman")),
+                failure=lambda _error: None,
+            )
             self.run_api(
                 self.api.get_company_profile,
                 self._company_profile_loaded,
