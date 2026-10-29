@@ -631,7 +631,8 @@ class SalesPage(QFrame):
             quantity_row.addWidget(line_total)
             row_layout.addLayout(quantity_row)
 
-            self.cart_items_layout.insertWidget(self.cart_items_layout.count() - 1, card)
+            self.cart_items_layout.addWidget(card)
+        self.cart_items_layout.addStretch(1)
         self._refresh_cart_summary()
 
     def _refresh_cart_summary(self):
