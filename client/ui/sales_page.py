@@ -37,7 +37,11 @@ class SalesPage(QFrame):
         self._cart_line_total_labels = {}
         self._category_names = {}
         self._rendered_columns = 0
-        self._saved_splitter_sizes = [780, 360]
+        saved_sizes = self._local_settings.value("sales/splitter_sizes", [780, 360])
+        try:
+            self._saved_splitter_sizes = [max(1, int(saved_sizes[0])), max(1, int(saved_sizes[1]))]
+        except (TypeError, ValueError, IndexError):
+            self._saved_splitter_sizes = [780, 360]
         self._business_profile = {}
 
         self._local_settings = QSettings("AccountingApp", "DesktopClient")
@@ -94,6 +98,7 @@ class SalesPage(QFrame):
         self.splitter.setStretchFactor(0, 1)
         self.splitter.setStretchFactor(1, 0)
         self.splitter.setSizes(self._saved_splitter_sizes)
+        self.splitter.splitterMoved.connect(self._splitter_moved)
         root.addWidget(self.splitter, 1)
 
         self.seat_row = QFrame()
@@ -414,6 +419,10 @@ class SalesPage(QFrame):
         self._rendered_columns = columns
         self._product_add_buttons = {}
         self._product_stock_labels = {}
+        for row in range(max(2, len(self.products) // columns + 3)):
+            self.product_grid.setRowStretch(row, 0)
+        for column in range(6):
+            self.product_grid.setColumnStretch(column, 0)
         while self.product_grid.count():
             item = self.product_grid.takeAt(0)
             widget = item.widget()
@@ -692,8 +701,15 @@ class SalesPage(QFrame):
         # Keep this compatibility method for callers that previously connected a table signal.
         self._refresh_cart_summary()
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
+    def _splitter_moved(self, *_args):
+        """Persist pane proportions and reflow cards while the cashier drags the divider."""
+        sizes = self.splitter.sizes()
+        if len(sizes) == 2 and all(size > 0 for size in sizes):
+            self._saved_splitter_sizes = sizes
+            self._local_settings.setValue("sales/splitter_sizes", sizes)
+        self._reflow_product_grid()
+
+    def _reflow_product_grid(self):
         if not hasattr(self, "catalog_scroll"):
             return
         width = self.catalog_scroll.viewport().width()
@@ -701,6 +717,10 @@ class SalesPage(QFrame):
         if columns != self._rendered_columns:
             self._rendered_columns = columns
             self._render_products()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._reflow_product_grid()
 
     def checkout(self):
         items=self.collect_items()
