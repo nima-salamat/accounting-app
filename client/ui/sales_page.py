@@ -37,14 +37,14 @@ class SalesPage(QFrame):
         self._cart_line_total_labels = {}
         self._category_names = {}
         self._rendered_columns = 0
+        self._business_profile = {}
+
+        self._local_settings = QSettings("AccountingApp", "DesktopClient")
         saved_sizes = self._local_settings.value("sales/splitter_sizes", [780, 360])
         try:
             self._saved_splitter_sizes = [max(1, int(saved_sizes[0])), max(1, int(saved_sizes[1]))]
         except (TypeError, ValueError, IndexError):
             self._saved_splitter_sizes = [780, 360]
-        self._business_profile = {}
-
-        self._local_settings = QSettings("AccountingApp", "DesktopClient")
         self._show_product_images = self._local_settings.value(
             "sales/show_product_images", True, type=bool
         )
