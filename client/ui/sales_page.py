@@ -8,6 +8,7 @@ from client.ui.device_settings import device_settings
 from client.ui.invoice_dialog import InvoiceDialog, auto_print_invoice
 from client.ui.invoice_render import DEFAULT_TEMPLATE
 from client.ui.permissions import can_access
+from client.ui.icons import apply_button_icons
 
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
@@ -403,6 +404,7 @@ class SalesPage(QFrame):
             populate,
             failure=lambda error: QMessageBox.warning(dialog, "خطای دریافت فاکتورها", str(error)),
         )
+        apply_button_icons(dialog, getattr(self.window, "mode", "light"))
         dialog.exec()
 
     def _load_recent_invoice(self, receipt_id):
