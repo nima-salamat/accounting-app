@@ -10,6 +10,7 @@ from client.ui.permissions import can_access
 from client.ui.invoice_dialog import InvoiceDialog
 from client.ui.invoice_render import SALES_INVOICE_TEMPLATE_KIND
 from client.ui.returns_page import ReturnDialog
+from client.ui.currency import format_currency
 
 
 def display_value(key, value):
@@ -22,7 +23,7 @@ def display_value(key, value):
         return "دارد" if value else "ندارد"
     if key in ("buy_price", "sell_price", "price", "amount", "total_price", "revenue"):
         try:
-            return "{:,.2f}".format(float(value or 0)).rstrip("0").rstrip(".")
+            return format_currency(value)
         except (ValueError, TypeError):
             pass
     return "—" if value is None or value == "" else str(value)
@@ -407,8 +408,8 @@ class ProductsPage(ApiTablePage):
     def __init__(self, window):
         fields = [
             {"key": "name", "label": "نام محصول", "required": True},
-            {"key": "buy_price", "label": "قیمت خرید", "kind": "number", "required": False},
-            {"key": "sell_price", "label": "قیمت فروش", "kind": "number", "required": True},
+            {"key": "buy_price", "label": "قیمت خرید", "kind": "number", "required": False, "currency": True},
+            {"key": "sell_price", "label": "قیمت فروش", "kind": "number", "required": True, "currency": True},
             {"key": "category_id", "label": "شناسهٔ دسته‌بندی (اختیاری)", "nullable": True},
             {"key": "custom_product", "label": "محصول سفارشی", "kind": "bool"},
             {"key": "track_stock", "label": "رهگیری موجودی", "kind": "bool"},
@@ -482,7 +483,7 @@ class WarehousePage(ApiTablePage):
     def __init__(self, window):
         fields = [
             {"key":"name","label":"نام","required":True},
-            {"key":"price","label":"قیمت واحد","kind":"number","required":True},
+            {"key":"price","label":"قیمت واحد","kind":"number","required":True,"currency":True},
             {"key":"amount","label":"مقدار","kind":"number","required":True},
             {"key":"unit","label":"واحد","kind":"select","required":True,"choices":[
                 ("عدد","pcs"),("کیلوگرم","kg"),("متر","m"),("لیتر","l")]},
@@ -502,7 +503,7 @@ class ChecksPage(ApiTablePage):
         fields = [
             {"key":"name","label":"طرف حساب","required":True},
             {"key":"check_id","label":"شماره چک","required":True},
-            {"key":"price","label":"مبلغ","kind":"number","required":True},
+            {"key":"price","label":"مبلغ","kind":"number","required":True,"currency":True},
             {"key":"date","label":"تاریخ","required":True},
             {"key":"payed","label":"پرداخت‌شده","kind":"bool"},
         ]
