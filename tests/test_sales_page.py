@@ -106,6 +106,9 @@ class SalesPageLayoutTests(unittest.TestCase):
     def setUp(self):
         settings = QSettings("AccountingApp", "DesktopClient")
         settings.setValue("sales/show_product_images", True)
+        settings.setValue("sales/product_layout_mode", "grid")
+        settings.setValue("sales/product_card_density", "comfortable")
+        settings.setValue("sales/product_columns", 0)
         settings.sync()
         self.window = _WindowStub()
         self.page = SalesPage(self.window)
@@ -268,13 +271,40 @@ class SalesPageLayoutTests(unittest.TestCase):
     def test_sales_page_does_not_duplicate_global_theme_control(self):
         self.assertTrue(self.page.theme_button.isHidden())
 
-    def test_image_visibility_is_user_configurable(self):
-        self.assertTrue(self.page.show_images_checkbox.isChecked())
-        self.page.show_images_checkbox.setChecked(False)
+    def test_image_visibility_is_user_configurable_from_display_settings(self):
+        self.assertTrue(self.page._show_product_images)
+        self.assertTrue(self.page.product_display_settings_button.isVisible())
+        self.page._apply_product_display_settings("grid", False, "comfortable", 0)
         self.assertFalse(self.page._show_product_images)
         self.assertFalse(self.page._local_settings.value(
             "sales/show_product_images", True, type=bool
         ))
+
+    def test_catalog_supports_horizontal_list_and_table_layouts(self):
+        self.page.refresh_products()
+        self.page._apply_product_display_settings("horizontal", True, "compact", 0)
+        self.assertEqual(self.page._product_layout_mode, "horizontal")
+        self.assertIs(self.page.catalog_results_stack.currentWidget(), self.page.catalog_scroll)
+        self.assertEqual(self.page.product_grid.count(), len(self.page.products))
+
+        self.page._apply_product_display_settings("table", True, "compact", 0)
+        self.assertIs(self.page.catalog_results_stack.currentWidget(), self.page.product_table)
+        self.assertEqual(self.page.product_table.rowCount(), len(self.page.products))
+        self.assertIn("product-1", self.page._product_add_buttons)
+        self.page.product_table.cellWidget(0, 5).click()
+        self.assertEqual(self.page.collect_items()[0]["product_id"], "product-1")
+
+    def test_search_suggestions_overlay_the_catalog_instead_of_reflowing_it(self):
+        self.page.search.setText("item")
+        self.page._request_search_suggestions("item", 1)
+        self.app.processEvents()
+        self.assertIs(self.page.search_suggestions_frame.parentWidget(), self.page.catalog_panel)
+        self.assertEqual(self.page.catalog_panel.layout().indexOf(self.page.search_suggestions_frame), -1)
+        self.assertTrue(self.page.search_suggestions_frame.isVisible())
+        self.assertGreater(self.page.search_suggestions_frame.height(), 0)
+
+    def test_new_sale_label_is_not_duplicated_in_the_pos_toolbar(self):
+        self.assertFalse(hasattr(self.page, "invoice_mode_label"))
 
 
 if __name__ == "__main__":

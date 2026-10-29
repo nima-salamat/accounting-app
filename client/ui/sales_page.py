@@ -1,6 +1,6 @@
 """API-driven point-of-sale screen with search, quantity selection, and idempotent checkout."""
-from PySide6.QtCore import Qt, QSettings, QTimer
-from PySide6.QtGui import QColor, QBrush, QPixmap
+from PySide6.QtCore import Qt, QSettings, QTimer, QEvent, QPoint
+from PySide6.QtGui import QColor, QBrush, QPixmap, QIcon
 import uuid
 
 from client.payment_terminal import authorize_payment, void_payment
@@ -11,9 +11,10 @@ from client.ui.permissions import can_access
 from client.ui.icons import apply_button_icons, set_button_icon
 
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QMessageBox, QPushButton, QScrollArea, QSplitter, QTableWidget,
-    QTableWidgetItem, QVBoxLayout, QHeaderView, QWidget, QListWidget, QListWidgetItem,
+    QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFrame,
+    QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
+    QScrollArea, QSplitter, QStackedWidget, QTableWidget, QTableWidgetItem,
+    QVBoxLayout, QHeaderView, QWidget, QListWidget, QListWidgetItem,
 )
 
 
@@ -66,6 +67,22 @@ class SalesPage(QFrame):
         self._show_product_images = self._local_settings.value(
             "sales/show_product_images", True, type=bool
         )
+        self._product_layout_mode = str(
+            self._local_settings.value("sales/product_layout_mode", "grid") or "grid"
+        ).strip().lower()
+        if self._product_layout_mode not in {"grid", "horizontal", "list", "table"}:
+            self._product_layout_mode = "grid"
+        self._product_card_density = str(
+            self._local_settings.value("sales/product_card_density", "comfortable") or "comfortable"
+        ).strip().lower()
+        if self._product_card_density not in {"compact", "comfortable"}:
+            self._product_card_density = "comfortable"
+        try:
+            self._product_columns = max(0, min(6, int(
+                self._local_settings.value("sales/product_columns", 0) or 0
+            )))
+        except (TypeError, ValueError):
+            self._product_columns = 0
 
         self.setObjectName("POSWorkspace" if self._is_standalone_pos else "Card")
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -82,10 +99,6 @@ class SalesPage(QFrame):
         header.setContentsMargins(2, 0, 2, 0)
         header.setSpacing(6)
         self.header_layout = header
-
-        self.invoice_mode_label = QLabel("فروش جدید")
-        self.invoice_mode_label.setObjectName("StatusPill")
-        header.addWidget(self.invoice_mode_label)
 
         self.theme_button = QPushButton("☾ تم تاریک")
         self.theme_button.setObjectName("SalesToolbarButton")
@@ -193,6 +206,7 @@ class SalesPage(QFrame):
         panel = QFrame()
         panel.setObjectName("Card")
         panel.setMinimumWidth(300)
+        panel.installEventFilter(self)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(9, 9, 9, 9)
         layout.setSpacing(7)
@@ -212,6 +226,7 @@ class SalesPage(QFrame):
         self.search.setObjectName("SalesProductSearch")
         self.search.setPlaceholderText("نام کالا را جست‌وجو کنید…")
         self.search.setClearButtonEnabled(True)
+        self.search.installEventFilter(self)
         self.search.returnPressed.connect(self.refresh_products)
         self.search_button = QPushButton("جست‌وجو")
         self.search_button.setToolTip("جست‌وجوی کالا")
@@ -221,14 +236,18 @@ class SalesPage(QFrame):
         filters.addWidget(self.search_button)
         layout.addLayout(filters)
 
-        self.search_suggestions_frame = QFrame()
+        # Suggestions are a floating overlay attached to the catalog panel, not a
+        # row in the main layout: opening search results must never move the catalog.
+        self.search_suggestions_frame = QFrame(panel)
         self.search_suggestions_frame.setObjectName("SalesSearchSuggestions")
+        self.search_suggestions_frame.setMinimumWidth(260)
+        self.search_suggestions_frame.setMaximumHeight(270)
         suggestions_layout = QVBoxLayout(self.search_suggestions_frame)
         suggestions_layout.setContentsMargins(8, 6, 8, 6)
         suggestions_layout.setSpacing(4)
         self.search_suggestion_list = QListWidget()
         self.search_suggestion_list.setObjectName("SalesSearchSuggestionList")
-        self.search_suggestion_list.setMaximumHeight(148)
+        self.search_suggestion_list.setMaximumHeight(188)
         self.search_suggestion_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.search_suggestion_list.itemClicked.connect(self._add_suggestion_to_cart)
         suggestions_layout.addWidget(self.search_suggestion_list)
@@ -243,7 +262,6 @@ class SalesPage(QFrame):
         suggestion_footer.addWidget(self.search_more_button)
         suggestions_layout.addLayout(suggestion_footer)
         self.search_suggestions_frame.hide()
-        layout.addWidget(self.search_suggestions_frame)
 
         options = QHBoxLayout()
         category_label = QLabel("دسته‌بندی")
@@ -252,12 +270,15 @@ class SalesPage(QFrame):
         self.category_combo.setMinimumWidth(150)
         self.category_combo.addItem("همهٔ دسته‌ها", None)
         self.category_combo.currentIndexChanged.connect(self._category_changed)
-        self.show_images_checkbox = QCheckBox("نمایش تصاویر کالا")
-        self.show_images_checkbox.setChecked(self._show_product_images)
-        self.show_images_checkbox.toggled.connect(self._toggle_product_images)
+        self.product_display_settings_button = QPushButton("⚙")
+        self.product_display_settings_button.setObjectName("SalesDisplaySettingsButton")
+        self.product_display_settings_button.setToolTip("تنظیمات و پیش‌نمایش نمایش کالاها")
+        self.product_display_settings_button.setAccessibleName("تنظیمات نمایش کالاها")
+        self.product_display_settings_button.setFixedSize(36, 36)
+        self.product_display_settings_button.clicked.connect(self.open_product_display_settings)
         options.addWidget(category_label)
         options.addWidget(self.category_combo, 1)
-        options.addWidget(self.show_images_checkbox)
+        options.addWidget(self.product_display_settings_button)
         layout.addLayout(options)
 
         self.catalog_scroll = QScrollArea()
@@ -272,7 +293,31 @@ class SalesPage(QFrame):
         self.product_grid.setVerticalSpacing(10)
         self.product_grid.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.catalog_scroll.setWidget(self.product_grid_host)
-        layout.addWidget(self.catalog_scroll, 1)
+        self.catalog_scroll.viewport().installEventFilter(self)
+
+        self.catalog_results_stack = QStackedWidget()
+        self.catalog_results_stack.setObjectName("SalesCatalogResults")
+        self.catalog_results_stack.addWidget(self.catalog_scroll)
+
+        self.product_table = QTableWidget(0, 6)
+        self.product_table.setObjectName("SalesProductTable")
+        self.product_table.setHorizontalHeaderLabels(["تصویر", "نام کالا", "دسته‌بندی", "قیمت", "موجودی", ""])
+        self.product_table.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        self.product_table.setAlternatingRowColors(True)
+        self.product_table.setWordWrap(False)
+        self.product_table.verticalHeader().setVisible(False)
+        self.product_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.product_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.product_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.product_table.setShowGrid(False)
+        self.product_table.setSortingEnabled(False)
+        table_header = self.product_table.horizontalHeader()
+        table_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        for column in (0, 2, 3, 4, 5):
+            table_header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        self.product_table.doubleClicked.connect(self._add_table_selection_to_cart)
+        self.catalog_results_stack.addWidget(self.product_table)
+        layout.addWidget(self.catalog_results_stack, 1)
 
         pager = QHBoxLayout()
         self.previous_page_button = QPushButton("صفحهٔ قبل")
@@ -390,11 +435,9 @@ class SalesPage(QFrame):
                 (self._editing_receipt or {}).get("day_receipt_id")
                 or str(self._editing_receipt_id)[:8]
             )
-            self.invoice_mode_label.setText("ویرایش فاکتور {}".format(receipt_number))
             self.submit_button.setText("ذخیرهٔ تغییرات فاکتور")
             self.cancel_edit_button.show()
         else:
-            self.invoice_mode_label.setText("فروش جدید")
             self.submit_button.setText("ثبت امن فروش")
             self.cancel_edit_button.hide()
 
@@ -413,6 +456,37 @@ class SalesPage(QFrame):
         self._update_invoice_mode_controls()
         self.window.set_status("ویرایش فاکتور لغو شد؛ آماده ثبت فروش جدید هستید.")
 
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.Resize:
+            if watched is getattr(self, "catalog_panel", None) or watched is getattr(self, "search", None):
+                QTimer.singleShot(0, self._position_search_suggestions)
+            elif watched is getattr(getattr(self, "catalog_scroll", None), "viewport", lambda: None)():
+                QTimer.singleShot(0, self._reflow_products_for_resize)
+        return super().eventFilter(watched, event)
+
+    def _position_search_suggestions(self):
+        """Anchor search results below the input as an overlay over the catalog."""
+        if not hasattr(self, "search_suggestions_frame") or not hasattr(self, "search"):
+            return
+        if self.search_suggestions_frame.parentWidget() is not self.catalog_panel:
+            return
+        top_left = self.search.mapTo(
+            self.catalog_panel, QPoint(0, self.search.height() + 4)
+        )
+        available_height = max(110, self.catalog_panel.height() - top_left.y() - 50)
+        height = min(270, available_height)
+        self.search_suggestions_frame.setGeometry(
+            9, top_left.y(), max(260, self.catalog_panel.width() - 18), height
+        )
+
+    def _reflow_products_for_resize(self):
+        if not getattr(self, "products", None) or self._product_layout_mode != "grid":
+            return
+        width = max(260, self.catalog_scroll.viewport().width())
+        columns = max(1, min(6, self._product_columns or width // 165))
+        if columns != self._rendered_columns:
+            self._render_products()
+
     def _search_text_changed(self, value):
         self._search_timer.stop()
         query = str(value or "").strip()
@@ -424,7 +498,9 @@ class SalesPage(QFrame):
         if len(query) < 2 or not self.window.api:
             self.search_suggestions_frame.hide()
             return
+        self._position_search_suggestions()
         self.search_suggestions_frame.show()
+        self.search_suggestions_frame.raise_()
         self.search_suggestion_status.setText("در حال جست‌وجوی نام‌های مشابه…")
         self._search_timer.start()
 
@@ -485,7 +561,9 @@ class SalesPage(QFrame):
         if displayed == 0:
             self.search_suggestion_status.setText("مورد مشابهی پیدا نشد.")
         self.search_more_button.setVisible(displayed < self._suggestion_total)
+        self._position_search_suggestions()
         self.search_suggestions_frame.setVisible(True)
+        self.search_suggestions_frame.raise_()
 
     def _search_suggestions_failed(self, error, query):
         self.search_more_button.setEnabled(True)
@@ -507,6 +585,15 @@ class SalesPage(QFrame):
         product = item.data(Qt.ItemDataRole.UserRole)
         if isinstance(product, dict):
             self.add_to_cart(product)
+        self.search_suggestions_frame.hide()
+
+    def _add_table_selection_to_cart(self, index):
+        if not index.isValid():
+            return
+        item = self.product_table.item(index.row(), 1)
+        product = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        if isinstance(product, dict):
+            self.add_to_cart(product)
 
     def _category_changed(self, *_args):
         self.product_page = 1
@@ -516,10 +603,169 @@ class SalesPage(QFrame):
             self._search_text_changed(query)
 
     def _toggle_product_images(self, enabled):
-        self._show_product_images = bool(enabled)
+        self._apply_product_display_settings(
+            self._product_layout_mode, bool(enabled), self._product_card_density,
+            self._product_columns,
+        )
+
+    def open_product_display_settings(self):
+        """Open the POS display preferences with a live preview of the selected style."""
+        dialog = QDialog(self.window)
+        dialog.setObjectName("ProductDisplaySettingsDialog")
+        dialog.setWindowTitle("تنظیمات نمایش کالاها")
+        dialog.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        dialog.setMinimumSize(560, 520)
+        dialog.resize(680, 590)
+        root = QVBoxLayout(dialog)
+        intro = QLabel("چیدمان کارت کالاها را انتخاب کنید؛ پیش‌نمایش با تغییر گزینه‌ها به‌روز می‌شود.")
+        intro.setObjectName("PageSubtitle")
+        intro.setWordWrap(True)
+        root.addWidget(intro)
+
+        controls = QGridLayout()
+        controls.setHorizontalSpacing(10)
+        controls.setVerticalSpacing(9)
+        mode_label = QLabel("شیوهٔ نمایش")
+        mode_combo = QComboBox()
+        for label, value in (
+            ("کارت شبکه‌ای", "grid"),
+            ("کارت افقی؛ تصویر کنار متن", "horizontal"),
+            ("فهرست خطی و فشرده", "list"),
+            ("جدول کالاها", "table"),
+        ):
+            mode_combo.addItem(label, value)
+        mode_index = mode_combo.findData(self._product_layout_mode)
+        mode_combo.setCurrentIndex(max(0, mode_index))
+
+        image_checkbox = QCheckBox("نمایش تصویر کالا")
+        image_checkbox.setChecked(self._show_product_images)
+        density_label = QLabel("تراکم کارت")
+        density_combo = QComboBox()
+        density_combo.addItem("معمولی", "comfortable")
+        density_combo.addItem("فشرده", "compact")
+        density_combo.setCurrentIndex(max(0, density_combo.findData(self._product_card_density)))
+        columns_label = QLabel("تعداد ستون‌ها در حالت شبکه‌ای")
+        columns_combo = QComboBox()
+        for label, value in (
+            ("خودکار بر اساس عرض پنجره", 0),
+            ("۲ ستون", 2),
+            ("۳ ستون", 3),
+            ("۴ ستون", 4),
+            ("۵ ستون", 5),
+            ("۶ ستون", 6),
+        ):
+            columns_combo.addItem(label, value)
+        columns_index = columns_combo.findData(self._product_columns)
+        columns_combo.setCurrentIndex(max(0, columns_index))
+
+        controls.addWidget(mode_label, 0, 0)
+        controls.addWidget(mode_combo, 0, 1)
+        controls.addWidget(image_checkbox, 1, 0, 1, 2)
+        controls.addWidget(density_label, 2, 0)
+        controls.addWidget(density_combo, 2, 1)
+        controls.addWidget(columns_label, 3, 0)
+        controls.addWidget(columns_combo, 3, 1)
+        root.addLayout(controls)
+
+        preview_title = QLabel("پیش‌نمایش")
+        preview_title.setObjectName("PageTitle")
+        root.addWidget(preview_title)
+        preview_frame = QFrame()
+        preview_frame.setObjectName("Card")
+        preview_layout = QVBoxLayout(preview_frame)
+        preview_layout.setContentsMargins(10, 10, 10, 10)
+        root.addWidget(preview_frame, 1)
+
+        sample = next(iter(self.products), None)
+        if sample is None:
+            sample = {
+                "id": "__display-preview__", "name": "نمونهٔ کالا",
+                "sell_price": 125000, "category_id": None, "track_stock": True,
+                "stock_quantity": 7, "_image_bytes": None,
+            }
+        else:
+            sample = dict(sample)
+
+        def rebuild_preview(*_args):
+            self._clear_layout(preview_layout)
+            mode = mode_combo.currentData()
+            if mode == "table":
+                table_preview = QTableWidget(1, 4)
+                table_preview.setObjectName("SalesProductTable")
+                table_preview.setHorizontalHeaderLabels(["نام کالا", "قیمت", "موجودی", ""])
+                table_preview.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+                table_preview.verticalHeader().setVisible(False)
+                table_preview.horizontalHeader().setSectionResizeMode(
+                    0, QHeaderView.ResizeMode.Stretch
+                )
+                for column in (1, 2, 3):
+                    table_preview.horizontalHeader().setSectionResizeMode(
+                        column, QHeaderView.ResizeMode.ResizeToContents
+                    )
+                table_preview.setRowCount(1)
+                table_preview.setItem(0, 0, QTableWidgetItem(str(sample.get("name") or "نمونهٔ کالا")))
+                table_preview.setItem(0, 1, QTableWidgetItem("{:,.2f}".format(float(sample.get("sell_price") or 0))))
+                table_preview.setItem(0, 2, QTableWidgetItem("موجودی: ۷"))
+                table_preview.setItem(0, 3, QTableWidgetItem("افزودن"))
+                table_preview.setFixedHeight(90)
+                preview_layout.addWidget(table_preview)
+                return
+            card = self._build_product_card(
+                sample, preview=True, layout_mode=mode,
+                show_images=image_checkbox.isChecked(),
+                density=density_combo.currentData(),
+            )
+            preview_layout.addWidget(card, 0, Qt.AlignmentFlag.AlignCenter)
+
+        mode_combo.currentIndexChanged.connect(rebuild_preview)
+        image_checkbox.toggled.connect(rebuild_preview)
+        density_combo.currentIndexChanged.connect(rebuild_preview)
+        columns_combo.currentIndexChanged.connect(rebuild_preview)
+        rebuild_preview()
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("اعمال تنظیمات")
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("انصراف")
+        root.addWidget(buttons)
+
+        def apply_settings():
+            self._apply_product_display_settings(
+                mode_combo.currentData(), image_checkbox.isChecked(),
+                density_combo.currentData(), columns_combo.currentData(),
+            )
+            dialog.accept()
+
+        buttons.accepted.connect(apply_settings)
+        buttons.rejected.connect(dialog.reject)
+        dialog.exec()
+
+    def _apply_product_display_settings(self, layout_mode, show_images, density, columns):
+        layout_mode = str(layout_mode or "grid").strip().lower()
+        if layout_mode not in {"grid", "horizontal", "list", "table"}:
+            layout_mode = "grid"
+        density = str(density or "comfortable").strip().lower()
+        if density not in {"compact", "comfortable"}:
+            density = "comfortable"
+        try:
+            columns = max(0, min(6, int(columns or 0)))
+        except (TypeError, ValueError):
+            columns = 0
+
+        self._product_layout_mode = layout_mode
+        self._show_product_images = bool(show_images)
+        self._product_card_density = density
+        self._product_columns = columns
+        self._local_settings.setValue("sales/product_layout_mode", layout_mode)
         self._local_settings.setValue("sales/show_product_images", self._show_product_images)
+        self._local_settings.setValue("sales/product_card_density", density)
+        self._local_settings.setValue("sales/product_columns", columns)
         self._local_settings.sync()
-        self._render_products() if not self.window.api else self.refresh_products()
+        if self.window.api:
+            self.refresh_products()
+        else:
+            self._render_products()
 
     def refresh_products(self):
         """Load one API page plus categories and optional images on a worker thread."""
@@ -634,15 +880,24 @@ class SalesPage(QFrame):
         self._refresh_cart_summary()
 
     def _render_products(self):
-        """Rebuild only the visible product grid, adapting the number of columns."""
-        width = max(260, self.catalog_scroll.viewport().width() if hasattr(self, "catalog_scroll") else 800)
-        columns = max(1, min(6, width // 165))
-        if not self.products:
-            columns = max(1, columns)
-        # Reflow only when the viewport's available column count changes or data changes.
-        self._rendered_columns = columns
+        """Render the chosen catalog presentation and adapt grid columns to its width."""
         self._product_add_buttons = {}
         self._product_stock_labels = {}
+        if self._product_layout_mode == "table":
+            self.catalog_results_stack.setCurrentWidget(self.product_table)
+            self._render_product_table()
+            self._rendered_columns = 0
+            return
+
+        self.catalog_results_stack.setCurrentWidget(self.catalog_scroll)
+        width = max(260, self.catalog_scroll.viewport().width())
+        if self._product_layout_mode in {"horizontal", "list"}:
+            columns = 1
+        else:
+            columns = max(1, min(6, self._product_columns or width // 165))
+        self._rendered_columns = columns
+        self.product_grid.setHorizontalSpacing(6 if self._product_card_density == "compact" else 10)
+        self.product_grid.setVerticalSpacing(6 if self._product_card_density == "compact" else 10)
         for row in range(max(2, len(self.products) // columns + 3)):
             self.product_grid.setRowStretch(row, 0)
         for column in range(6):
@@ -669,6 +924,73 @@ class SalesPage(QFrame):
             self.product_grid.addWidget(card, index // columns, index % columns)
         self.product_grid.setRowStretch((len(self.products) // columns) + 1, 1)
 
+    def _render_product_table(self):
+        """Render products as an accessible, selectable table with direct add actions."""
+        table = self.product_table
+        table.clearSpans()
+        table.clearContents()
+        table.setRowCount(len(self.products) if self.products else 1)
+        table.setColumnHidden(0, not self._show_product_images)
+        if not self.products:
+            empty = QTableWidgetItem("کالایی مطابق فیلترها پیدا نشد.")
+            empty.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(0, 0, empty)
+            table.setSpan(0, 0, 1, table.columnCount())
+            table.setRowHeight(0, 52)
+            return
+
+        row_height = 42 if self._product_card_density == "compact" else 52
+        for row, product in enumerate(self.products):
+            key = str(product.get("id") or "")
+            image_item = QTableWidgetItem()
+            raw_image = product.get("_image_bytes")
+            if raw_image:
+                pixmap = QPixmap()
+                if pixmap.loadFromData(raw_image):
+                    image_item.setIcon(QIcon(pixmap.scaled(
+                        36, 36, Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )))
+            image_item.setToolTip(str(product.get("name") or "کالا"))
+            table.setItem(row, 0, image_item)
+
+            name_item = QTableWidgetItem(str(product.get("name") or "کالای بدون نام"))
+            name_item.setData(Qt.ItemDataRole.UserRole, product)
+            table.setItem(row, 1, name_item)
+
+            category_name = self._category_names.get(str(product.get("category_id")), "—")
+            category_item = QTableWidgetItem(category_name)
+            category_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(row, 2, category_item)
+
+            price_item = QTableWidgetItem("{:,.2f}".format(float(product.get("sell_price") or 0)))
+            price_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(row, 3, price_item)
+
+            tracked = bool(product.get("track_stock"))
+            capacity = self._stock_capacity(product, key)
+            available = max(0, capacity - int(self._cart.get(key, {}).get("quantity", 0)))
+            stock_text = (
+                ("ناموجود" if available <= 0 else "موجودی: {:g}".format(available))
+                if tracked else "آماده فروش"
+            )
+            stock_badge = QLabel(stock_text)
+            stock_badge.setObjectName("SalesProductStock")
+            stock_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            stock_badge.setProperty("outOfStock", bool(tracked and available <= 0))
+            table.setCellWidget(row, 4, stock_badge)
+            self._product_stock_labels[key] = stock_badge
+
+            add = QPushButton("افزودن")
+            add.setObjectName("SalesProductAddButton")
+            add.setMinimumHeight(25 if self._product_card_density == "compact" else 29)
+            add.setToolTip("افزودن {} به سبد خرید".format(product.get("name") or "کالا"))
+            add.clicked.connect(lambda _checked=False, selected=product: self.add_to_cart(selected))
+            add.setEnabled(not tracked or available > 0)
+            table.setCellWidget(row, 5, add)
+            self._product_add_buttons[key] = add
+            table.setRowHeight(row, row_height)
+
     def _original_quantity_for_product(self, product_key):
         if not self._editing_receipt:
             return 0
@@ -688,80 +1010,138 @@ class SalesPage(QFrame):
             stock += self._original_quantity_for_product(product_key)
         return stock
 
-    def _build_product_card(self, product):
-        """Create a compact product card with optional photography and stock state."""
+    def _build_product_card(
+        self, product, preview=False, layout_mode=None, show_images=None, density=None
+    ):
+        """Build a product card for the catalog or a side-effect-free settings preview."""
         key = str(product.get("id") or "")
+        mode = str(layout_mode or self._product_layout_mode)
+        show_images = self._show_product_images if show_images is None else bool(show_images)
+        density = str(density or self._product_card_density)
+        compact = density == "compact"
+        horizontal = mode in {"horizontal", "list"}
+
         card = QFrame()
         card.setObjectName("SalesProductCard")
-        card.setMinimumWidth(128)
-        card.setMaximumWidth(218)
+        card.setProperty("displayMode", mode)
         card.setFrameShape(QFrame.Shape.NoFrame)
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(7, 7, 7, 7)
-        card_layout.setSpacing(4)
+        if mode == "grid":
+            card.setMinimumWidth(128)
+            card.setMaximumWidth(218)
+            card_layout = QVBoxLayout(card)
+        else:
+            card.setMinimumWidth(0)
+            card.setMaximumWidth(16777215)
+            card.setMinimumHeight(58 if mode == "list" else 94)
+            card_layout = QHBoxLayout(card)
+        margin = 5 if compact else 7
+        card_layout.setContentsMargins(margin, margin, margin, margin)
+        card_layout.setSpacing(4 if compact else 6)
 
-        if self._show_product_images:
+        image = None
+        if show_images:
             image = QLabel()
             image.setObjectName("SalesProductImage")
-            image.setMinimumHeight(48)
-            image.setMaximumHeight(74)
             image.setAlignment(Qt.AlignmentFlag.AlignCenter)
             pixmap = QPixmap()
             image_bytes = product.get("_image_bytes")
             if image_bytes and pixmap.loadFromData(image_bytes):
+                target = (42, 42) if mode == "list" else ((76, 76) if horizontal else (138, 54 if compact else 66))
                 image.setPixmap(pixmap.scaled(
-                    138, 66, Qt.AspectRatioMode.KeepAspectRatio,
+                    target[0], target[1], Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 ))
             else:
                 image.setText("بدون تصویر")
-            card_layout.addWidget(image)
+            if mode == "grid":
+                image.setMinimumHeight(40 if compact else 48)
+                image.setMaximumHeight(58 if compact else 74)
+            elif mode == "list":
+                image.setFixedSize(48, 48)
+            else:
+                image.setFixedSize(84, 84)
 
         name = QLabel(str(product.get("name") or "کالای بدون نام"))
         name.setObjectName("SalesProductTitle")
-        name.setWordWrap(True)
-        name.setMinimumHeight(28)
-        name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        card_layout.addWidget(name)
+        name.setWordWrap(mode != "list")
+        name.setAlignment(
+            Qt.AlignmentFlag.AlignCenter if mode == "grid"
+            else Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        if mode == "grid":
+            name.setMinimumHeight(25 if compact else 28)
 
         category_id = product.get("category_id")
         category_name = self._category_names.get(str(category_id), "")
-        if category_name:
-            category = QLabel(category_name)
+        category = QLabel(category_name) if category_name else None
+        if category is not None:
             category.setObjectName("Muted")
-            category.setAlignment(Qt.AlignmentFlag.AlignCenter)
             category.setWordWrap(True)
-            card_layout.addWidget(category)
+            category.setAlignment(
+                Qt.AlignmentFlag.AlignCenter if mode == "grid"
+                else Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
 
         price = QLabel("{:,.2f}".format(float(product.get("sell_price") or 0)))
         price.setObjectName("SalesProductPrice")
-        price.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        card_layout.addWidget(price)
+        price.setAlignment(
+            Qt.AlignmentFlag.AlignCenter if mode == "grid"
+            else Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
 
         tracked = bool(product.get("track_stock"))
-        capacity = self._stock_capacity(product, key)
+        capacity = self._stock_capacity(product, key) if not preview else max(
+            0, int(float(product.get("stock_quantity") or 0))
+        )
+        available = max(0, capacity - int(self._cart.get(key, {}).get("quantity", 0))) if not preview else capacity
         if tracked:
-            available = max(0, capacity - int(self._cart.get(key, {}).get("quantity", 0)))
             stock_text = "ناموجود" if available <= 0 else "موجودی: {:g}".format(available)
         else:
-            available = None
             stock_text = "آماده فروش"
         stock_badge = QLabel(stock_text)
         stock_badge.setObjectName("SalesProductStock")
-        stock_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        stock_badge.setAlignment(
+            Qt.AlignmentFlag.AlignCenter if mode == "grid"
+            else Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
         stock_badge.setProperty("outOfStock", bool(tracked and available <= 0))
-        card_layout.addWidget(stock_badge)
-        self._product_stock_labels[key] = stock_badge
 
-        add = QPushButton("افزودن به سبد")
+        add = QPushButton("افزودن به سبد" if mode != "list" else "افزودن")
         add.setObjectName("SalesProductAddButton")
-        add.setMinimumHeight(28)
+        add.setMinimumHeight(25 if compact else 29)
         add.setToolTip("افزودن {} به سبد خرید".format(product.get("name") or "کالا"))
-        add.clicked.connect(lambda _checked=False, selected=product: self.add_to_cart(selected))
-        add.setEnabled(not tracked or available > 0)
-        set_button_icon(add, "cart", getattr(self.window, "mode", "light"))
-        card_layout.addWidget(add)
-        self._product_add_buttons[key] = add
+        if preview:
+            add.setEnabled(False)
+        else:
+            add.clicked.connect(lambda _checked=False, selected=product: self.add_to_cart(selected))
+            add.setEnabled(not tracked or available > 0)
+            self._product_stock_labels[key] = stock_badge
+            self._product_add_buttons[key] = add
+            set_button_icon(add, "cart", getattr(self.window, "mode", "light"))
+
+        if not horizontal:
+            if image is not None:
+                card_layout.addWidget(image)
+            card_layout.addWidget(name)
+            if category is not None:
+                card_layout.addWidget(category)
+            card_layout.addWidget(price)
+            card_layout.addWidget(stock_badge)
+            card_layout.addWidget(add)
+        else:
+            if image is not None:
+                card_layout.addWidget(image, 0, Qt.AlignmentFlag.AlignVCenter)
+            info = QWidget()
+            info_layout = QVBoxLayout(info)
+            info_layout.setContentsMargins(3, 0, 3, 0)
+            info_layout.setSpacing(2 if compact else 4)
+            info_layout.addWidget(name)
+            if category is not None:
+                info_layout.addWidget(category)
+            info_layout.addWidget(price)
+            info_layout.addWidget(stock_badge)
+            card_layout.addWidget(info, 1)
+            card_layout.addWidget(add, 0, Qt.AlignmentFlag.AlignVCenter)
         return card
 
     def _refresh_product_stock_states(self):
