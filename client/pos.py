@@ -13,6 +13,7 @@ from client.ui.device_settings import DeviceSettingsDialog
 from client.ui.permissions import can_access
 from client.ui.sales_page import SalesPage
 from client.ui.theme import stylesheet
+from client.ui.icons import set_button_icon
 from client.ui.worker import ApiWorker
 
 
@@ -58,9 +59,20 @@ class POSWindow(QMainWindow):
         self.device_button.clicked.connect(self.configure_devices)
         self.sales_page.header_layout.addWidget(self.device_button)
 
-        self.logout_button = QPushButton("خروج")
-        self.logout_button.setObjectName("SalesToolbarButton")
+        # In the RTL toolbar the exit icon is the leftmost action; the theme icon
+        # sits immediately to its right. These controls belong only to client.pos.
+        self.sales_page.header_layout.addStretch(1)
+        self.sales_page.header_layout.addWidget(self.sales_page.theme_button)
+
+        self.logout_button = QPushButton("", self.sales_page)
+        self.logout_button.setObjectName("SalesExitButton")
+        self.logout_button.setFixedSize(32, 32)
         self.logout_button.setToolTip("خروج از حساب کاربری")
+        self.logout_button.setAccessibleName("خروج از حساب کاربری")
+        set_button_icon(
+            self.logout_button, "logout", self.mode,
+            accessible_name="خروج از حساب کاربری",
+        )
         self.logout_button.clicked.connect(self.logout)
         self.sales_page.header_layout.addWidget(self.logout_button)
 
