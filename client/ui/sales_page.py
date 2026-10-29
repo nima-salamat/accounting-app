@@ -1,5 +1,5 @@
 """API-driven point-of-sale screen with search, quantity selection, and idempotent checkout."""
-from PySide6.QtCore import Qt, QSettings
+from PySide6.QtCore import Qt, QSettings, QTimer
 from PySide6.QtGui import QColor, QBrush, QPixmap
 import uuid
 
@@ -13,7 +13,7 @@ from client.ui.icons import apply_button_icons, set_button_icon
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
     QMessageBox, QPushButton, QScrollArea, QSpinBox, QSplitter, QTableWidget,
-    QTableWidgetItem, QVBoxLayout, QHeaderView, QWidget,
+    QTableWidgetItem, QVBoxLayout, QHeaderView, QWidget, QListWidget, QListWidgetItem,
 )
 
 
@@ -38,6 +38,18 @@ class SalesPage(QFrame):
         self._category_names = {}
         self._rendered_columns = 0
         self._business_profile = {}
+        self._editing_receipt_id = None
+        self._editing_receipt = None
+        self._can_edit_receipts = False
+
+        self._suggestion_query = ""
+        self._suggestion_page = 0
+        self._suggestion_page_size = 8
+        self._suggestion_total = 0
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(280)
+        self._search_timer.timeout.connect(self._run_search_suggestions)
 
         self._local_settings = QSettings("AccountingApp", "DesktopClient")
         saved_sizes = self._local_settings.value("sales/splitter_sizes", [780, 360])
@@ -67,6 +79,22 @@ class SalesPage(QFrame):
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
         header.addLayout(title_box, 1)
+
+        self.invoice_mode_label = QLabel("فروش جدید")
+        self.invoice_mode_label.setObjectName("StatusPill")
+        header.addWidget(self.invoice_mode_label)
+
+        self.theme_button = QPushButton("☾ تم تاریک")
+        self.theme_button.setObjectName("CompactActionButton")
+        self.theme_button.setToolTip("تغییر تم روشن / تاریک")
+        self.theme_button.clicked.connect(self._toggle_theme)
+        header.addWidget(self.theme_button)
+
+        self.cancel_edit_button = QPushButton("لغو ویرایش")
+        self.cancel_edit_button.setToolTip("لغو ویرایش فاکتور و بازگشت به فروش جدید")
+        self.cancel_edit_button.clicked.connect(self.cancel_invoice_edit)
+        self.cancel_edit_button.hide()
+        header.addWidget(self.cancel_edit_button)
 
         self.refresh_button = QPushButton("بازخوانی کالاها")
         self.refresh_button.clicked.connect(self.refresh_products)
@@ -122,19 +150,37 @@ class SalesPage(QFrame):
         footer = QHBoxLayout(footer_card)
         footer.setContentsMargins(14, 10, 14, 10)
         self.paid = QCheckBox("فاکتور پرداخت شده است")
+        self.paid.toggled.connect(self._payment_status_changed)
+        self.payment_method_label = QLabel("روش پرداخت")
+        self.payment_method_label.setObjectName("PageSubtitle")
+        self.payment_method_combo = QComboBox()
+        for label, value in (
+            ("نقدی", "cash"),
+            ("کارت", "card"),
+            ("انتقال بانکی", "bank_transfer"),
+            ("اعتباری", "store_credit"),
+        ):
+            self.payment_method_combo.addItem(label, value)
+        self.payment_method_combo.setMinimumWidth(118)
+        self.payment_method_combo.setEnabled(False)
         self.total_label = QLabel("جمع تخمینی: —")
         self.total_label.setObjectName("MetricValue")
         self.submit_button = QPushButton("ثبت امن فروش")
         self.submit_button.setObjectName("PrimaryButton")
         self.submit_button.clicked.connect(self.checkout)
         footer.addWidget(self.paid)
+        footer.addWidget(self.payment_method_label)
+        footer.addWidget(self.payment_method_combo)
         footer.addStretch(1)
         footer.addWidget(self.total_label)
         footer.addWidget(self.submit_button)
         root.addWidget(footer_card)
 
         self._refresh_cart_summary()
+        self._update_invoice_mode_controls()
+        self.sync_theme_button()
         apply_button_icons(self, getattr(self.window, "mode", "light"))
+        self.sync_theme_button()
 
     def _build_catalog_panel(self):
         """Build the searchable, category-filtered product grid shown on the right."""
@@ -164,9 +210,34 @@ class SalesPage(QFrame):
         self.search_button = QPushButton("جست‌وجو")
         self.search_button.setToolTip("جست‌وجوی کالا")
         self.search_button.clicked.connect(self.refresh_products)
+        self.search.textChanged.connect(self._search_text_changed)
         filters.addWidget(self.search, 1)
         filters.addWidget(self.search_button)
         layout.addLayout(filters)
+
+        self.search_suggestions_frame = QFrame()
+        self.search_suggestions_frame.setObjectName("SalesSearchSuggestions")
+        suggestions_layout = QVBoxLayout(self.search_suggestions_frame)
+        suggestions_layout.setContentsMargins(8, 6, 8, 6)
+        suggestions_layout.setSpacing(4)
+        self.search_suggestion_list = QListWidget()
+        self.search_suggestion_list.setObjectName("SalesSearchSuggestionList")
+        self.search_suggestion_list.setMaximumHeight(148)
+        self.search_suggestion_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.search_suggestion_list.itemClicked.connect(self._add_suggestion_to_cart)
+        suggestions_layout.addWidget(self.search_suggestion_list)
+        suggestion_footer = QHBoxLayout()
+        self.search_suggestion_status = QLabel("")
+        self.search_suggestion_status.setObjectName("PageSubtitle")
+        self.search_more_button = QPushButton("▾ بارگذاری بیشتر")
+        self.search_more_button.setToolTip("نمایش موارد مشابه بیشتر")
+        self.search_more_button.clicked.connect(self._load_more_search_suggestions)
+        self.search_more_button.hide()
+        suggestion_footer.addWidget(self.search_suggestion_status, 1)
+        suggestion_footer.addWidget(self.search_more_button)
+        suggestions_layout.addLayout(suggestion_footer)
+        self.search_suggestions_frame.hide()
+        layout.addWidget(self.search_suggestions_frame)
 
         options = QHBoxLayout()
         category_label = QLabel("دسته‌بندی")
@@ -281,6 +352,7 @@ class SalesPage(QFrame):
 
     def set_permissions(self, user):
         self.history_button.setVisible(can_access(user, "receipts", "read"))
+        self._can_edit_receipts = can_access(user, "sales", "update")
 
     def set_business_profile(self, profile):
         self._business_profile = dict(profile or {})
@@ -289,9 +361,151 @@ class SalesPage(QFrame):
             or bool(self._business_profile.get("cafe_seat_selection"))
         )
 
+    def _toggle_theme(self):
+        change_theme = getattr(self.window, "change_theme", None)
+        if callable(change_theme):
+            change_theme("dark" if getattr(self.window, "mode", "light") == "light" else "light")
+        self.sync_theme_button()
+
+    def sync_theme_button(self):
+        mode = getattr(self.window, "mode", "light")
+        self.theme_button.setText("☾ تم تاریک" if mode == "light" else "☀ تم روشن")
+        self.theme_button.setToolTip("تغییر تم روشن / تاریک")
+
+    def _payment_status_changed(self, paid):
+        self.payment_method_combo.setEnabled(bool(paid))
+
+    def _update_invoice_mode_controls(self):
+        editing = self._editing_receipt_id is not None
+        if editing:
+            receipt_number = (
+                (self._editing_receipt or {}).get("day_receipt_id")
+                or str(self._editing_receipt_id)[:8]
+            )
+            self.invoice_mode_label.setText("ویرایش فاکتور {}".format(receipt_number))
+            self.submit_button.setText("ذخیرهٔ تغییرات فاکتور")
+            self.cancel_edit_button.show()
+        else:
+            self.invoice_mode_label.setText("فروش جدید")
+            self.submit_button.setText("ثبت امن فروش")
+            self.cancel_edit_button.hide()
+
+    def cancel_invoice_edit(self):
+        self._editing_receipt_id = None
+        self._editing_receipt = None
+        self._cart.clear()
+        self.paid.setChecked(False)
+        cash_index = self.payment_method_combo.findData("cash")
+        if cash_index >= 0:
+            self.payment_method_combo.setCurrentIndex(cash_index)
+        self.seat_number.setCurrentIndex(0)
+        self._render_cart()
+        self._refresh_cart_summary()
+        self._refresh_product_stock_states()
+        self._update_invoice_mode_controls()
+        self.window.set_status("ویرایش فاکتور لغو شد؛ آماده ثبت فروش جدید هستید.")
+
+    def _search_text_changed(self, value):
+        self._search_timer.stop()
+        query = str(value or "").strip()
+        self._suggestion_query = query
+        self._suggestion_page = 0
+        self._suggestion_total = 0
+        self.search_suggestion_list.clear()
+        self.search_more_button.hide()
+        if len(query) < 2 or not self.window.api:
+            self.search_suggestions_frame.hide()
+            return
+        self.search_suggestions_frame.show()
+        self.search_suggestion_status.setText("در حال جست‌وجوی نام‌های مشابه…")
+        self._search_timer.start()
+
+    def _run_search_suggestions(self):
+        query = self.search.text().strip()
+        if len(query) >= 2:
+            self._request_search_suggestions(query, 1)
+
+    def _request_search_suggestions(self, query, page):
+        if not self.window.api or query != self.search.text().strip():
+            return
+        self.search_suggestion_status.setText("در حال بارگذاری نتایج…")
+        self.search_more_button.setEnabled(False)
+        self.window.run_api(
+            lambda: self.window.api.list_products_page(
+                q=query,
+                category_id=self.category_combo.currentData(),
+                page=page,
+                page_size=self._suggestion_page_size,
+            ),
+            lambda payload: self._show_search_suggestions(payload, query, page),
+            failure=lambda error: self._search_suggestions_failed(error, query),
+        )
+
+    def _show_search_suggestions(self, payload, query, page):
+        self.search_more_button.setEnabled(True)
+        if query != self.search.text().strip():
+            return
+        items = list(payload.get("items") or [])
+        if page == 1:
+            self.search_suggestion_list.clear()
+        for product in items:
+            key = str(product.get("id") or "")
+            if not key:
+                continue
+            previous = self._product_cache.get(key, {})
+            if "_image_bytes" in previous and "_image_bytes" not in product:
+                product["_image_bytes"] = previous["_image_bytes"]
+            self._product_cache[key] = product
+            row = QListWidgetItem(
+                "{}   ·   {:,.2f}".format(
+                    product.get("name") or "کالای بدون نام",
+                    float(product.get("sell_price") or 0),
+                )
+            )
+            row.setData(Qt.ItemDataRole.UserRole, product)
+            row.setToolTip("برای افزودن سریع این کالا به سبد کلیک کنید.")
+            self.search_suggestion_list.addItem(row)
+        try:
+            self._suggestion_total = max(0, int(payload.get("total", len(items)) or 0))
+        except (TypeError, ValueError):
+            self._suggestion_total = len(items)
+        self._suggestion_page = page
+        displayed = self.search_suggestion_list.count()
+        self.search_suggestion_status.setText(
+            "{} نتیجه · {} مورد نمایش داده شده".format(self._suggestion_total, displayed)
+        )
+        if displayed == 0:
+            self.search_suggestion_status.setText("مورد مشابهی پیدا نشد.")
+        self.search_more_button.setVisible(displayed < self._suggestion_total)
+        self.search_suggestions_frame.setVisible(True)
+
+    def _search_suggestions_failed(self, error, query):
+        self.search_more_button.setEnabled(True)
+        if query == self.search.text().strip():
+            self.search_suggestion_status.setText("بارگذاری پیشنهادهای جست‌وجو ناموفق بود.")
+            self.search_more_button.hide()
+
+    def _load_more_search_suggestions(self):
+        if not self._suggestion_query or self._suggestion_page < 1:
+            return
+        if self.search_more_button.isEnabled() and (
+            self.search_suggestion_list.count() < self._suggestion_total
+        ):
+            self._request_search_suggestions(
+                self._suggestion_query, self._suggestion_page + 1
+            )
+
+    def _add_suggestion_to_cart(self, item):
+        product = item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(product, dict):
+            self.add_to_cart(product)
+
     def _category_changed(self, *_args):
         self.product_page = 1
         self.refresh_products()
+        query = self.search.text().strip()
+        if len(query) >= 2:
+            self._search_text_changed(query)
 
     def _toggle_product_images(self, enabled):
         self._show_product_images = bool(enabled)
@@ -414,7 +628,7 @@ class SalesPage(QFrame):
     def _render_products(self):
         """Rebuild only the visible product grid, adapting the number of columns."""
         width = max(260, self.catalog_scroll.viewport().width() if hasattr(self, "catalog_scroll") else 800)
-        columns = max(1, min(5, width // 225))
+        columns = max(1, min(6, width // 165))
         if not self.products:
             columns = max(1, columns)
         # Reflow only when the viewport's available column count changes or data changes.
@@ -447,29 +661,48 @@ class SalesPage(QFrame):
             self.product_grid.addWidget(card, index // columns, index % columns)
         self.product_grid.setRowStretch((len(self.products) // columns) + 1, 1)
 
+    def _original_quantity_for_product(self, product_key):
+        if not self._editing_receipt:
+            return 0
+        quantity = 0
+        for item in self._editing_receipt.get("items") or []:
+            item_product_id = item.get("product_id") or item.get("product")
+            if str(item_product_id or "") == str(product_key):
+                try:
+                    quantity += max(0, int(item.get("quantity") or 0))
+                except (TypeError, ValueError):
+                    continue
+        return quantity
+
+    def _stock_capacity(self, product, product_key):
+        stock = max(0, int(float(product.get("stock_quantity") or 0)))
+        if self._editing_receipt_id:
+            stock += self._original_quantity_for_product(product_key)
+        return stock
+
     def _build_product_card(self, product):
         """Create a compact product card with optional photography and stock state."""
         key = str(product.get("id") or "")
         card = QFrame()
         card.setObjectName("SalesProductCard")
-        card.setMinimumWidth(180)
-        card.setMaximumWidth(340)
+        card.setMinimumWidth(128)
+        card.setMaximumWidth(218)
         card.setFrameShape(QFrame.Shape.NoFrame)
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(10, 10, 10, 10)
-        card_layout.setSpacing(7)
+        card_layout.setContentsMargins(7, 7, 7, 7)
+        card_layout.setSpacing(4)
 
         if self._show_product_images:
             image = QLabel()
             image.setObjectName("SalesProductImage")
-            image.setMinimumHeight(78)
-            image.setMaximumHeight(112)
+            image.setMinimumHeight(48)
+            image.setMaximumHeight(74)
             image.setAlignment(Qt.AlignmentFlag.AlignCenter)
             pixmap = QPixmap()
             image_bytes = product.get("_image_bytes")
             if image_bytes and pixmap.loadFromData(image_bytes):
                 image.setPixmap(pixmap.scaled(
-                    180, 102, Qt.AspectRatioMode.KeepAspectRatio,
+                    138, 66, Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 ))
             else:
@@ -479,7 +712,7 @@ class SalesPage(QFrame):
         name = QLabel(str(product.get("name") or "کالای بدون نام"))
         name.setObjectName("SalesProductTitle")
         name.setWordWrap(True)
-        name.setMinimumHeight(36)
+        name.setMinimumHeight(28)
         name.setAlignment(Qt.AlignmentFlag.AlignCenter)
         card_layout.addWidget(name)
 
@@ -498,9 +731,9 @@ class SalesPage(QFrame):
         card_layout.addWidget(price)
 
         tracked = bool(product.get("track_stock"))
-        stock = float(product.get("stock_quantity") or 0)
+        capacity = self._stock_capacity(product, key)
         if tracked:
-            available = max(0, stock - int(self._cart.get(key, {}).get("quantity", 0)))
+            available = max(0, capacity - int(self._cart.get(key, {}).get("quantity", 0)))
             stock_text = "ناموجود" if available <= 0 else "موجودی: {:g}".format(available)
         else:
             available = None
@@ -513,8 +746,8 @@ class SalesPage(QFrame):
         self._product_stock_labels[key] = stock_badge
 
         add = QPushButton("افزودن به سبد")
-        add.setObjectName("PrimaryButton")
-        add.setMinimumHeight(38)
+        add.setObjectName("SalesProductAddButton")
+        add.setMinimumHeight(28)
         add.setToolTip("افزودن {} به سبد خرید".format(product.get("name") or "کالا"))
         add.clicked.connect(lambda _checked=False, selected=product: self.add_to_cart(selected))
         add.setEnabled(not tracked or available > 0)
@@ -530,9 +763,9 @@ class SalesPage(QFrame):
             button = self._product_add_buttons.get(key)
             stock_badge = self._product_stock_labels.get(key)
             tracked = bool(product.get("track_stock"))
-            stock = float(product.get("stock_quantity") or 0)
+            capacity = self._stock_capacity(product, key)
             selected = int(self._cart.get(key, {}).get("quantity", 0))
-            available = max(0, stock - selected)
+            available = max(0, capacity - selected)
             if stock_badge is not None:
                 stock_badge.setText(
                     ("ناموجود" if available <= 0 else "موجودی: {:g}".format(available))
@@ -552,7 +785,7 @@ class SalesPage(QFrame):
         product = self._product_cache.get(key, product)
         current = int(self._cart.get(key, {}).get("quantity", 0))
         next_quantity = current + 1
-        if product.get("track_stock") and next_quantity > int(float(product.get("stock_quantity") or 0)):
+        if product.get("track_stock") and next_quantity > self._stock_capacity(product, key):
             QMessageBox.information(self, "موجودی کافی نیست", "تعداد انتخاب‌شده از موجودی فعلی بیشتر است.")
             return
         self._cart[key] = {"product": product, "quantity": next_quantity}
@@ -567,7 +800,7 @@ class SalesPage(QFrame):
             return
         product = entry["product"]
         if product.get("track_stock"):
-            stock = int(float(product.get("stock_quantity") or 0))
+            stock = self._stock_capacity(product, product_key)
             if quantity > stock:
                 quantity = stock
         if quantity <= 0:
@@ -725,21 +958,56 @@ class SalesPage(QFrame):
         self._reflow_product_grid()
 
     def checkout(self):
-        items=self.collect_items()
+        items = self.collect_items()
         if not items:
-            self.window.show_error("برای ثبت فروش حداقل یک تعداد مثبت وارد کنید.");return
-        answer=QMessageBox.question(self,"تأیید فروش",
-            "فروش با {} نوع کالا ثبت شود؟ مبلغ نهایی در سرور محاسبه می‌شود.".format(len(items)),
-            QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.Yes)
-        if answer!=QMessageBox.StandardButton.Yes:return
+            self.window.show_error("برای ثبت فروش حداقل یک تعداد مثبت وارد کنید.")
+            return
+
+        editing = self._editing_receipt_id is not None
+        if editing:
+            prompt = "تغییرات فاکتور {} ذخیره شود؟ مبلغ و موجودی دوباره در سرور اعتبارسنجی می‌شوند.".format(
+                (self._editing_receipt or {}).get("day_receipt_id")
+                or str(self._editing_receipt_id)[:8]
+            )
+        else:
+            prompt = "فروش با {} نوع کالا ثبت شود؟ مبلغ نهایی در سرور محاسبه می‌شود.".format(len(items))
+        answer = QMessageBox.question(
+            self,
+            "تأیید تغییرات" if editing else "تأیید فروش",
+            prompt,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
         paid = self.paid.isChecked()
+        payment_method = self.payment_method_combo.currentData() or "cash"
+        if not paid:
+            payment_method = "unpaid"
         seat_number = self.seat_number.currentData() if self.seat_row.isVisible() else None
         if self.seat_row.isVisible() and not seat_number:
             self.window.show_error("برای فروش کافه، شماره صندلی یا میز را انتخاب کنید.")
             self.seat_number.setFocus()
             return
+
+        if editing:
+            receipt_id = self._editing_receipt_id
+            self.window.run_api(
+                lambda: self.window.api.update_sale(
+                    receipt_id,
+                    items,
+                    paid=paid,
+                    payment_method=payment_method,
+                    seat_number=seat_number,
+                ),
+                lambda receipt: self._sale_created(receipt, updated=True),
+                busy=self.submit_button,
+            )
+            return
+
         settings = device_settings()
-        if paid and settings.get("terminal_mode") == "tcp":
+        if paid and payment_method == "card" and settings.get("terminal_mode") == "tcp":
             self.window.run_api(
                 lambda: self._checkout_via_terminal(items, settings, seat_number=seat_number),
                 self._terminal_sale_created,
@@ -747,7 +1015,9 @@ class SalesPage(QFrame):
             )
         else:
             self.window.run_api(
-                lambda: self.window.api.create_sale(items, paid=paid, seat_number=seat_number),
+                lambda: self.window.api.create_sale(
+                    items, paid=paid, payment_method=payment_method, seat_number=seat_number
+                ),
                 self._sale_created,
                 busy=self.submit_button,
             )
@@ -790,18 +1060,26 @@ class SalesPage(QFrame):
         )
         self._sale_created(receipt)
 
-    def _sale_created(self, receipt):
+    def _sale_created(self, receipt, updated=False):
+        self._editing_receipt_id = None
+        self._editing_receipt = None
         self.paid.setChecked(False)
+        self.payment_method_combo.setCurrentIndex(max(0, self.payment_method_combo.findData("cash")))
         self.seat_number.setCurrentIndex(0)
         self._cart.clear()
         self._render_cart()
+        self._update_invoice_mode_controls()
         self._refresh_product_stock_states()
         self._refresh_cart_summary()
-        self.window.set_status(
-            "فروش شمارهٔ {} با مبلغ {:,.2f} ثبت شد.".format(
+        if updated:
+            message = "فاکتور شمارهٔ {} با مبلغ {:,.2f} به‌روزرسانی شد.".format(
                 receipt.get("day_receipt_id", "—"), float(receipt.get("total_price") or 0)
             )
-        )
+        else:
+            message = "فروش شمارهٔ {} با مبلغ {:,.2f} ثبت شد.".format(
+                receipt.get("day_receipt_id", "—"), float(receipt.get("total_price") or 0)
+            )
+        self.window.set_status(message)
         self.refresh_products()
         refresh_dashboard = getattr(self.window, "refresh_dashboard_data", None)
         if callable(refresh_dashboard):
@@ -812,14 +1090,17 @@ class SalesPage(QFrame):
         if self.window.api:
             self.window.run_api(
                 lambda: self.window.api.get_invoice_template(kind="pos_receipt"),
-                lambda template: self._present_invoice(receipt, template),
-                failure=lambda _error: self._present_invoice(receipt, DEFAULT_TEMPLATE),
+                lambda template: self._present_invoice(receipt, template, auto_print=not updated),
+                failure=lambda _error: self._present_invoice(
+                    receipt, DEFAULT_TEMPLATE, auto_print=not updated
+                ),
             )
         else:
-            self._present_invoice(receipt, DEFAULT_TEMPLATE)
+            self._present_invoice(receipt, DEFAULT_TEMPLATE, auto_print=not updated)
 
-    def _present_invoice(self, receipt, template):
-        auto_print_invoice(receipt, template, self.window)
+    def _present_invoice(self, receipt, template, auto_print=True):
+        if auto_print:
+            auto_print_invoice(receipt, template, self.window)
         InvoiceDialog(receipt, template, self.window).exec()
 
     def show_recent_receipts(self):
@@ -852,11 +1133,15 @@ class SalesPage(QFrame):
         footer = QHBoxLayout()
         status = QLabel("")
         status.setObjectName("PageSubtitle")
-        open_button = QPushButton("نمایش و چاپ فاکتور")
+        open_button = QPushButton("نمایش و چاپ")
         open_button.setObjectName("PrimaryButton")
+        edit_button = QPushButton("بارگذاری برای ویرایش")
+        edit_button.setObjectName("PrimaryButton")
+        edit_button.setVisible(self._can_edit_receipts)
         close_button = QPushButton("بستن")
         footer.addWidget(status, 1)
         footer.addWidget(open_button)
+        footer.addWidget(edit_button)
         footer.addWidget(close_button)
         root.addLayout(footer)
         close_button.clicked.connect(dialog.reject)
@@ -888,19 +1173,39 @@ class SalesPage(QFrame):
                 len(records), sum(not bool(item.get("payed")) for item in records)
             ))
 
-        def open_selected():
+        def selected_receipt():
             row = table.currentRow()
             cell = table.item(row, 0) if row >= 0 else None
             record = cell.data(Qt.ItemDataRole.UserRole) if cell else None
             if not record:
                 QMessageBox.information(dialog, "انتخاب فاکتور", "ابتدا یک فاکتور را انتخاب کنید.")
+                return None
+            return record
+
+        def open_selected():
+            record = selected_receipt()
+            if not record:
                 return
             self.window.run_api(
                 lambda: self._load_recent_invoice(record["id"]),
                 lambda result: self._show_recent_invoice(result, dialog),
+                failure=lambda error: QMessageBox.warning(dialog, "خطای دریافت فاکتور", str(error)),
+                busy=open_button,
+            )
+
+        def edit_selected():
+            record = selected_receipt()
+            if not record:
+                return
+            self.window.run_api(
+                lambda: self._load_recent_invoice(record["id"]),
+                lambda result: self._load_invoice_into_editor(result, dialog),
+                failure=lambda error: QMessageBox.warning(dialog, "خطای بارگذاری برای ویرایش", str(error)),
+                busy=edit_button,
             )
 
         open_button.clicked.connect(open_selected)
+        edit_button.clicked.connect(edit_selected)
         table.cellDoubleClicked.connect(lambda _row, _column: open_selected())
         dialog.setMinimumSize(760, 460)
         self.window.run_api(
@@ -912,6 +1217,123 @@ class SalesPage(QFrame):
         dialog.exec()
 
     def _load_recent_invoice(self, receipt_id):
+        api = self.window.api
+        receipt = api.get_receipt(receipt_id)
+        products = {}
+        for item in receipt.get("items") or []:
+            product_id = str(item.get("product_id") or "")
+            if not product_id or product_id in products:
+                continue
+            try:
+                product = api.get_product(product_id)
+            except Exception as error:
+                if getattr(error, "status_code", None) != 404:
+                    raise
+                product = {
+                    "id": product_id,
+                    "name": item.get("product_name") or "محصول حذف‌شده",
+                    "sell_price": item.get("sell_price") or 0,
+                    "buy_price": item.get("buy_price") or 0,
+                    "track_stock": False,
+                    "stock_quantity": 0,
+                    "category_id": None,
+                    "image_path": None,
+                    "_deleted_product": True,
+                }
+            if self._show_product_images and product.get("image_path"):
+                try:
+                    product["_image_bytes"] = api.get_product_image_bytes(product_id)
+                except Exception:
+                    product["_image_bytes"] = None
+            products[product_id] = product
+        try:
+            template = api.get_invoice_template()
+        except Exception:
+            template = DEFAULT_TEMPLATE
+        return {"receipt": receipt, "products": products, "template": template}
+
+    def _load_invoice_into_editor(self, payload, dialog=None):
+        if self._cart:
+            answer = QMessageBox.question(
+                self,
+                "جایگزینی سبد فعلی",
+                "سبد فعلی با اقلام فاکتور انتخاب‌شده جایگزین شود؟",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return False
+
+        receipt = dict(payload.get("receipt") or {})
+        receipt_id = str(receipt.get("id") or "")
+        if not receipt_id:
+            self.window.show_error("شناسهٔ فاکتور برای ویرایش معتبر نیست.")
+            return False
+
+        products = payload.get("products") or {}
+        new_cart = {}
+        for line in receipt.get("items") or []:
+            product_id = str(line.get("product_id") or "")
+            if not product_id:
+                continue
+            product = dict(
+                products.get(product_id)
+                or self._product_cache.get(product_id)
+                or {}
+            )
+            product.setdefault("id", product_id)
+            product.setdefault("name", line.get("product_name") or "کالا")
+            product.setdefault("sell_price", line.get("sell_price") or 0)
+            product.setdefault("buy_price", line.get("buy_price") or 0)
+            product.setdefault("track_stock", False)
+            product.setdefault("stock_quantity", 0)
+            previous = self._product_cache.get(product_id, {})
+            if "_image_bytes" not in product and previous.get("_image_bytes"):
+                product["_image_bytes"] = previous["_image_bytes"]
+            self._product_cache[product_id] = product
+            try:
+                quantity = max(1, int(line.get("quantity") or 1))
+            except (TypeError, ValueError):
+                quantity = 1
+            if product_id in new_cart:
+                new_cart[product_id]["quantity"] += quantity
+            else:
+                new_cart[product_id] = {"product": product, "quantity": quantity}
+
+        self._editing_receipt_id = receipt_id
+        self._editing_receipt = receipt
+        self._cart = new_cart
+        self.paid.setChecked(bool(receipt.get("payed")))
+        payment_index = self.payment_method_combo.findData(receipt.get("payment_method"))
+        if payment_index >= 0:
+            self.payment_method_combo.setCurrentIndex(payment_index)
+        seat_number = receipt.get("seat_number")
+        if seat_number:
+            seat_value = str(seat_number)
+            seat_index = self.seat_number.findData(seat_value)
+            if seat_index < 0:
+                self.seat_number.addItem("میز {}".format(seat_value), seat_value)
+                seat_index = self.seat_number.count() - 1
+            self.seat_number.setCurrentIndex(seat_index)
+        else:
+            self.seat_number.setCurrentIndex(0)
+
+        self._set_cart_panel_visible(True)
+        self._update_invoice_mode_controls()
+        self._render_cart()
+        self._refresh_cart_summary()
+        self._refresh_product_stock_states()
+        self.window.set_status(
+            "فاکتور شمارهٔ {} برای ویرایش بارگذاری شد.".format(
+                receipt.get("day_receipt_id") or receipt_id[:8]
+            )
+        )
+        if dialog is not None:
+            dialog.accept()
+        return True
+
+    def _show_recent_invoice(self, payload, dialog):
+        InvoiceDialog(payload["receipt"], payload.get("template") or DEFAULT_TEMPLATE, self.window).exec()
         receipt = self.window.api.get_receipt(receipt_id)
         try:
             template = self.window.api.get_invoice_template()

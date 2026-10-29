@@ -237,6 +237,18 @@ def list_products(
         return [_serialize(item) for item in query.order_by(ProductModel.name).paginate(page, page_size)]
 
 
+@router.get("/products/{product_id}", response_model=ProductOut)
+def get_product(product_id: UUID, user=Depends(require_permission("products", "read"))):
+    with DBManager():
+        product = ProductModel.get_or_none(ProductModel.id == product_id)
+        if product is None:
+            raise HTTPException(status_code=404, detail="محصول پیدا نشد.")
+        allowed_product_ids = kiosk_product_ids_for_user(user)
+        if allowed_product_ids is not None and product.id not in allowed_product_ids:
+            raise HTTPException(status_code=404, detail="محصول پیدا نشد.")
+        return _serialize(product)
+
+
 @router.post("/products", response_model=ProductOut, status_code=status.HTTP_201_CREATED)
 def create_product(payload: ProductCreate, user=Depends(require_permission("products", "create"))):
     with DBManager():

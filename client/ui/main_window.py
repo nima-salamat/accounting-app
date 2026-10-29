@@ -649,6 +649,9 @@ class AccountingMainWindow(QMainWindow):
             self.theme_button.setText("☀" if self.mode=="dark" else "☾")
             self.theme_button.setToolTip("تغییر تم روشن / تاریک")
         apply_button_icons(self, self.mode)
+        sales_page = getattr(self, "sales_page", None)
+        if sales_page is not None:
+            sales_page.sync_theme_button()
 
     def connect_to_api(self,url):
         try:

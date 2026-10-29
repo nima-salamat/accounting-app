@@ -231,6 +231,10 @@ class AccountingApiClient:
             params={"q": q, "category_id": category_id},
         )
 
+    def get_product(self, product_id):
+        """Fetch the current product, including stock, for editing a saved receipt."""
+        return self._request("GET", "/api/v1/products/{}".format(product_id))
+
     def upload_product_image(self, product_id, image_path):
         """Upload a selected local photo to the authenticated server."""
         import mimetypes

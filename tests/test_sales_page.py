@@ -52,6 +52,14 @@ class _PagedApi:
             "total": 2,
         }
 
+    def get_product(self, product_id):
+        for product in self.products:
+            if str(product["id"]) == str(product_id):
+                return dict(product)
+        error = RuntimeError("product not found")
+        error.status_code = 404
+        raise error
+
     def get_product_image_bytes(self, product_id):
         return None
 
@@ -85,6 +93,9 @@ class _WindowStub:
 
     def set_status(self, message):
         self.status = message
+
+    def change_theme(self, mode):
+        self.mode = mode
 
 
 class SalesPageLayoutTests(unittest.TestCase):
@@ -196,6 +207,68 @@ class SalesPageLayoutTests(unittest.TestCase):
         quantity_spin.setValue(3)
         self.assertEqual(self.page._cart_line_total_labels["product-1"].text(), "مجموع: 3.00")
         self.assertEqual(self.page.total_label.text(), "جمع تخمینی: 3.00")
+
+    def test_search_suggestions_are_similar_results_and_load_more_is_paginated(self):
+        self.page.search.setText("item")
+        self.page._request_search_suggestions("item", 1)
+        self.assertEqual(self.page.search_suggestion_list.count(), 8)
+        self.assertTrue(self.page.search_more_button.isVisible())
+        self.assertIn("101 نتیجه", self.page.search_suggestion_status.text())
+
+        self.page._load_more_search_suggestions()
+        self.assertEqual(self.page.search_suggestion_list.count(), 16)
+        self.assertEqual(self.page._suggestion_page, 2)
+
+        self.page.search_suggestion_list.item(0).setSelected(True)
+        self.page._add_suggestion_to_cart(self.page.search_suggestion_list.item(0))
+        self.assertEqual(self.page.collect_items()[0]["product_id"], "product-1")
+
+    def test_existing_invoice_loads_into_edit_mode_and_exposes_payment_status(self):
+        receipt = {
+            "id": "receipt-123",
+            "day_receipt_id": 17,
+            "payed": False,
+            "payment_method": "unpaid",
+            "seat_number": None,
+            "items": [{
+                "product_id": "product-1",
+                "product_name": "item-1",
+                "sell_price": 1,
+                "quantity": 2,
+            }],
+        }
+        product = self.window.api.get_product("product-1")
+        self.assertTrue(self.page._load_invoice_into_editor({
+            "receipt": receipt,
+            "products": {"product-1": product},
+        }))
+
+        self.assertEqual(self.page._editing_receipt_id, "receipt-123")
+        self.assertEqual(self.page.collect_items(), [
+            {"product_id": "product-1", "quantity": 2},
+        ])
+        self.assertEqual(self.page.submit_button.text(), "ذخیرهٔ تغییرات فاکتور")
+        self.assertTrue(self.page.cancel_edit_button.isVisible())
+        self.assertFalse(self.page.paid.isChecked())
+        self.page.paid.setChecked(True)
+        card_index = self.page.payment_method_combo.findData("card")
+        self.page.payment_method_combo.setCurrentIndex(card_index)
+        self.assertTrue(self.page.payment_method_combo.isEnabled())
+        self.assertEqual(self.page.payment_method_combo.currentData(), "card")
+
+    def test_product_cards_use_a_compact_width_and_shorter_image_area(self):
+        self.page.refresh_products()
+        card = self.page.product_grid.itemAt(0).widget()
+        self.assertLessEqual(card.maximumWidth(), 218)
+        self.assertLess(card.minimumWidth(), 140)
+        image = card.findChild(QLabel, "SalesProductImage")
+        self.assertLessEqual(image.maximumHeight(), 74)
+
+    def test_POS_theme_toggle_is_visible_and_changes_the_mode(self):
+        self.assertTrue(self.page.theme_button.isVisible())
+        self.page.theme_button.click()
+        self.assertEqual(self.window.mode, "dark")
+        self.assertIn("تم روشن", self.page.theme_button.text())
 
     def test_image_visibility_is_user_configurable(self):
         self.assertTrue(self.page.show_images_checkbox.isChecked())

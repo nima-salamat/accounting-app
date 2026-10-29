@@ -217,6 +217,11 @@ def stylesheet(mode="light", design=None):
     QFrame#WorkbarPrimaryRow {{ background: transparent; border: none; }}
     QFrame#WorkbarSubmenuRow {{ background: {surface_alt}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
     QFrame#SalesProductCard, QFrame#SalesCartItem {{ background: {surface}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
+    QFrame#SalesSearchSuggestions {{ background: {surface_alt}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
+    QListWidget#SalesSearchSuggestionList {{ background: {surface}; border: 1px solid {border}; border-radius: 7px; padding: 2px; }}
+    QListWidget#SalesSearchSuggestionList::item {{ padding: 5px 8px; border-bottom: 1px solid {border}; }}
+    QListWidget#SalesSearchSuggestionList::item:selected {{ background: {highlight}; color: {text}; }}
+    QPushButton#SalesProductAddButton {{ min-height: 28px; padding: 4px 7px; font-size: 11px; }}
     QFrame#SalesProductCard:hover {{ border-color: {primary}; }}
     QLabel#SalesProductImage {{ background: {surface_alt}; color: {muted}; border: 1px dashed {border}; border-radius: 8px; padding: 5px; }}
     QLabel#SalesProductTitle {{ color: {text}; font-size: {font_size}px; font-weight: 750; }}
