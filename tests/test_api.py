@@ -308,7 +308,7 @@ class ApiTests(unittest.TestCase):
             "invoice_sequence": 100001,
         }
         self.assertEqual(format_invoice_number(receipt, "{DATE}-{NUM}", 5), "2026-10-30-00001")
-        self.assertEqual(format_invoice_number(receipt, "{YYYY}-{MM}-{D}-NUM-{NUM}", 5), "2026-10-3-NUM-00001")
+        self.assertEqual(format_invoice_number(receipt, "{YYYY}-{MM}-{D}-NUM-{NUM}", 5), "2026-10-30-NUM-00001")
         self.assertEqual(format_invoice_number(receipt, "{SEQ}", 5), "100001")
         self.assertEqual(
             format_invoice_number(dict(receipt, day_receipt_id=100001), "{DATE}-{NUM}", 5),
