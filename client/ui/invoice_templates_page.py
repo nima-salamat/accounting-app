@@ -1,6 +1,5 @@
 """WYSIWYG invoice designer with a physical page canvas, movable fields and grouped properties."""
 from copy import deepcopy
-import re
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QBrush, QPainter, QPen
@@ -71,7 +70,6 @@ NUMBERING_DATE_FORMATS = [
     ("compact", "فشرده  (20261030)", "{YYYY}{MM}{DD}"),
     ("dmy", "روز-ماه-سال  (30-10-2026)", "{DD}-{MM}-{YYYY}"),
     ("slash", "سال/ماه/روز  (2026/10/30)", "{YYYY}/{MM}/{DD}"),
-    ("short_year", "سال کوتاه  (261030)", "{YY}{MM}{DD}"),
 ]
 NUMBERING_SEPARATORS = [
     ("-", "خط تیره  -"),
