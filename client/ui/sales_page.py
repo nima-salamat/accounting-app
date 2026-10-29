@@ -475,11 +475,19 @@ class SalesPage(QFrame):
             9, top_left.y(), max(260, self.catalog_panel.width() - 18), height
         )
 
+    def _grid_column_count(self, width):
+        """Never force more columns than can hold the minimum product-card width."""
+        width = max(260, int(width))
+        available = max(1, min(6, width // 132))
+        if self._product_columns:
+            return min(self._product_columns, available)
+        return max(1, min(6, width // 165))
+
     def _reflow_products_for_resize(self):
         if not getattr(self, "products", None) or self._product_layout_mode != "grid":
             return
         width = max(260, self.catalog_scroll.viewport().width())
-        columns = max(1, min(6, self._product_columns or width // 165))
+        columns = self._grid_column_count(width)
         if columns != self._rendered_columns:
             self._render_products()
 
@@ -908,7 +916,7 @@ class SalesPage(QFrame):
         if self._product_layout_mode in {"horizontal", "list"}:
             columns = 1
         else:
-            columns = max(1, min(6, self._product_columns or width // 165))
+            columns = self._grid_column_count(width)
         self._rendered_columns = columns
         self.product_grid.setHorizontalSpacing(6 if self._product_card_density == "compact" else 10)
         self.product_grid.setVerticalSpacing(6 if self._product_card_density == "compact" else 10)

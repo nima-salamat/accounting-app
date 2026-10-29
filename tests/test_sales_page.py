@@ -280,6 +280,13 @@ class SalesPageLayoutTests(unittest.TestCase):
             "sales/show_product_images", True, type=bool
         ))
 
+    def test_grid_column_setting_never_overflows_the_available_catalog_width(self):
+        self.page.refresh_products()
+        width = max(260, self.page.catalog_scroll.viewport().width())
+        self.page._apply_product_display_settings("grid", True, "compact", 6)
+        available = max(1, min(6, width // 132))
+        self.assertLessEqual(self.page._rendered_columns, available)
+
     def test_catalog_supports_horizontal_list_and_table_layouts(self):
         self.page.refresh_products()
         self.page._apply_product_display_settings("horizontal", True, "compact", 0)
