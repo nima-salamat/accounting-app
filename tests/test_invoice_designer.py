@@ -5,7 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import unittest
 from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtGui import QWheelEvent
-from PySide6.QtWidgets import QApplication, QSpinBox
+from PySide6.QtWidgets import QApplication, QGraphicsLineItem, QSpinBox
 
 from client.ui.invoice_render import DEFAULT_TEMPLATE, default_elements_for_paper, normalize_elements, page_dimensions
 from client.ui.invoice_templates_page import InvoiceTemplatesPage
@@ -101,6 +101,34 @@ class InvoiceDesignerTests(unittest.TestCase):
         self.page._reset_alignment_hint()
         self.assertEqual(self.page.scene._alignment_guide_items, [])
         self.assertEqual(self.page.canvas_help.text(), self.page._alignment_hint_default)
+
+    def test_drag_snap_can_preserve_equal_horizontal_spacing(self):
+        elements = [
+            {
+                "id": "first", "type": "text", "label": "اول",
+                "text": "اول", "x_mm": 20, "y_mm": 20, "w_mm": 20, "h_mm": 12,
+                "font_size": 9, "align": "right", "bold": False, "visible": True,
+            },
+            {
+                "id": "second", "type": "text", "label": "دوم",
+                "text": "دوم", "x_mm": 60, "y_mm": 20, "w_mm": 20, "h_mm": 12,
+                "font_size": 9, "align": "right", "bold": False, "visible": True,
+            },
+            {
+                "id": "moving", "type": "text", "label": "متحرک",
+                "text": "متحرک", "x_mm": 98, "y_mm": 22, "w_mm": 10, "h_mm": 10,
+                "font_size": 9, "align": "right", "bold": False, "visible": True,
+            },
+        ]
+        self.page._load_template({**DEFAULT_TEMPLATE, "elements": elements})
+        moving = self.page._items_by_id["moving"]
+        snapped = self.page._snap_item_position(moving, QPointF(98.0, 22.0))
+        self.assertAlmostEqual(snapped.x(), 100.0)
+        self.assertTrue(any(
+            isinstance(guide, QGraphicsLineItem)
+            for guide in self.page.scene._alignment_guide_items
+        ))
+        self.assertIn("فاصلهٔ افقی برابر", self.page.canvas_help.text())
 
     def test_snap_does_not_move_elements_when_no_alignment_is_close(self):
         elements = [
