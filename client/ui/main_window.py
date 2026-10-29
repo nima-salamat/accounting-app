@@ -251,8 +251,8 @@ class AccountingMainWindow(QMainWindow):
         self._workbar_groups = groups
         for group_id, label, glyph, _entries in groups:
             button = QPushButton(label, primary_row)
-            set_button_icon(button, group_id, self.mode)
             button.setObjectName("WorkbarGroupButton")
+            set_button_icon(button, group_id, self.mode)
             button.setCheckable(True)
             button.setProperty("active", False)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -335,6 +335,7 @@ class AccountingMainWindow(QMainWindow):
             button.setProperty("active", active)
             button.style().unpolish(button)
             button.style().polish(button)
+            set_button_icon(button, current_id, self.mode)
 
         _group_id, _label, _glyph, entries = group
         for key, label in entries:
