@@ -127,6 +127,53 @@ class InvoiceRenderTests(unittest.TestCase):
         table = next(element for element in prepared["elements"] if element["type"] == "items_table")
         self.assertGreater(table["h_mm"], 137.0)
 
+    def test_thermal_roll_shrinks_for_short_receipts_and_moves_trailing_fields(self):
+        template = dict(
+            DEFAULT_TEMPLATE,
+            paper_size="receipt80",
+            orientation="portrait",
+            margin_mm=4,
+            elements=default_elements_for_paper("receipt80", "portrait", 4),
+        )
+        original = {item["id"]: dict(item) for item in template["elements"]}
+        receipt = {
+            "id": "short-roll",
+            "total_price": 300,
+            "items": [
+                {"product_name": "قلم", "quantity": 1, "sell_price": 100},
+                {"product_name": "دفتر", "quantity": 2, "sell_price": 100},
+            ],
+        }
+
+        pages = prepare_invoice_pages(receipt, template)
+        self.assertEqual(len(pages), 1)
+        _prepared_receipt, prepared = pages[0]
+        width, height = page_dimensions(prepared)
+        self.assertEqual(width, 80.0)
+        self.assertLess(height, 220.0)
+
+        by_id = {item["id"]: item for item in prepared["elements"]}
+        original_table = original["items_table"]
+        prepared_table = by_id["items_table"]
+        self.assertLess(prepared_table["h_mm"], original_table["h_mm"])
+        delta = prepared_table["h_mm"] - original_table["h_mm"]
+        self.assertAlmostEqual(
+            by_id["totals"]["y_mm"], original["totals"]["y_mm"] + delta
+        )
+        self.assertAlmostEqual(
+            by_id["footer"]["y_mm"], original["footer"]["y_mm"] + delta
+        )
+        expected_bottom = max(
+            item["y_mm"] + item["h_mm"]
+            for item in prepared["elements"] if item.get("visible", True)
+        )
+        self.assertAlmostEqual(height, max(40.0, expected_bottom + 4.0))
+
+        # HTML preview/export receives the same prepared, short physical height.
+        html = render_invoice_html(receipt, template)
+        self.assertIn("size: 80.0mm", html)
+        self.assertNotIn("size: 80.0mm 220.0mm", html)
+
     def test_thermal_roll_keeps_long_tables_above_the_sheet_geometry_limit(self):
         template = dict(
             DEFAULT_TEMPLATE,
