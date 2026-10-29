@@ -12,7 +12,7 @@ from client.ui.permissions import can_access
 from client.ui.icons import apply_button_icons, set_button_icon
 
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFrame,
+    QAbstractItemView, QBoxLayout, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFrame,
     QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
     QScrollArea, QSplitter, QStackedWidget, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QHeaderView, QWidget, QListWidget, QListWidgetItem,
@@ -83,6 +83,11 @@ class SalesPage(QFrame):
         self._show_product_add_button = self._local_settings.value(
             "sales/show_product_add_button", True, type=bool
         )
+        self._product_stock_display_style = str(
+            self._local_settings.value("sales/product_stock_display_style", "text") or "text"
+        ).strip().lower()
+        if self._product_stock_display_style not in {"text", "circle"}:
+            self._product_stock_display_style = "text"
         self._product_layout_mode = str(
             self._local_settings.value("sales/product_layout_mode", "grid") or "grid"
         ).strip().lower()
@@ -124,12 +129,11 @@ class SalesPage(QFrame):
         self.theme_button.clicked.connect(self._toggle_theme)
         self.theme_button.hide()
 
-        self.cancel_edit_button = QPushButton("لغو ویرایش")
+        self.cancel_edit_button = QPushButton("لغو بارگذاری")
         self.cancel_edit_button.setObjectName("SalesToolbarButton")
-        self.cancel_edit_button.setToolTip("لغو ویرایش و بازگشت به فروش جدید")
+        self.cancel_edit_button.setToolTip("لغو فاکتور بارگذاری‌شده و بازگشت به فروش جدید")
         self.cancel_edit_button.clicked.connect(self.cancel_invoice_edit)
         self.cancel_edit_button.hide()
-        header.addWidget(self.cancel_edit_button)
 
         self.refresh_button = QPushButton("", self)
         self.refresh_button.setObjectName("SalesCatalogRefreshButton")
@@ -144,6 +148,9 @@ class SalesPage(QFrame):
         self.catalog_mode_button.setCheckable(True)
         self.catalog_mode_button.setChecked(True)
         self.catalog_mode_button.clicked.connect(lambda: self.set_workspace_mode("sales"))
+        set_button_icon(
+            self.catalog_mode_button, "sales", getattr(self.window, "mode", "light")
+        )
         header.addWidget(self.catalog_mode_button)
 
         self.history_button = QPushButton("فاکتورهای اخیر")
@@ -151,6 +158,9 @@ class SalesPage(QFrame):
         self.history_button.setCheckable(True)
         self.history_button.setToolTip("نمایش فهرست فاکتورها در فضای اصلی POS")
         self.history_button.clicked.connect(lambda: self.set_workspace_mode("history"))
+        set_button_icon(
+            self.history_button, "history", getattr(self.window, "mode", "light")
+        )
         header.addWidget(self.history_button)
         root.addLayout(header)
 
@@ -226,7 +236,9 @@ class SalesPage(QFrame):
         footer.addWidget(self.payment_method_combo)
         footer.addStretch(1)
         footer.addWidget(self.total_label)
+        footer.addWidget(self.cancel_edit_button)
         footer.addWidget(self.submit_button)
+        self.footer_layout = footer
         self.sales_layout.addWidget(footer_card)
 
         self.history_workspace = self._build_recent_receipts_workspace()
@@ -253,10 +265,20 @@ class SalesPage(QFrame):
         title.setObjectName("PageTitle")
         self.catalog_count_label = QLabel("در حال بارگذاری کالاها")
         self.catalog_count_label.setObjectName("StatusPill")
+        self.cart_panel_toggle = QPushButton("‹", panel)
+        self.cart_panel_toggle.setObjectName("SalesCartToggleButton")
+        self.cart_panel_toggle.setFixedSize(30, 30)
+        self.cart_panel_toggle.setAccessibleName("جمع یا باز کردن پنل سبد خرید")
+        self.cart_panel_toggle.setToolTip("جمع‌کردن پنل سبد خرید")
+        self.cart_panel_toggle.clicked.connect(
+            lambda: self._set_cart_panel_visible(self._cart_collapsed)
+        )
         title_row.addWidget(title)
         title_row.addStretch(1)
         title_row.addWidget(self.refresh_button)
         title_row.addWidget(self.catalog_count_label)
+        title_row.addWidget(self.cart_panel_toggle)
+        self.catalog_title_row = title_row
         layout.addLayout(title_row)
 
         filters = QHBoxLayout()
@@ -411,17 +433,10 @@ class SalesPage(QFrame):
         header.addLayout(self.cart_title_box, 1)
         self.cart_status_label = QLabel("۰ قلم")
         self.cart_status_label.setObjectName("StatusPill")
+        self.cart_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.cart_status_label.setMinimumWidth(58)
         header.addWidget(self.cart_status_label)
-
-        self.cart_panel_toggle = QPushButton("‹")
-        self.cart_panel_toggle.setObjectName("SalesCartToggleButton")
-        self.cart_panel_toggle.setFixedSize(30, 30)
-        self.cart_panel_toggle.setAccessibleName("جمع یا باز کردن پنل سبد خرید")
-        self.cart_panel_toggle.setToolTip("جمع‌کردن پنل سبد خرید")
-        self.cart_panel_toggle.clicked.connect(
-            lambda: self._set_cart_panel_visible(self._cart_collapsed)
-        )
-        header.addWidget(self.cart_panel_toggle)
+        self.cart_header_layout = header
         layout.addLayout(header)
 
         self.cart_scroll = QScrollArea()
@@ -558,6 +573,7 @@ class SalesPage(QFrame):
         editing = self._editing_receipt_id is not None
         if editing:
             self.submit_button.setText("ذخیرهٔ تغییرات فاکتور")
+            self.cancel_edit_button.setText("لغو بارگذاری")
             self.cancel_edit_button.show()
         else:
             self.submit_button.setText("ثبت فروش")
@@ -579,6 +595,12 @@ class SalesPage(QFrame):
         self.window.set_status("ویرایش فاکتور لغو شد؛ آماده ثبت فروش جدید هستید.")
 
     def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.Resize:
+            object_name = watched.objectName() if hasattr(watched, "objectName") else ""
+            if object_name == "SalesProductCard":
+                self._position_product_stock_circle(watched)
+            elif object_name == "SalesProductDetails":
+                self._adapt_product_details_layout(watched)
         if (
             event.type() == QEvent.Type.MouseButtonRelease
             and event.button() == Qt.MouseButton.LeftButton
@@ -608,6 +630,28 @@ class SalesPage(QFrame):
             elif watched is getattr(getattr(self, "catalog_scroll", None), "viewport", lambda: None)():
                 QTimer.singleShot(0, self._reflow_products_for_resize)
         return super().eventFilter(watched, event)
+
+    def _position_product_stock_circle(self, card):
+        badge = card.findChild(QLabel, "SalesProductStockCircle")
+        if badge is None:
+            return
+        badge.move(max(4, card.width() - badge.width() - 6), 6)
+        badge.raise_()
+
+    def _adapt_product_details_layout(self, details_widget):
+        details_layout = details_widget.layout()
+        if details_layout is None:
+            return
+        stack = (
+            bool(details_widget.property("stackStockBelowPrice"))
+            or details_widget.width() < 380
+        )
+        direction = (
+            QBoxLayout.Direction.TopToBottom if stack
+            else QBoxLayout.Direction.LeftToRight
+        )
+        if details_layout.direction() != direction:
+            details_layout.setDirection(direction)
 
     def _position_search_suggestions(self):
         """Anchor search results below the input as an overlay over the catalog."""
@@ -852,6 +896,13 @@ class SalesPage(QFrame):
         stock_checkbox.setChecked(self._show_product_stock)
         add_button_checkbox = QCheckBox("نمایش دکمهٔ افزودن به سبد (در حالت کارت)")
         add_button_checkbox.setChecked(self._show_product_add_button)
+        stock_style_label = QLabel("شیوهٔ نمایش موجودی")
+        stock_style_combo = QComboBox()
+        stock_style_combo.addItem("متن موجودی کنار قیمت", "text")
+        stock_style_combo.addItem("دایرهٔ عددی در گوشهٔ کارت", "circle")
+        stock_style_combo.setCurrentIndex(
+            max(0, stock_style_combo.findData(self._product_stock_display_style))
+        )
         density_label = QLabel("تراکم کارت")
         density_combo = QComboBox()
         density_combo.addItem("معمولی", "comfortable")
@@ -876,10 +927,12 @@ class SalesPage(QFrame):
         controls.addWidget(image_checkbox, 1, 0, 1, 2)
         controls.addWidget(stock_checkbox, 2, 0, 1, 2)
         controls.addWidget(add_button_checkbox, 3, 0, 1, 2)
-        controls.addWidget(density_label, 4, 0)
-        controls.addWidget(density_combo, 4, 1)
-        controls.addWidget(columns_label, 5, 0)
-        controls.addWidget(columns_combo, 5, 1)
+        controls.addWidget(stock_style_label, 4, 0)
+        controls.addWidget(stock_style_combo, 4, 1)
+        controls.addWidget(density_label, 5, 0)
+        controls.addWidget(density_combo, 5, 1)
+        controls.addWidget(columns_label, 6, 0)
+        controls.addWidget(columns_combo, 6, 1)
         root.addLayout(controls)
 
         preview_title = QLabel("پیش‌نمایش")
@@ -969,13 +1022,17 @@ class SalesPage(QFrame):
                 density=density_combo.currentData(),
                 show_stock=stock_checkbox.isChecked(),
                 show_add_button=add_button_checkbox.isChecked(),
+                stock_display_style=stock_style_combo.currentData(),
             )
-            preview_layout.addWidget(card, 0, Qt.AlignmentFlag.AlignCenter)
+            # List and horizontal previews need full width so the price, stock and add
+            # action remain visible instead of shrinking to sizeHint.
+            preview_layout.addWidget(card, 1)
 
         mode_combo.currentIndexChanged.connect(rebuild_preview)
         image_checkbox.toggled.connect(rebuild_preview)
         stock_checkbox.toggled.connect(rebuild_preview)
         add_button_checkbox.toggled.connect(rebuild_preview)
+        stock_style_combo.currentIndexChanged.connect(rebuild_preview)
         density_combo.currentIndexChanged.connect(rebuild_preview)
         columns_combo.currentIndexChanged.connect(rebuild_preview)
         rebuild_preview()
@@ -993,6 +1050,7 @@ class SalesPage(QFrame):
                 density_combo.currentData(), columns_combo.currentData(),
                 show_stock=stock_checkbox.isChecked(),
                 show_add_button=add_button_checkbox.isChecked(),
+                stock_display_style=stock_style_combo.currentData(),
             )
             dialog.accept()
 
@@ -1002,7 +1060,7 @@ class SalesPage(QFrame):
 
     def _apply_product_display_settings(
         self, layout_mode, show_images, density, columns,
-        show_stock=None, show_add_button=None,
+        show_stock=None, show_add_button=None, stock_display_style=None,
     ):
         layout_mode = str(layout_mode or "grid").strip().lower()
         if layout_mode not in {"grid", "horizontal", "list", "table"}:
@@ -1024,6 +1082,11 @@ class SalesPage(QFrame):
             self._show_product_add_button
             if show_add_button is None else bool(show_add_button)
         )
+        if stock_display_style is not None:
+            stock_display_style = str(stock_display_style or "text").strip().lower()
+            self._product_stock_display_style = (
+                stock_display_style if stock_display_style in {"text", "circle"} else "text"
+            )
         self._product_card_density = density
         self._product_columns = columns
         self.product_deselect_button.setVisible(layout_mode == "table")
@@ -1033,6 +1096,9 @@ class SalesPage(QFrame):
         self._local_settings.setValue("sales/show_product_stock", self._show_product_stock)
         self._local_settings.setValue(
             "sales/show_product_add_button", self._show_product_add_button
+        )
+        self._local_settings.setValue(
+            "sales/product_stock_display_style", self._product_stock_display_style
         )
         self._local_settings.setValue("sales/product_card_density", density)
         self._local_settings.setValue("sales/product_columns", columns)
@@ -1283,7 +1349,7 @@ class SalesPage(QFrame):
 
     def _build_product_card(
         self, product, preview=False, layout_mode=None, show_images=None, density=None,
-        show_stock=None, show_add_button=None,
+        show_stock=None, show_add_button=None, stock_display_style=None,
     ):
         """Build a product card for the catalog or a side-effect-free settings preview."""
         key = str(product.get("id") or "")
@@ -1295,6 +1361,11 @@ class SalesPage(QFrame):
             self._show_product_add_button
             if show_add_button is None else bool(show_add_button)
         )
+        stock_display_style = str(
+            stock_display_style or self._product_stock_display_style
+        ).strip().lower()
+        if stock_display_style not in {"text", "circle"}:
+            stock_display_style = "text"
         compact = density == "compact"
         horizontal = mode in {"horizontal", "list"}
 
@@ -1302,15 +1373,17 @@ class SalesPage(QFrame):
         card.setObjectName("SalesProductCard")
         card.setProperty("displayMode", mode)
         card.setFrameShape(QFrame.Shape.NoFrame)
+        card.setProperty("salesProductPreview", bool(preview))
+        card.installEventFilter(self)
+        card.setMinimumWidth(0)
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         if mode == "grid":
-            card.setMinimumWidth(0)
-            card.setMaximumWidth(16777215)
-            card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            # Fixed columns remain responsive but must not create arbitrarily wide cards.
+            card.setMaximumWidth(280 if compact else 320)
             card_layout = QVBoxLayout(card)
         else:
-            card.setMinimumWidth(0)
             card.setMaximumWidth(16777215)
-            card.setMinimumHeight(58 if mode == "list" else 94)
+            card.setMinimumHeight(72 if mode == "list" else 94)
             card_layout = QHBoxLayout(card)
         margin = 5 if compact else 7
         card_layout.setContentsMargins(margin, margin, margin, margin)
@@ -1323,21 +1396,26 @@ class SalesPage(QFrame):
             image.setAlignment(Qt.AlignmentFlag.AlignCenter)
             pixmap = QPixmap()
             image_bytes = product.get("_image_bytes")
+            if mode == "list":
+                target = (48, 48)
+            elif mode == "grid":
+                side = 68 if compact else 82
+                target = (side, side)
+            else:
+                target = (76, 76)
             if image_bytes and pixmap.loadFromData(image_bytes):
-                target = (42, 42) if mode == "list" else ((76, 76) if horizontal else (138, 54 if compact else 66))
-                image.setPixmap(pixmap.scaled(
-                    target[0], target[1], Qt.AspectRatioMode.KeepAspectRatio,
+                # Fill a square and crop symmetrically around the image centre.
+                scaled = pixmap.scaled(
+                    target[0], target[1],
+                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                     Qt.TransformationMode.SmoothTransformation,
-                ))
+                )
+                left = max(0, (scaled.width() - target[0]) // 2)
+                top = max(0, (scaled.height() - target[1]) // 2)
+                image.setPixmap(scaled.copy(left, top, target[0], target[1]))
             else:
                 image.setText("بدون تصویر")
-            if mode == "grid":
-                image.setMinimumHeight(40 if compact else 48)
-                image.setMaximumHeight(58 if compact else 74)
-            elif mode == "list":
-                image.setFixedSize(48, 48)
-            else:
-                image.setFixedSize(84, 84)
+            image.setFixedSize(target[0], target[1])
 
         name = QLabel(str(product.get("name") or "کالای بدون نام"))
         name.setObjectName("SalesProductTitle")
@@ -1377,17 +1455,27 @@ class SalesPage(QFrame):
         )
         stock_badge = None
         if show_stock:
-            if tracked:
-                stock_text = "ناموجود" if available <= 0 else "موجودی: {:g}".format(available)
+            if stock_display_style == "circle":
+                stock_text = str(available) if tracked else "∞"
+                stock_badge = QLabel(stock_text, card)
+                stock_badge.setObjectName("SalesProductStockCircle")
+                stock_badge.setFixedSize(32, 32)
+                stock_badge.setToolTip(
+                    ("موجودی قابل فروش: {:g}".format(available))
+                    if tracked else "این کالا محدودیت موجودی ندارد"
+                )
             else:
-                stock_text = "آماده فروش"
-            stock_badge = QLabel(stock_text)
-            stock_badge.setObjectName("SalesProductStock")
-            stock_badge.setAlignment(
-                Qt.AlignmentFlag.AlignCenter if mode == "grid"
-                else Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            )
+                stock_text = (
+                    ("ناموجود" if available <= 0 else "موجودی: {:g}".format(available))
+                    if tracked else "آماده فروش"
+                )
+                stock_badge = QLabel(stock_text)
+                stock_badge.setObjectName("SalesProductStock")
+            stock_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
             stock_badge.setProperty("outOfStock", bool(tracked and available <= 0))
+            if stock_display_style == "circle":
+                stock_badge.show()
+                stock_badge.raise_()
 
         add = None
         if show_add_button:
@@ -1416,7 +1504,7 @@ class SalesPage(QFrame):
             if category is not None:
                 card_layout.addWidget(category)
             card_layout.addWidget(price)
-            if stock_badge is not None:
+            if stock_badge is not None and stock_badge.objectName() == "SalesProductStock":
                 card_layout.addWidget(stock_badge)
             if add is not None:
                 card_layout.addWidget(add)
@@ -1434,19 +1522,21 @@ class SalesPage(QFrame):
             if mode == "horizontal":
                 details_widget = QWidget(info)
                 details_widget.setObjectName("SalesProductDetails")
+                details_widget.setProperty("stackStockBelowPrice", not show_add_button)
                 details = QHBoxLayout(details_widget)
                 details.setContentsMargins(0, 0, 0, 0)
                 details.setSpacing(12 if not compact else 7)
                 details.addWidget(price)
-                if stock_badge is not None:
+                if stock_badge is not None and stock_badge.objectName() == "SalesProductStock":
                     details.addWidget(stock_badge)
                 details.addStretch(1)
+                details_widget.installEventFilter(self)
                 info_layout.addWidget(details_widget)
                 if add is not None:
                     info_layout.addWidget(add, 0, Qt.AlignmentFlag.AlignLeft)
             else:
                 info_layout.addWidget(price)
-                if stock_badge is not None:
+                if stock_badge is not None and stock_badge.objectName() == "SalesProductStock":
                     info_layout.addWidget(stock_badge)
                 card_layout.addWidget(info, 1)
                 if add is not None:
@@ -1454,8 +1544,10 @@ class SalesPage(QFrame):
             if mode == "horizontal":
                 card_layout.addWidget(info, 1)
 
+        if stock_badge is not None and stock_badge.objectName() == "SalesProductStockCircle":
+            self._position_product_stock_circle(card)
         if not preview and not show_add_button and key and mode != "table":
-            for child in [card, *card.findChildren(QWidget)]:
+            for child in card.findChildren(QWidget):
                 child.installEventFilter(self)
         return card
 
@@ -1470,10 +1562,17 @@ class SalesPage(QFrame):
             selected = int(self._cart.get(key, {}).get("quantity", 0))
             available = max(0, capacity - selected)
             if stock_badge is not None:
-                stock_badge.setText(
-                    ("ناموجود" if available <= 0 else "موجودی: {:g}".format(available))
-                    if tracked else "آماده فروش"
-                )
+                if stock_badge.objectName() == "SalesProductStockCircle":
+                    stock_badge.setText(str(available) if tracked else "∞")
+                    stock_badge.setToolTip(
+                        ("موجودی قابل فروش: {:g}".format(available))
+                        if tracked else "این کالا محدودیت موجودی ندارد"
+                    )
+                else:
+                    stock_badge.setText(
+                        ("ناموجود" if available <= 0 else "موجودی: {:g}".format(available))
+                        if tracked else "آماده فروش"
+                    )
                 stock_badge.setProperty("outOfStock", bool(tracked and available <= 0))
                 stock_badge.style().unpolish(stock_badge)
                 stock_badge.style().polish(stock_badge)
@@ -1866,28 +1965,6 @@ class SalesPage(QFrame):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(8)
 
-        heading = QHBoxLayout()
-        title = QLabel("فاکتورهای اخیر")
-        title.setObjectName("PageTitle")
-        self.history_refresh_button = QPushButton("", page)
-        self.history_refresh_button.setObjectName("HistoryRefreshButton")
-        self.history_refresh_button.setFixedSize(32, 32)
-        self.history_refresh_button.setToolTip("بازخوانی فاکتورها")
-        self.history_refresh_button.setAccessibleName("بازخوانی فاکتورها")
-        set_button_icon(
-            self.history_refresh_button, "refresh", getattr(self.window, "mode", "light")
-        )
-        self.history_refresh_button.clicked.connect(
-            lambda: self._load_recent_receipt_page(1, append=False)
-        )
-        self.history_subtitle = QLabel("یک فاکتور را انتخاب کنید تا پیش‌نمایش آن در کنار فهرست نمایش داده شود.")
-        self.history_subtitle.setObjectName("PageSubtitle")
-        self.history_subtitle.setWordWrap(True)
-        heading.addWidget(title)
-        heading.addWidget(self.history_refresh_button)
-        heading.addWidget(self.history_subtitle, 1)
-        root.addLayout(heading)
-
         self.history_splitter = QSplitter(Qt.Orientation.Horizontal, page)
         self.history_splitter.setObjectName("RecentInvoicesSplitter")
         self.history_splitter.setChildrenCollapsible(False)
@@ -1899,6 +1976,24 @@ class SalesPage(QFrame):
         list_layout = QVBoxLayout(list_panel)
         list_layout.setContentsMargins(8, 8, 8, 8)
         list_layout.setSpacing(6)
+        history_heading = QHBoxLayout()
+        self.history_title = QLabel("فاکتورهای اخیر", list_panel)
+        self.history_title.setObjectName("PageTitle")
+        self.history_refresh_button = QPushButton("", list_panel)
+        self.history_refresh_button.setObjectName("HistoryRefreshButton")
+        self.history_refresh_button.setFixedSize(32, 32)
+        self.history_refresh_button.setToolTip("بازخوانی فاکتورها")
+        self.history_refresh_button.setAccessibleName("بازخوانی فاکتورها")
+        set_button_icon(
+            self.history_refresh_button, "refresh", getattr(self.window, "mode", "light")
+        )
+        self.history_refresh_button.clicked.connect(
+            lambda: self._load_recent_receipt_page(1, append=False)
+        )
+        history_heading.addWidget(self.history_title)
+        history_heading.addStretch(1)
+        history_heading.addWidget(self.history_refresh_button)
+        list_layout.addLayout(history_heading)
         self.history_tabs = QTabWidget(list_panel)
         self.history_tabs.setObjectName("RecentInvoicesTabs")
         self.history_tabs.setDocumentMode(True)
@@ -1958,7 +2053,6 @@ class SalesPage(QFrame):
         self.history_edit_button.clicked.connect(self._edit_selected_recent_receipt)
         actions.addWidget(self.history_status, 1)
         actions.addWidget(self.history_load_more_button)
-        actions.addWidget(self.history_refresh_button)
         actions.addWidget(self.history_preview_button)
         actions.addWidget(self.history_edit_button)
         list_layout.addLayout(actions)
