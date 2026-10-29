@@ -56,7 +56,7 @@ class WorkbarNavigationTests(unittest.TestCase):
         self.assertEqual(set(self.window._nav_actions), {"sales", "receipts", "returns"})
         self.window._toggle_workbar_group("templates")
         self.assertEqual(set(self.window._nav_actions), {"invoices", "invoice_numbering", "settings"})
-        self.assertEqual(self.window.workbar_submenu_layout.count(), 3)  # two buttons + stretch
+        self.assertEqual(self.window.workbar_submenu_layout.count(), 4)  # three buttons + stretch
 
 
 if __name__ == "__main__":
