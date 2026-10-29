@@ -357,7 +357,10 @@ def _font(font_family, points, *, bold=False):
 
 
 def _text_flags(align, direction="rtl", word_wrap=True):
-    flags = int(Qt.AlignmentFlag.AlignVCenter)
+    # AlignLeft/AlignRight can behave as leading/trailing alignment in an RTL
+    # text layout. AlignAbsolute makes the designer's left/right options mean
+    # the physical edges of the element, regardless of its text direction.
+    flags = int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignAbsolute)
     flags |= int({"left": Qt.AlignmentFlag.AlignLeft, "center": Qt.AlignmentFlag.AlignHCenter,
                   "right": Qt.AlignmentFlag.AlignRight}.get(align, Qt.AlignmentFlag.AlignRight))
     flags |= int(Qt.TextFlag.TextWordWrap if word_wrap else Qt.TextFlag.TextSingleLine)
