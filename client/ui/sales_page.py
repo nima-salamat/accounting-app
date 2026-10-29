@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
     QScrollArea, QSplitter, QStackedWidget, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QHeaderView, QWidget, QListWidget, QListWidgetItem,
-    QSizePolicy, QTabWidget,
+    QSizePolicy, QTabBar, QTabWidget,
 )
 
 
@@ -49,6 +49,7 @@ class SalesPage(QFrame):
         self._editing_receipt = None
         self._can_edit_receipts = False
         self._cart_collapsed = False
+        self._history_preview_collapsed = False
         self._history_page_size = 50
         self._history_current_page = 0
         self._history_total_records = 0
@@ -68,6 +69,15 @@ class SalesPage(QFrame):
 
         self._local_settings = QSettings(
             "AccountingApp", "POSClient" if self._is_standalone_pos else "DesktopClient"
+        )
+        self._cart_was_collapsed = self._local_settings.value(
+            "sales/cart_collapsed", False, type=bool
+        )
+        self._history_preview_was_collapsed = self._local_settings.value(
+            "sales/history_preview_collapsed", False, type=bool
+        )
+        self._use_category_tabs = self._local_settings.value(
+            "sales/use_category_tabs", False, type=bool
         )
         saved_sizes = self._local_settings.value("sales/splitter_sizes", [780, 360])
         try:
@@ -246,11 +256,16 @@ class SalesPage(QFrame):
         self.history_workspace = self._build_recent_receipts_workspace()
         self.workspace_stack.addWidget(self.history_workspace)
         self.workspace_stack.setCurrentWidget(self.sales_workspace)
+        self._sync_category_selector()
         self._refresh_cart_summary()
         self._update_invoice_mode_controls()
         self.sync_theme_button()
         apply_button_icons(self, getattr(self.window, "mode", "light"))
         self.sync_theme_button()
+        if self._cart_was_collapsed:
+            QTimer.singleShot(0, lambda: self._set_cart_panel_visible(False))
+        if self._history_preview_was_collapsed:
+            QTimer.singleShot(0, lambda: self._set_history_preview_visible(False))
 
     def _build_catalog_panel(self):
         """Build the searchable, category-filtered product grid shown on the right."""
@@ -328,10 +343,20 @@ class SalesPage(QFrame):
         options = QHBoxLayout()
         category_label = QLabel("دسته‌بندی")
         category_label.setObjectName("PageSubtitle")
+        self.category_label = category_label
         self.category_combo = QComboBox()
         self.category_combo.setMinimumWidth(150)
         self.category_combo.addItem("همهٔ دسته‌ها", None)
         self.category_combo.currentIndexChanged.connect(self._category_changed)
+        self.category_tabs = QTabBar(panel)
+        self.category_tabs.setObjectName("SalesCategoryTabs")
+        self.category_tabs.setUsesScrollButtons(True)
+        self.category_tabs.setExpanding(False)
+        self.category_tabs.setElideMode(Qt.TextElideMode.ElideRight)
+        self.category_tabs.setDrawBase(False)
+        self.category_tabs.addTab("همهٔ دسته‌ها")
+        self.category_tabs.setTabData(0, None)
+        self.category_tabs.currentChanged.connect(self._category_tab_changed)
         self.product_display_settings_button = QPushButton("⚙")
         self.product_display_settings_button.setObjectName("SalesDisplaySettingsButton")
         self.product_display_settings_button.setToolTip("تنظیمات و پیش‌نمایش نمایش کالاها")
@@ -349,6 +374,7 @@ class SalesPage(QFrame):
         self.product_deselect_button.setEnabled(False)
         options.addWidget(category_label)
         options.addWidget(self.category_combo, 1)
+        options.addWidget(self.category_tabs, 1)
         options.addWidget(self.product_display_settings_button)
         options.addWidget(self.product_deselect_button)
         layout.addLayout(options)
@@ -474,6 +500,7 @@ class SalesPage(QFrame):
         sizes = self.splitter.sizes()
         if visible:
             self._cart_collapsed = False
+            self._local_settings.setValue("sales/cart_collapsed", False)
             self.cart_panel.setMinimumWidth(320)
             for index in range(self.cart_title_box.count()):
                 widget = self.cart_title_box.itemAt(index).widget()
@@ -487,9 +514,11 @@ class SalesPage(QFrame):
             self._saved_splitter_sizes = self._saved_splitter_sizes or [780, 360]
             self.splitter.setSizes(self._saved_splitter_sizes)
         else:
-            if len(sizes) == 2 and sizes[1] > 150:
+            if len(sizes) == 2 and sizes[1] > 150 and sum(sizes) > 200:
                 self._saved_splitter_sizes = sizes
+                self._local_settings.setValue("sales/splitter_sizes", sizes)
             self._cart_collapsed = True
+            self._local_settings.setValue("sales/cart_collapsed", True)
             for index in range(self.cart_title_box.count()):
                 widget = self.cart_title_box.itemAt(index).widget()
                 if widget is not None:
@@ -503,6 +532,7 @@ class SalesPage(QFrame):
             self.cart_panel_toggle.setToolTip("بازکردن پنل سبد خرید")
             total = max(1, sum(sizes))
             self.splitter.setSizes([max(1, total - collapsed_width), collapsed_width])
+        self._local_settings.sync()
         self._refresh_cart_summary()
 
     def set_permissions(self, user):
@@ -691,6 +721,8 @@ class SalesPage(QFrame):
         self._search_committed = False
         query = str(value or "").strip()
         self._suggestion_query = query
+        if self._use_category_tabs and query:
+            self._set_category_tab(None)
         self._suggestion_page = 0
         self._suggestion_total = 0
         self.search_suggestion_list.clear()
@@ -705,11 +737,13 @@ class SalesPage(QFrame):
         self._search_timer.start()
 
     def _commit_search(self):
-        """Show committed search results in the catalog and dismiss the overlay."""
+        """Commit search. Tab mode searches across every category."""
         self._search_timer.stop()
         self._search_committed = True
         self.search_suggestions_frame.hide()
         self.product_page = 1
+        if self._use_category_tabs and self.search.text().strip():
+            self._set_category_tab(None)
         self.refresh_products()
 
     def _run_search_suggestions(self):
@@ -725,7 +759,10 @@ class SalesPage(QFrame):
         self.window.run_api(
             lambda: self.window.api.list_products_page(
                 q=query,
-                category_id=self.category_combo.currentData(),
+                category_id=(
+                    None if self._use_category_tabs
+                    else self.category_combo.currentData()
+                ),
                 page=page,
                 page_size=self._suggestion_page_size,
             ),
@@ -864,6 +901,57 @@ class SalesPage(QFrame):
         query = self.search.text().strip()
         if len(query) >= 2:
             self._search_text_changed(query)
+
+    def _category_tab_changed(self, index):
+        if not self._use_category_tabs or index < 0:
+            return
+        if self.search.text().strip():
+            self._set_category_tab(None)
+            return
+        self.product_page = 1
+        self.refresh_products()
+
+    def _populate_category_tabs(self, preferred_id=None):
+        bar = self.category_tabs
+        bar.blockSignals(True)
+        bar.clear()
+        bar.addTab("همهٔ دسته‌ها")
+        bar.setTabData(0, None)
+        target_index = 0
+        for category in self.categories:
+            category_id = category.get("id")
+            if category_id is None:
+                continue
+            name = str(category.get("name") or "—")
+            index = bar.addTab(name)
+            bar.setTabData(index, category_id)
+            bar.setTabToolTip(index, name)
+            if preferred_id is not None and str(category_id) == str(preferred_id):
+                target_index = index
+        bar.setCurrentIndex(target_index)
+        bar.blockSignals(False)
+
+    def _set_category_tab(self, category_id):
+        target = 0
+        if category_id is not None:
+            for index in range(self.category_tabs.count()):
+                value = self.category_tabs.tabData(index)
+                if value is not None and str(value) == str(category_id):
+                    target = index
+                    break
+        self.category_tabs.blockSignals(True)
+        self.category_tabs.setCurrentIndex(target)
+        self.category_tabs.blockSignals(False)
+
+    def _sync_category_selector(self, preferred_id=None):
+        if preferred_id is None and hasattr(self, "category_combo"):
+            preferred_id = self.category_combo.currentData()
+        tabs_mode = bool(self._use_category_tabs)
+        self.category_combo.setVisible(not tabs_mode)
+        self.category_tabs.setVisible(tabs_mode)
+        self.category_label.setVisible(not tabs_mode)
+        if tabs_mode:
+            self._set_category_tab(preferred_id)
 
     def _toggle_product_images(self, enabled):
         self._apply_product_display_settings(
@@ -1071,6 +1159,7 @@ class SalesPage(QFrame):
     def _apply_product_display_settings(
         self, layout_mode, show_images, density, columns,
         show_stock=None, show_add_button=None, stock_display_style=None,
+        use_category_tabs=None,
     ):
         layout_mode = str(layout_mode or "grid").strip().lower()
         if layout_mode not in {"grid", "horizontal", "list", "table"}:
@@ -1083,6 +1172,11 @@ class SalesPage(QFrame):
         except (TypeError, ValueError):
             columns = 0
 
+        previous_category = (
+            self.category_tabs.tabData(self.category_tabs.currentIndex())
+            if self._use_category_tabs and self.category_tabs.currentIndex() >= 0
+            else self.category_combo.currentData()
+        )
         self._product_layout_mode = layout_mode
         self._show_product_images = bool(show_images)
         self._show_product_stock = (
@@ -1092,6 +1186,8 @@ class SalesPage(QFrame):
             self._show_product_add_button
             if show_add_button is None else bool(show_add_button)
         )
+        if use_category_tabs is not None:
+            self._use_category_tabs = bool(use_category_tabs)
         if stock_display_style is not None:
             stock_display_style = str(stock_display_style or "text").strip().lower()
             self._product_stock_display_style = (
@@ -1101,6 +1197,7 @@ class SalesPage(QFrame):
         self._product_columns = columns
         self.product_deselect_button.setVisible(layout_mode == "table")
         self._update_product_table_selection_controls()
+        self._sync_category_selector(previous_category)
         self._local_settings.setValue("sales/product_layout_mode", layout_mode)
         self._local_settings.setValue("sales/show_product_images", self._show_product_images)
         self._local_settings.setValue("sales/show_product_stock", self._show_product_stock)
@@ -1112,6 +1209,7 @@ class SalesPage(QFrame):
         )
         self._local_settings.setValue("sales/product_card_density", density)
         self._local_settings.setValue("sales/product_columns", columns)
+        self._local_settings.setValue("sales/use_category_tabs", self._use_category_tabs)
         self._local_settings.sync()
         if self.window.api:
             self.refresh_products()
@@ -1123,7 +1221,13 @@ class SalesPage(QFrame):
         if not self.window.api:
             return
         query = self.search.text().strip() or None
-        category_id = self.category_combo.currentData()
+        category_id = (
+            self.category_tabs.tabData(self.category_tabs.currentIndex())
+            if self._use_category_tabs and self.category_tabs.currentIndex() >= 0
+            else self.category_combo.currentData()
+        )
+        if self._use_category_tabs and query:
+            category_id = None
         filters = (query, category_id)
         if filters != self._last_filters:
             self._last_filters = filters
@@ -1199,7 +1303,11 @@ class SalesPage(QFrame):
         self.product_page = max(1, int(payload.get("page", self.product_page) or 1))
         self._loaded_product_page = self.product_page
 
-        selected_category = self.category_combo.currentData()
+        selected_category = (
+            self.category_tabs.tabData(self.category_tabs.currentIndex())
+            if self._use_category_tabs and self.category_tabs.currentIndex() >= 0
+            else self.category_combo.currentData()
+        )
         self._category_names = {
             str(category.get("id")): str(category.get("name") or "دسته‌بندی")
             for category in self.categories if category.get("id") is not None
@@ -1212,6 +1320,8 @@ class SalesPage(QFrame):
         selected_index = self.category_combo.findData(selected_category)
         self.category_combo.setCurrentIndex(selected_index if selected_index >= 0 else 0)
         self.category_combo.blockSignals(False)
+        self._populate_category_tabs(selected_category)
+        self._sync_category_selector(selected_category)
 
         for product in products:
             key = str(product.get("id") or "")
@@ -1806,7 +1916,7 @@ class SalesPage(QFrame):
     def _splitter_moved(self, *_args):
         """Persist pane proportions and reflow products for the active display mode."""
         sizes = self.splitter.sizes()
-        if len(sizes) == 2 and all(size > 0 for size in sizes):
+        if not self._cart_collapsed and len(sizes) == 2 and all(size > 0 for size in sizes):
             self._saved_splitter_sizes = sizes
             self._local_settings.setValue("sales/splitter_sizes", sizes)
         self._reflow_products_for_resize()
