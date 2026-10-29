@@ -483,6 +483,30 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.assertLess(table.viewport().width(), collapsed_width)
         assert_table_matches_its_viewport()
 
+    def test_window_state_change_schedules_settling_refits_for_product_table(self):
+        self.page.resize(1180, 780)
+        self.page.refresh_products()
+        self.page._apply_product_display_settings("table", True, "comfortable", 0)
+        self.app.processEvents()
+        self.page._product_table_refit_timer.stop()
+        self.page._product_table_stable_refit_timer.stop()
+        self.page._product_table_final_refit_timer.stop()
+
+        # Double-clicking a native title bar raises WindowStateChange.
+        event = QEvent(QEvent.Type.WindowStateChange)
+        self.assertFalse(self.page.eventFilter(self.window, event))
+        self.assertTrue(self.page._product_table_refit_timer.isActive())
+        self.assertTrue(self.page._product_table_stable_refit_timer.isActive())
+        self.assertTrue(self.page._product_table_final_refit_timer.isActive())
+
+    def test_layout_request_also_schedules_product_table_refit(self):
+        self.page.refresh_products()
+        self.page._apply_product_display_settings("table", True, "comfortable", 0)
+        self.page._product_table_refit_timer.stop()
+        event = QEvent(QEvent.Type.LayoutRequest)
+        self.page.eventFilter(self.page.catalog_results_stack, event)
+        self.assertTrue(self.page._product_table_refit_timer.isActive())
+
     def test_product_table_columns_and_images_resize_automatically_without_refresh(self):
         self.page.resize(1180, 780)
         self.page.refresh_products()

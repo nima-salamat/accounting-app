@@ -276,6 +276,10 @@ class SalesPage(QFrame):
             self._set_cart_panel_visible(False)
         if self._history_preview_was_collapsed:
             QTimer.singleShot(0, lambda: self._set_history_preview_visible(False))
+        # The child page may not receive a final resize after a native title-bar
+        # maximize/restore transition, so watch state/layout changes on the host.
+        if isinstance(self.window, QWidget):
+            self.window.installEventFilter(self)
 
     def _build_catalog_panel(self):
         """Build the searchable, category-filtered product grid shown on the right."""
@@ -438,6 +442,16 @@ class SalesPage(QFrame):
         self._product_table_refit_timer.setSingleShot(True)
         self._product_table_refit_timer.setInterval(0)
         self._product_table_refit_timer.timeout.connect(self._fit_product_table_columns)
+        # Native maximize/restore and stacked/splitter layouts can settle after
+        # the first zero-delay callback. Follow up after layout has stabilized.
+        self._product_table_stable_refit_timer = QTimer(self)
+        self._product_table_stable_refit_timer.setSingleShot(True)
+        self._product_table_stable_refit_timer.setInterval(80)
+        self._product_table_stable_refit_timer.timeout.connect(self._fit_product_table_columns)
+        self._product_table_final_refit_timer = QTimer(self)
+        self._product_table_final_refit_timer.setSingleShot(True)
+        self._product_table_final_refit_timer.setInterval(240)
+        self._product_table_final_refit_timer.timeout.connect(self._fit_product_table_columns)
         self._product_table_column_adjust_timer = QTimer(self)
         self._product_table_column_adjust_timer.setSingleShot(True)
         self._product_table_column_adjust_timer.setInterval(120)
@@ -725,27 +739,53 @@ class SalesPage(QFrame):
         self.window.set_status("ویرایش فاکتور لغو شد؛ آماده ثبت فروش جدید هستید.")
 
     def eventFilter(self, watched, event):
-        if event.type() == QEvent.Type.Resize:
-            object_name = watched.objectName() if hasattr(watched, "objectName") else ""
+        event_type = event.type()
+        object_name = watched.objectName() if hasattr(watched, "objectName") else ""
+        if event_type == QEvent.Type.Resize:
             if object_name == "SalesProductCard":
                 self._position_product_stock_circle(watched)
             elif object_name == "SalesProductDetails":
                 self._adapt_product_details_layout(watched)
-            if self._product_layout_mode == "table" and any(
-                watched is target
-                for target in (
-                    getattr(self, "catalog_panel", None),
-                    getattr(self, "catalog_results_stack", None),
-                    getattr(self, "product_table", None),
-                    getattr(getattr(self, "product_table", None), "viewport", lambda: None)(),
-                    getattr(self, "splitter", None),
-                    getattr(self, "sales_workspace", None),
-                    getattr(self, "workspace_stack", None),
+
+        table_layout_active = getattr(self, "_product_layout_mode", "grid") == "table"
+        geometry_events = (
+            QEvent.Type.Resize,
+            QEvent.Type.Show,
+            QEvent.Type.LayoutRequest,
+        )
+        watched_geometry_targets = (
+            getattr(self, "catalog_panel", None),
+            getattr(self, "catalog_results_stack", None),
+            getattr(self, "product_table", None),
+            getattr(getattr(self, "product_table", None), "viewport", lambda: None)(),
+            getattr(self, "splitter", None),
+            getattr(self, "sales_workspace", None),
+            getattr(self, "workspace_stack", None),
+        )
+        if table_layout_active:
+            # A title-bar double-click toggles WindowStateChange on the main
+            # window; its child widgets may report their final size later.
+            is_window_state_event = (
+                watched is getattr(self, "window", None)
+                and event_type in (
+                    QEvent.Type.WindowStateChange,
+                    QEvent.Type.Resize,
+                    QEvent.Type.Show,
+                    QEvent.Type.LayoutRequest,
                 )
-            ):
+            )
+            is_child_layout_event = (
+                event_type in geometry_events
+                and any(watched is target for target in watched_geometry_targets)
+            )
+            if is_window_state_event or is_child_layout_event:
                 self._schedule_product_table_refit()
+                # Test stubs are plain Python objects rather than Qt objects.
+                if is_window_state_event and not isinstance(watched, QWidget):
+                    return False
+
         if (
-            event.type() == QEvent.Type.MouseButtonRelease
+            event_type == QEvent.Type.MouseButtonRelease
             and event.button() == Qt.MouseButton.LeftButton
             and not self._show_product_add_button
             and self._product_layout_mode != "table"
@@ -767,7 +807,8 @@ class SalesPage(QFrame):
                             return True
                     break
                 node = node.parentWidget()
-        if event.type() == QEvent.Type.Resize:
+
+        if event_type == QEvent.Type.Resize:
             if watched is getattr(self, "catalog_panel", None) or watched is getattr(self, "search", None):
                 QTimer.singleShot(0, self._position_search_suggestions)
             elif watched is getattr(getattr(self, "catalog_scroll", None), "viewport", lambda: None)():
@@ -824,10 +865,19 @@ class SalesPage(QFrame):
         return max(1, min(6, width // 165))
 
     def _schedule_product_table_refit(self):
-        """Coalesce parent/table/viewport resizes and fit after Qt finishes layout."""
+        """Refit now and after delayed Qt layout/state transitions."""
+        if getattr(self, "_product_layout_mode", "grid") != "table":
+            return
         timer = getattr(self, "_product_table_refit_timer", None)
         if timer is not None:
             timer.start()
+        for name in (
+            "_product_table_stable_refit_timer",
+            "_product_table_final_refit_timer",
+        ):
+            follow_up = getattr(self, name, None)
+            if follow_up is not None:
+                follow_up.start()
 
     def _reflow_products_for_resize(self):
         if self._product_layout_mode == "table":
@@ -1008,7 +1058,9 @@ class SalesPage(QFrame):
             self._fit_product_table_columns()
 
     def _fit_product_table_columns(self):
-        """Fit visible columns to the viewport using this window's current proportions."""
+        """Fit visible columns to the final viewport geometry and current proportions."""
+        if getattr(self, "_product_layout_mode", "grid") != "table":
+            return
         table = getattr(self, "product_table", None)
         if table is None:
             return
