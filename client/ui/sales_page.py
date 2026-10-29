@@ -606,6 +606,22 @@ class SalesPage(QFrame):
             sizes[catalog_index] = max(1, available - cart_width)
 
         self.splitter.setSizes(sizes)
+        # Changing splitter sizes does not emit splitterMoved, and Qt may not
+        # propagate the final child/viewport geometry until the next event-loop
+        # turn. Explicitly refit after that layout pass so cart toggles never
+        # leave stale column widths or oversized thumbnails behind.
+        self._schedule_product_table_refit()
+        QTimer.singleShot(0, self._refit_product_table_after_cart_layout)
+
+    def _refit_product_table_after_cart_layout(self):
+        if self._product_layout_mode != "table":
+            return
+        timer = getattr(self, "_product_table_refit_timer", None)
+        if timer is not None:
+            timer.stop()
+        self._fit_product_table_columns()
+        # One final pass handles viewport geometry updates queued by QSplitter.
+        QTimer.singleShot(0, self._fit_product_table_columns)
 
     def set_permissions(self, user):
         can_read_receipts = can_access(user, "receipts", "read")

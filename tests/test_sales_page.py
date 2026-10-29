@@ -367,18 +367,47 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.assertEqual(self.page.cart_header_layout.indexOf(self.page.cart_panel_toggle), -1)
 
     def test_cart_toggle_button_collapses_and_reopens_the_panel(self):
+        self.page.resize(1180, 780)
         self.page.refresh_products()
+        self.page._apply_product_display_settings("table", True, "comfortable", 0)
+        self.app.processEvents()
+        self.app.processEvents()
+        table = self.page.product_table
+
+        def assert_table_matches_its_viewport():
+            visible_width = sum(
+                table.columnWidth(column)
+                for column in range(table.columnCount())
+                if not table.isColumnHidden(column)
+            )
+            self.assertLessEqual(
+                abs(visible_width - table.viewport().width()), 2,
+                "table columns must refit to the current viewport after cart toggles",
+            )
+            image_side = min(160, max(40, table.columnWidth(0) - 12))
+            image_cell = table.cellWidget(0, 0)
+            image = image_cell.findChild(QLabel, "SalesProductImage") if image_cell else None
+            self.assertIsNotNone(image)
+            self.assertEqual(image.width(), image_side)
+
+        assert_table_matches_its_viewport()
+        expanded_width = table.viewport().width()
         self.assertFalse(self.page._cart_collapsed)
 
         self.page.cart_panel_toggle.click()
+        self.app.processEvents()
         self.app.processEvents()
         self.assertTrue(self.page._cart_collapsed)
         cart_index = self.page.splitter.indexOf(self.page.cart_panel)
         self.assertTrue(self.page.cart_panel.isHidden())
         self.assertEqual(self.page.splitter.sizes()[cart_index], 0)
         self.assertEqual(self.page.cart_panel_toggle.toolTip(), "بازکردن پنل سبد خرید")
+        self.assertGreater(table.viewport().width(), expanded_width)
+        assert_table_matches_its_viewport()
 
+        collapsed_width = table.viewport().width()
         self.page.cart_panel_toggle.click()
+        self.app.processEvents()
         self.app.processEvents()
         self.assertFalse(self.page._cart_collapsed)
         self.assertFalse(self.page.cart_scroll.isHidden())
@@ -386,6 +415,8 @@ class SalesPageLayoutTests(unittest.TestCase):
             self.page.splitter.sizes()[cart_index], self.page.cart_panel.minimumWidth()
         )
         self.assertEqual(self.page.cart_panel_toggle.toolTip(), "جمع‌کردن پنل سبد خرید")
+        self.assertLess(table.viewport().width(), collapsed_width)
+        assert_table_matches_its_viewport()
 
     def test_product_table_columns_and_images_resize_automatically_without_refresh(self):
         self.page.resize(1180, 780)
