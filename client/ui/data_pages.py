@@ -22,7 +22,7 @@ def display_value(key, value):
                 "revoked": "لغوشده", "expired": "منقضی"}.get(value, value or "—")
     if key == "image_path":
         return "دارد" if value else "ندارد"
-    if key in ("buy_price", "sell_price", "price", "amount", "total_price", "revenue"):
+    if key in ("buy_price", "sell_price", "price", "total_price", "revenue"):
         try:
             return format_currency(value)
         except (ValueError, TypeError):
@@ -704,8 +704,10 @@ class ReceiptsPage(QFrame):
         lines=["شماره فاکتور: {}".format(receipt.get("invoice_number") or receipt["day_receipt_id"]),
                "مبلغ کل: {}".format(format_currency(receipt["total_price"])),
                "پرداخت: {}".format("بله" if receipt["payed"] else "خیر"),"","اقلام:"]
-        lines += ["{} × {} | خرید {} | فروش {}".format(item.get("product_name") or "محصول حذف‌شده",
-                  item["quantity"],item["buy_price"],item["sell_price"]) for item in receipt.get("items",[])]
+        lines += ["{} × {} | خرید {} | فروش {}".format(
+                  item.get("product_name") or "محصول حذف‌شده", item["quantity"],
+                  format_currency(item["buy_price"]), format_currency(item["sell_price"])
+                  ) for item in receipt.get("items",[])]
         QMessageBox.information(self,"جزئیات رسید","\n".join(lines))
 
     def create_return(self):
