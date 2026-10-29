@@ -1070,7 +1070,7 @@ class SalesPage(QFrame):
         stock_checkbox.setChecked(self._show_product_stock)
         category_tabs_checkbox = QCheckBox("نمایش دسته‌بندی‌ها به صورت تب")
         category_tabs_checkbox.setChecked(self._use_category_tabs)
-        add_button_checkbox = QCheckBox("نمایش دکمهٔ افزودن به سبد (در حالت کارت و جدول)")
+        add_button_checkbox = QCheckBox("نمایش دکمهٔ افزودن به سبد در کارت‌ها (در جدول همیشه نمایش داده می‌شود)")
         add_button_checkbox.setChecked(self._show_product_add_button)
         stock_style_label = QLabel("شیوهٔ نمایش موجودی")
         stock_style_combo = QComboBox()
@@ -1152,7 +1152,7 @@ class SalesPage(QFrame):
                     )
                 table_preview.setColumnHidden(0, not image_checkbox.isChecked())
                 table_preview.setColumnHidden(4, not stock_checkbox.isChecked())
-                table_preview.setColumnHidden(5, not add_button_checkbox.isChecked())
+                table_preview.setColumnHidden(5, False)
                 image_side = 72 if density_combo.currentData() == "compact" else 84
                 table_preview.setCellWidget(
                     0, 0,
@@ -1522,7 +1522,7 @@ class SalesPage(QFrame):
         table.setRowCount(len(self.products) if self.products else 1)
         table.setColumnHidden(0, not self._show_product_images)
         table.setColumnHidden(4, not self._show_product_stock)
-        table.setColumnHidden(5, not self._show_product_add_button)
+        table.setColumnHidden(5, False)
         self._product_add_buttons = {}
         self._product_stock_labels = {}
         if not self.products:
@@ -1570,23 +1570,22 @@ class SalesPage(QFrame):
                 table.setCellWidget(row, 4, stock_badge)
                 self._product_stock_labels[key] = stock_badge
 
-            if self._show_product_add_button:
-                add_button = QPushButton("افزودن")
-                add_button.setObjectName("SalesProductAddButton")
-                add_button.setMinimumHeight(32)
-                add_button.setAccessibleName(
-                    "افزودن {} به سبد خرید".format(product.get("name") or "کالا")
-                )
-                add_button.setToolTip(
-                    "افزودن {} به سبد خرید".format(product.get("name") or "کالا")
-                )
-                add_button.clicked.connect(
-                    lambda _checked=False, selected=product: self.add_to_cart(selected)
-                )
-                add_button.setEnabled(not tracked or available > 0)
-                set_button_icon(add_button, "cart", getattr(self.window, "mode", "light"))
-                table.setCellWidget(row, 5, add_button)
-                self._product_add_buttons[key] = add_button
+            add_button = QPushButton("افزودن")
+            add_button.setObjectName("SalesProductAddButton")
+            add_button.setMinimumHeight(32)
+            add_button.setAccessibleName(
+                "افزودن {} به سبد خرید".format(product.get("name") or "کالا")
+            )
+            add_button.setToolTip(
+                "افزودن {} به سبد خرید".format(product.get("name") or "کالا")
+            )
+            add_button.clicked.connect(
+                lambda _checked=False, selected=product: self.add_to_cart(selected)
+            )
+            add_button.setEnabled(not tracked or available > 0)
+            set_button_icon(add_button, "cart", getattr(self.window, "mode", "light"))
+            table.setCellWidget(row, 5, add_button)
+            self._product_add_buttons[key] = add_button
 
             table.setRowHeight(row, row_height)
 
