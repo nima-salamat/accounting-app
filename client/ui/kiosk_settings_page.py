@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 )
 
 from client.ui.permissions import can_access
+from client.ui.currency import format_currency
 
 
 class KioskSettingsPage(QFrame):
@@ -171,7 +172,7 @@ class KioskSettingsPage(QFrame):
         self.product_list.clear()
         for product in self.products:
             name = str(product.get("name") or "کالای بدون نام")
-            suffix = " · {:,.2f}".format(float(product.get("sell_price") or 0))
+            suffix = " · {}".format(format_currency(product.get("sell_price")))
             if product.get("track_stock"):
                 suffix += " · موجودی {}".format(product.get("stock_quantity") or 0)
             item = QListWidgetItem(name + suffix)
