@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from client.api_client import AccountingApiClient
 from client.ui.setup_wizard import SetupWizard
 from client.ui.theme import set_design_config, stylesheet
+from client.ui.icons import apply_button_icons
 from client.ui.worker import ApiWorker
 
 
@@ -48,6 +49,7 @@ class AuthPage(QWidget):
         header = QHBoxLayout()
         header.addStretch(1)
         self.theme_button = QPushButton("☾  تم تاریک")
+        self.theme_button.setToolTip("تغییر تم روشن / تاریک")
         self.theme_button.clicked.connect(self.toggle_theme)
         header.addWidget(self.theme_button)
         content_layout.addLayout(header)
@@ -160,11 +162,11 @@ class AuthPage(QWidget):
         self.pending_panel.setObjectName("Card")
         pending_layout = QVBoxLayout(self.pending_panel)
         self.pending_icon = QLabel("◷")
+        self.pending_icon.setObjectName("AuthPendingIcon")
         self.pending_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.pending_icon.setStyleSheet("font-size:34px;color:#4169E1;")
         self.pending_label = QLabel("در انتظار تأیید مدیر")
+        self.pending_label.setObjectName("AuthPendingTitle")
         self.pending_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.pending_label.setStyleSheet("font-size:18px;font-weight:800;")
         self.pending_detail = QLabel("درخواست ورود برای این دستگاه ثبت شد. پس از تأیید مدیر، اتصال خودکار ادامه پیدا می‌کند.")
         self.pending_detail.setWordWrap(True)
         self.pending_detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -213,6 +215,7 @@ class AuthPage(QWidget):
         self.mode = mode
         self.setStyleSheet(stylesheet(mode))
         self.theme_button.setText("☀  تم روشن" if mode == "dark" else "☾  تم تاریک")
+        apply_button_icons(self, mode)
 
     def toggle_theme(self):
         next_mode = "light" if self.mode == "dark" else "dark"
@@ -278,7 +281,9 @@ class AuthPage(QWidget):
             "نشست کاربری خود را با نام کاربری و رمز عبور آغاز کنید."
         )
         self.server_status.setText("●  سرور آماده است")
-        self.server_status.setStyleSheet("color:#0F9D83;font-weight:700;")
+        self.server_status.setProperty("connected", True)
+        self.server_status.style().unpolish(self.server_status)
+        self.server_status.style().polish(self.server_status)
         if self.api is not None:
             self._run(
                 self.api.get_appearance_settings,
@@ -388,7 +393,9 @@ class AuthPage(QWidget):
         self.password.clear()
         self.username.setText(user.get("username", ""))
         self.server_status.setText("●  نشست قبلی بازیابی شد")
-        self.server_status.setStyleSheet("color:#0F9D83;font-weight:700;")
+        self.server_status.setProperty("connected", True)
+        self.server_status.style().unpolish(self.server_status)
+        self.server_status.style().polish(self.server_status)
         self.login_button.setEnabled(True)
         self.authenticated.emit(user)
 
