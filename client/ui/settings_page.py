@@ -185,6 +185,7 @@ class SettingsPage(QFrame):
         is_admin = bool(self.current_user.get("is_admin"))
         self.save_appearance_button.setEnabled(is_admin)
         self.reset_appearance_button.setEnabled(is_admin)
+        self.currency_unit.setEnabled(is_admin)
         self.appearance_status.setText(
             "مدیر می‌تواند تنظیمات مشترک ظاهر را تغییر دهد."
             if is_admin else "تنظیمات مشترک فقط برای مدیر قابل ویرایش است؛ کاربران دیگر آن را دریافت می‌کنند."
