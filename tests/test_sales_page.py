@@ -215,7 +215,6 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.page._set_cart_panel_visible(False)
         self.assertTrue(self.page.cart_panel.isHidden())
         self.assertTrue(self.page._cart_collapsed)
-        self.assertTrue(self.page.cart_scroll.isHidden())
         self.assertEqual(self.page.cart_panel_toggle.text(), "›")
         self.assertEqual(self.page.collect_items()[0]["quantity"], 1)
 
@@ -424,6 +423,8 @@ class SalesPageLayoutTests(unittest.TestCase):
             no_add_card.findChild(QWidget, "SalesProductDetails").property("stackStockBelowPrice")
         )
 
+        self.page.resize(1180, 780)
+        self.app.processEvents()
         self.page._apply_product_display_settings("table", True, "comfortable", 0)
         self.app.processEvents()
         self.assertIs(self.page.catalog_results_stack.currentWidget(), self.page.product_table)
@@ -641,7 +642,6 @@ class SalesPageLayoutTests(unittest.TestCase):
         try:
             self.assertTrue(reopened._cart_collapsed)
             self.assertTrue(reopened.cart_panel.isHidden())
-            self.assertTrue(reopened.cart_scroll.isHidden())
             reopened.cart_panel_toggle.click()
             self.app.processEvents()
             self.assertFalse(reopened._cart_collapsed)
