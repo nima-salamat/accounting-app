@@ -359,6 +359,9 @@ class SalesPageLayoutTests(unittest.TestCase):
 
     def test_inline_invoice_preview_has_mouse_zoom_and_page_fit_controls(self):
         preview = InvoicePreviewWidget()
+        preview.resize(700, 520)
+        preview.show()
+        self.app.processEvents()
         receipt = {
             "id": "receipt-preview",
             "day_receipt_id": 101,

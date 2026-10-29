@@ -82,11 +82,10 @@ class InteractiveInvoiceView(QGraphicsView):
         if not delta:
             event.ignore()
             return
-        scale_now = max(0.01, self.transform().m11())
+        scale_now = max(0.001, self.transform().m11())
         factor = 1.15 if delta > 0 else 1.0 / 1.15
-        target = scale_now * factor
-        if 0.2 <= target <= 12.0:
-            self.scale(factor, factor)
+        target = max(0.2, min(12.0, scale_now * factor))
+        self.scale(target / scale_now, target / scale_now)
         event.accept()
 
 
@@ -186,9 +185,9 @@ class InvoicePreviewWidget(QFrame):
         QTimer.singleShot(0, self.fit_width)
 
     def _zoom(self, factor):
-        scale_now = max(0.01, self.preview.transform().m11())
-        if 0.2 <= scale_now * factor <= 12.0:
-            self.preview.scale(factor, factor)
+        scale_now = max(0.001, self.preview.transform().m11())
+        target = max(0.2, min(12.0, scale_now * factor))
+        self.preview.scale(target / scale_now, target / scale_now)
 
     def fit_width(self):
         if self._page_item is None:
