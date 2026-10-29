@@ -126,8 +126,10 @@ class InvoicePreviewWidget(QFrame):
         self.zoom_in_button = QPushButton("+")
         self.zoom_in_button.setToolTip("بزرگ‌نمایی")
         self.zoom_in_button.clicked.connect(lambda: self._zoom(1.2))
-        self.fit_width_button = QPushButton("برازش عرض")
-        self.fit_width_button.setToolTip("نمایش برگه با عرض فضای پیش‌نمایش")
+        self.fit_width_button = QPushButton("برازش برگه")
+        self.fit_width_button.setToolTip(
+            "برگهٔ ثابت را کامل در قاب جا می‌دهد؛ برای رسید حرارتی، عرض را مبنا می‌گیرد."
+        )
         self.fit_width_button.clicked.connect(self.fit_width)
         actions.addWidget(self.previous_page_button)
         actions.addWidget(self.next_page_button)
@@ -191,9 +193,22 @@ class InvoicePreviewWidget(QFrame):
     def fit_width(self):
         if self._page_item is None:
             return
-        viewport_width = max(1, self.preview.viewport().width() - 8)
-        page_width = max(1.0, self._page_item.boundingRect().width())
-        scale = viewport_width / page_width
+        viewport = self.preview.viewport().size()
+        viewport_width = max(1, viewport.width() - 8)
+        viewport_height = max(1, viewport.height() - 8)
+        bounds = self._page_item.boundingRect()
+        page_width = max(1.0, bounds.width())
+        page_height = max(1.0, bounds.height())
+        width_scale = viewport_width / page_width
+        paper = str(self.template.get("paper_size") or "A4")
+        if paper in ("receipt", "receipt80", "receipt58"):
+            # Thermal rolls can be very tall; fill their usable width and scroll vertically.
+            scale = width_scale
+        else:
+            # Fixed sheets should initially fit completely in the side preview, avoiding
+            # the over-zoomed look of opening a second, full-screen preview dialog.
+            height_scale = viewport_height / page_height
+            scale = min(width_scale, height_scale)
         self.preview.resetTransform()
         self.preview.scale(scale, scale)
         self.preview.horizontalScrollBar().setValue(0)

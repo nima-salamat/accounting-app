@@ -376,6 +376,13 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.assertTrue(preview.preview.dragMode() == preview.preview.DragMode.ScrollHandDrag)
         self.assertIsNotNone(preview._page_item)
         self.assertIn("A4", preview.page_info.text())
+        bounds = preview._page_item.boundingRect()
+        viewport = preview.preview.viewport().size()
+        expected_fit = min(
+            max(1, viewport.width() - 8) / bounds.width(),
+            max(1, viewport.height() - 8) / bounds.height(),
+        )
+        self.assertAlmostEqual(preview.preview.transform().m11(), expected_fit, places=3)
         scale_before = preview.preview.transform().m11()
         preview._zoom(1.2)
         self.assertGreater(preview.preview.transform().m11(), scale_before)
