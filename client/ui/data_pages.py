@@ -745,8 +745,8 @@ class ReceiptsPage(QFrame):
         QMessageBox.information(
             self,
             "مرجوعی ثبت شد",
-            "سند مرجوعی به‌صورت موفق ثبت شد. مبلغ ثبت‌شده: {:,.2f}".format(
-                float(result.get("total_amount") or 0)
+            "سند مرجوعی به‌صورت موفق ثبت شد. مبلغ ثبت‌شده: {}".format(
+                format_currency(result.get("total_amount"))
             ),
         )
         self.window.set_status("مرجوعی برای فاکتور شمارهٔ {} ثبت شد.".format(result.get("day_receipt_id", "—")))
