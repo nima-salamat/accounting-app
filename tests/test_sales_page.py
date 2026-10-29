@@ -4,7 +4,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import unittest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSettings
 from PySide6.QtWidgets import QApplication
 
 from client.ui.sales_page import SalesPage
@@ -93,8 +93,13 @@ class SalesPageLayoutTests(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def setUp(self):
+        settings = QSettings("AccountingApp", "DesktopClient")
+        settings.setValue("sales/show_product_images", True)
+        settings.sync()
         self.window = _WindowStub()
         self.page = SalesPage(self.window)
+        self.page.show()
+        self.app.processEvents()
 
     def tearDown(self):
         self.page.close()
@@ -182,6 +187,15 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.assertTrue(self.page.cart_panel.isVisible())
         self.assertFalse(self.page.show_cart_button.isVisible())
         self.assertEqual(self.page.collect_items()[0]["quantity"], 1)
+
+    def test_cart_quantity_updates_the_line_subtotal(self):
+        self.page.refresh_products()
+        self.page.add_to_cart(self.page.products[0])
+        self.app.processEvents()
+        quantity_spin = self.page.cart_items_host.findChildren(__import__("PySide6.QtWidgets", fromlist=["QSpinBox"]).QSpinBox)[0]
+        quantity_spin.setValue(3)
+        self.assertEqual(self.page._cart_line_total_labels["product-1"].text(), "مجموع: 3.00")
+        self.assertEqual(self.page.total_label.text(), "جمع تخمینی: 3.00")
 
     def test_image_visibility_is_user_configurable(self):
         self.assertTrue(self.page.show_images_checkbox.isChecked())
