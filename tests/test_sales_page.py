@@ -280,6 +280,13 @@ class SalesPageLayoutTests(unittest.TestCase):
             "sales/show_product_images", True, type=bool
         ))
 
+    def test_legacy_reflow_keeps_table_mode_selected(self):
+        self.page.refresh_products()
+        self.page._apply_product_display_settings("table", True, "compact", 0)
+        self.page._reflow_product_grid()
+        self.assertIs(self.page.catalog_results_stack.currentWidget(), self.page.product_table)
+        self.assertEqual(self.page._rendered_columns, 0)
+
     def test_grid_column_setting_never_overflows_the_available_catalog_width(self):
         self.page.refresh_products()
         width = max(260, self.page.catalog_scroll.viewport().width())

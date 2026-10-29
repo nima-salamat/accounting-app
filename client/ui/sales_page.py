@@ -1406,25 +1406,21 @@ class SalesPage(QFrame):
         self._refresh_cart_summary()
 
     def _splitter_moved(self, *_args):
-        """Persist pane proportions and reflow cards while the cashier drags the divider."""
+        """Persist pane proportions and reflow products for the active display mode."""
         sizes = self.splitter.sizes()
         if len(sizes) == 2 and all(size > 0 for size in sizes):
             self._saved_splitter_sizes = sizes
             self._local_settings.setValue("sales/splitter_sizes", sizes)
-        self._reflow_product_grid()
+        self._reflow_products_for_resize()
 
     def _reflow_product_grid(self):
-        if not hasattr(self, "catalog_scroll"):
-            return
-        width = self.catalog_scroll.viewport().width()
-        columns = max(1, min(5, max(260, width) // 225))
-        if columns != self._rendered_columns:
-            self._rendered_columns = columns
-            self._render_products()
+        """Compatibility alias for older callers; respect the selected catalog layout."""
+        self._reflow_products_for_resize()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._reflow_product_grid()
+        self._position_search_suggestions()
+        self._reflow_products_for_resize()
 
     def checkout(self):
         items = self.collect_items()
