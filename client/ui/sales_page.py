@@ -56,6 +56,7 @@ class SalesPage(QFrame):
         self._history_records = []
         self._history_loaded = False
         self._history_invoice_payload = None
+        self._history_search_query = ""
 
         self._suggestion_query = ""
         self._search_committed = False
@@ -74,7 +75,7 @@ class SalesPage(QFrame):
             "sales/cart_collapsed", False, type=bool
         )
         self._history_preview_was_collapsed = self._local_settings.value(
-            "sales/history_preview_collapsed", False, type=bool
+            "sales/history_preview_collapsed", True, type=bool
         )
         self._use_category_tabs = self._local_settings.value(
             "sales/use_category_tabs", False, type=bool
@@ -86,6 +87,9 @@ class SalesPage(QFrame):
             self._saved_splitter_sizes = [780, 360]
         self._show_product_images = self._local_settings.value(
             "sales/show_product_images", True, type=bool
+        )
+        self._zoom_product_images = self._local_settings.value(
+            "sales/zoom_product_images", True, type=bool
         )
         self._show_product_stock = self._local_settings.value(
             "sales/show_product_stock", True, type=bool
@@ -460,10 +464,12 @@ class SalesPage(QFrame):
         self.cart_title_box.addWidget(title)
         self.cart_title_box.addWidget(hint)
         header.addLayout(self.cart_title_box, 1)
-        self.cart_status_label = QLabel("۰ قلم")
+        self.cart_status_label = QLabel("۰")
         self.cart_status_label.setObjectName("StatusPill")
         self.cart_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.cart_status_label.setMinimumWidth(58)
+        self.cart_status_label.setMinimumWidth(34)
+        self.cart_status_label.setMaximumWidth(48)
+        self.cart_status_label.setToolTip("تعداد کالاهای سبد خرید")
         header.addWidget(self.cart_status_label)
         self.cart_header_layout = header
         layout.addLayout(header)
@@ -501,7 +507,10 @@ class SalesPage(QFrame):
         if visible:
             self._cart_collapsed = False
             self._local_settings.setValue("sales/cart_collapsed", False)
+            self.cart_panel.setMaximumWidth(16777215)
             self.cart_panel.setMinimumWidth(320)
+            self.cart_status_label.setMinimumWidth(58)
+            self.cart_status_label.setMaximumWidth(180)
             for index in range(self.cart_title_box.count()):
                 widget = self.cart_title_box.itemAt(index).widget()
                 if widget is not None:
@@ -526,12 +535,17 @@ class SalesPage(QFrame):
             self.cart_scroll.hide()
             self.clear_cart_button.hide()
             self.cart_empty_label.hide()
-            collapsed_width = 160
+            collapsed_width = 88
             self.cart_panel.setMinimumWidth(collapsed_width)
+            self.cart_panel.setMaximumWidth(collapsed_width)
+            self.cart_status_label.setMinimumWidth(32)
+            self.cart_status_label.setMaximumWidth(40)
             self.cart_panel_toggle.setText("›")
             self.cart_panel_toggle.setToolTip("بازکردن پنل سبد خرید")
-            total = max(1, sum(sizes))
-            self.splitter.setSizes([max(1, total - collapsed_width), collapsed_width])
+            total = max(1, self.splitter.width(), sum(sizes))
+            target_sizes = [max(1, total - collapsed_width), collapsed_width]
+            self.splitter.setSizes(target_sizes)
+            QTimer.singleShot(0, lambda: self.splitter.setSizes(target_sizes))
         self._local_settings.sync()
         self._refresh_cart_summary()
 
@@ -553,6 +567,9 @@ class SalesPage(QFrame):
         self.workspace_stack.setCurrentWidget(page)
         self.catalog_mode_button.setChecked(mode == "sales")
         self.history_button.setChecked(mode == "history")
+        current_mode = getattr(self.window, "mode", "light")
+        set_button_icon(self.catalog_mode_button, "sales", current_mode)
+        set_button_icon(self.history_button, "history", current_mode)
         self.refresh_button.setVisible(mode == "sales")
         self.cancel_edit_button.setVisible(
             mode == "sales" and self._editing_receipt_id is not None
@@ -596,8 +613,10 @@ class SalesPage(QFrame):
             ("product_deselect_button", "clear"),
             ("history_deselect_button", "clear"),
             ("history_preview_close_button", "previous"),
-            ("history_preview_reopen_button", "next"),
+            ("history_preview_reopen_button", "previous" if not self._history_preview_collapsed else "next"),
             ("history_export_button", "download"),
+            ("catalog_mode_button", "sales"),
+            ("history_button", "history"),
         ):
             button = getattr(self, button_name, None)
             if button is not None:
@@ -995,6 +1014,8 @@ class SalesPage(QFrame):
 
         image_checkbox = QCheckBox("نمایش تصویر کالا")
         image_checkbox.setChecked(self._show_product_images)
+        zoom_image_checkbox = QCheckBox("بزرگ‌نمایی و برش تصویر برای پرکردن مربع")
+        zoom_image_checkbox.setChecked(self._zoom_product_images)
         stock_checkbox = QCheckBox("نمایش موجودی کالا")
         stock_checkbox.setChecked(self._show_product_stock)
         category_tabs_checkbox = QCheckBox("نمایش دسته‌بندی‌ها به صورت تب")
@@ -1030,15 +1051,16 @@ class SalesPage(QFrame):
         controls.addWidget(mode_label, 0, 0)
         controls.addWidget(mode_combo, 0, 1)
         controls.addWidget(image_checkbox, 1, 0, 1, 2)
-        controls.addWidget(stock_checkbox, 2, 0, 1, 2)
-        controls.addWidget(add_button_checkbox, 3, 0, 1, 2)
-        controls.addWidget(category_tabs_checkbox, 4, 0, 1, 2)
-        controls.addWidget(stock_style_label, 5, 0)
-        controls.addWidget(stock_style_combo, 5, 1)
-        controls.addWidget(density_label, 6, 0)
-        controls.addWidget(density_combo, 6, 1)
-        controls.addWidget(columns_label, 7, 0)
-        controls.addWidget(columns_combo, 7, 1)
+        controls.addWidget(zoom_image_checkbox, 2, 0, 1, 2)
+        controls.addWidget(stock_checkbox, 3, 0, 1, 2)
+        controls.addWidget(add_button_checkbox, 4, 0, 1, 2)
+        controls.addWidget(category_tabs_checkbox, 5, 0, 1, 2)
+        controls.addWidget(stock_style_label, 6, 0)
+        controls.addWidget(stock_style_combo, 6, 1)
+        controls.addWidget(density_label, 7, 0)
+        controls.addWidget(density_combo, 7, 1)
+        controls.addWidget(columns_label, 8, 0)
+        controls.addWidget(columns_combo, 8, 1)
         root.addLayout(controls)
 
         preview_title = QLabel("پیش‌نمایش")
@@ -1129,6 +1151,7 @@ class SalesPage(QFrame):
                 show_stock=stock_checkbox.isChecked(),
                 show_add_button=add_button_checkbox.isChecked(),
                 stock_display_style=stock_style_combo.currentData(),
+                zoom_images=zoom_image_checkbox.isChecked(),
             )
             # List and horizontal previews need full width so the price, stock and add
             # action remain visible instead of shrinking to sizeHint.
@@ -1136,6 +1159,7 @@ class SalesPage(QFrame):
 
         mode_combo.currentIndexChanged.connect(rebuild_preview)
         image_checkbox.toggled.connect(rebuild_preview)
+        zoom_image_checkbox.toggled.connect(rebuild_preview)
         stock_checkbox.toggled.connect(rebuild_preview)
         add_button_checkbox.toggled.connect(rebuild_preview)
         stock_style_combo.currentIndexChanged.connect(rebuild_preview)
@@ -1158,6 +1182,7 @@ class SalesPage(QFrame):
                 show_add_button=add_button_checkbox.isChecked(),
                 stock_display_style=stock_style_combo.currentData(),
                 use_category_tabs=category_tabs_checkbox.isChecked(),
+                zoom_images=zoom_image_checkbox.isChecked(),
             )
             dialog.accept()
 
@@ -1168,7 +1193,7 @@ class SalesPage(QFrame):
     def _apply_product_display_settings(
         self, layout_mode, show_images, density, columns,
         show_stock=None, show_add_button=None, stock_display_style=None,
-        use_category_tabs=None,
+        use_category_tabs=None, zoom_images=None,
     ):
         layout_mode = str(layout_mode or "grid").strip().lower()
         if layout_mode not in {"grid", "horizontal", "list", "table"}:
@@ -1188,6 +1213,8 @@ class SalesPage(QFrame):
         )
         self._product_layout_mode = layout_mode
         self._show_product_images = bool(show_images)
+        if zoom_images is not None:
+            self._zoom_product_images = bool(zoom_images)
         self._show_product_stock = (
             self._show_product_stock if show_stock is None else bool(show_stock)
         )
@@ -1209,6 +1236,7 @@ class SalesPage(QFrame):
         self._sync_category_selector(previous_category)
         self._local_settings.setValue("sales/product_layout_mode", layout_mode)
         self._local_settings.setValue("sales/show_product_images", self._show_product_images)
+        self._local_settings.setValue("sales/zoom_product_images", self._zoom_product_images)
         self._local_settings.setValue("sales/show_product_stock", self._show_product_stock)
         self._local_settings.setValue(
             "sales/show_product_add_button", self._show_product_add_button
@@ -1478,12 +1506,13 @@ class SalesPage(QFrame):
 
     def _build_product_card(
         self, product, preview=False, layout_mode=None, show_images=None, density=None,
-        show_stock=None, show_add_button=None, stock_display_style=None,
+        show_stock=None, show_add_button=None, stock_display_style=None, zoom_images=None,
     ):
         """Build a product card for the catalog or a side-effect-free settings preview."""
         key = str(product.get("id") or "")
         mode = str(layout_mode or self._product_layout_mode)
         show_images = self._show_product_images if show_images is None else bool(show_images)
+        zoom_images = self._zoom_product_images if zoom_images is None else bool(zoom_images)
         density = str(density or self._product_card_density)
         show_stock = self._show_product_stock if show_stock is None else bool(show_stock)
         show_add_button = (
@@ -1533,15 +1562,21 @@ class SalesPage(QFrame):
             else:
                 target = (76, 76)
             if image_bytes and pixmap.loadFromData(image_bytes):
-                # Fill a square and crop symmetrically around the image centre.
-                scaled = pixmap.scaled(
-                    target[0], target[1],
-                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-                left = max(0, (scaled.width() - target[0]) // 2)
-                top = max(0, (scaled.height() - target[1]) // 2)
-                image.setPixmap(scaled.copy(left, top, target[0], target[1]))
+                if zoom_images:
+                    # Fill the square and crop symmetrically around the image centre.
+                    scaled = pixmap.scaled(
+                        target[0], target[1],
+                        Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                    left = max(0, (scaled.width() - target[0]) // 2)
+                    top = max(0, (scaled.height() - target[1]) // 2)
+                    image.setPixmap(scaled.copy(left, top, target[0], target[1]))
+                else:
+                    image.setPixmap(pixmap.scaled(
+                        target[0], target[1], Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    ))
             else:
                 image.setText("بدون تصویر")
             image.setFixedSize(target[0], target[1])
@@ -1895,8 +1930,11 @@ class SalesPage(QFrame):
                 continue
         self.total_label.setText("جمع تخمینی: {:,.2f}".format(total))
         self.cart_status_label.setText(
-            "{} عدد".format(units) if self._cart_collapsed
+            str(units) if self._cart_collapsed
             else "{} نوع · {} عدد".format(item_kinds, units)
+        )
+        self.cart_status_label.setToolTip(
+            "{} عدد در سبد خرید · {} نوع کالا".format(units, item_kinds)
         )
         self.clear_cart_button.setEnabled(bool(item_kinds))
         self.submit_button.setEnabled(bool(item_kinds))
