@@ -16,7 +16,7 @@ from client.ui.invoice_render import (
 )
 from accounting_app.services.invoice_numbering import (
     DEFAULT_INVOICE_NUMBER_FORMAT, DEFAULT_INVOICE_NUMBER_PADDING,
-    format_invoice_number, validate_invoice_number_format,
+    validate_invoice_number_format,
 )
 from client.ui.permissions import can_access
 
@@ -242,6 +242,9 @@ class InvoiceTemplatesPage(QFrame):
         self._items_by_id = {}
         self._selected_id = None
         self._last_page_size = page_dimensions(DEFAULT_TEMPLATE)
+        # Numbering belongs to InvoiceNumberingPage; retain only the persisted metadata.
+        self._invoice_number_format = DEFAULT_INVOICE_NUMBER_FORMAT
+        self._invoice_number_padding = DEFAULT_INVOICE_NUMBER_PADDING
         self.accent_color_value = DEFAULT_TEMPLATE["accent_color"]
         self.frame_border_color_value = DEFAULT_TEMPLATE["frame_border_color"]
         self.setObjectName("Card")
@@ -444,69 +447,7 @@ class InvoiceTemplatesPage(QFrame):
         business_layout.addLayout(business_form)
         properties_layout.addWidget(business_card)
 
-        self.invoice_number_card = QFrame(self)
-        self.invoice_number_card.hide()
-        self.invoice_number_card.setObjectName("InvoiceNumberingCompatibilityCard")
-        number_layout = QVBoxLayout(self.invoice_number_card)
-        number_layout.setContentsMargins(12, 12, 12, 12)
-        number_layout.setSpacing(8)
-        number_title = QLabel("شماره‌گذاری فاکتور")
-        number_title.setObjectName("PageTitle")
-        number_layout.addWidget(number_title)
-        number_intro = QLabel("بدون نوشتن JSON یا کد، روش شماره‌گذاری را انتخاب کنید.")
-        number_intro.setObjectName("PageSubtitle")
-        number_intro.setWordWrap(True)
-        number_layout.addWidget(number_intro)
-        number_form = QFormLayout()
-        number_form.setSpacing(8)
-
-        self.invoice_number_style = QComboBox()
-        for key, label in NUMBERING_STYLES:
-            self.invoice_number_style.addItem(label, key)
-        self.invoice_number_prefix = QLineEdit()
-        self.invoice_number_prefix.setMaxLength(24)
-        self.invoice_number_prefix.setPlaceholderText("مثلاً INV یا فروش")
-        self.invoice_number_prefix.setToolTip("پیشوند دلخواه؛ لازم نیست آکولاد یا کد وارد کنید.")
-        self.invoice_number_date_format = QComboBox()
-        for key, label, _tokens in NUMBERING_DATE_FORMATS:
-            self.invoice_number_date_format.addItem(label, key)
-        self.invoice_number_separator = QComboBox()
-        for key, label in NUMBERING_SEPARATORS:
-            self.invoice_number_separator.addItem(label, key)
-        self.invoice_number_padding = self._spin(1, 12, " رقم")
-        self.invoice_number_custom_format = QLineEdit()
-        self.invoice_number_custom_format.setMaxLength(120)
-        self.invoice_number_custom_format.setPlaceholderText("مثلاً INV-{DATE}-{NUM}")
-        self.invoice_number_custom_format.setToolTip(
-            "فقط برای حالت پیشرفته است؛ در حالت‌های معمول نیازی به نوشتن این الگو نیست."
-        )
-        self.invoice_number_example = QLabel()
-        self.invoice_number_example.setObjectName("StatusPill")
-        self.invoice_number_example.setWordWrap(True)
-        self.invoice_number_example.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        number_form.addRow("روش شماره‌گذاری", self.invoice_number_style)
-        number_form.addRow("پیشوند دلخواه", self.invoice_number_prefix)
-        number_form.addRow("قالب تاریخ", self.invoice_number_date_format)
-        number_form.addRow("جداکننده", self.invoice_number_separator)
-        number_form.addRow("تعداد رقم شمارنده", self.invoice_number_padding)
-        self.custom_format_label = QLabel("الگوی سفارشی")
-        self.custom_format_label.setObjectName("PageSubtitle")
-        number_form.addRow(self.custom_format_label, self.invoice_number_custom_format)
-        number_form.addRow("پیش‌نمایش شماره", self.invoice_number_example)
-        number_layout.addLayout(number_form)
-        number_help = QLabel(
-            "مثلاً روش «تاریخ + شمارهٔ همان روز» با ۵ رقم، شماره‌ای مثل "
-            "2026-10-30-00001 می‌سازد. پیشوندی مثل INV هم قابل اضافه‌کردن است. "
-            "تعداد رقم حداقل است؛ پس از ۹۹۹۹۹، شماره به ۱۰۰۰۰۰ تبدیل می‌شود. "
-            "شمارهٔ فاکتورهای قبلی با تغییر تنظیمات عوض نمی‌شود."
-        )
-        number_help.setObjectName("PageSubtitle")
-        number_help.setWordWrap(True)
-        number_layout.addWidget(number_help)
-        # Numbering is configured on its own navigation page. Keep these hidden
-        # controls only so legacy template payloads continue to round-trip safely.
-        self.invoice_number_card.hide()
-        properties_layout.addStretch(1)
+        properties_layout.addStretch(1)        properties_layout.addStretch(1)
         properties_scroll.setWidget(properties)
 
         # Physical page in the center.
@@ -617,12 +558,6 @@ class InvoiceTemplatesPage(QFrame):
             control.textChanged.connect(self._global_setting_changed)
         self.address.textChanged.connect(self._global_setting_changed)
         self.footer.textChanged.connect(self._global_setting_changed)
-        self.invoice_number_style.currentIndexChanged.connect(self._numbering_builder_changed)
-        self.invoice_number_prefix.textChanged.connect(self._numbering_builder_changed)
-        self.invoice_number_date_format.currentIndexChanged.connect(self._numbering_builder_changed)
-        self.invoice_number_separator.currentIndexChanged.connect(self._numbering_builder_changed)
-        self.invoice_number_custom_format.textChanged.connect(self._numbering_builder_changed)
-        self.invoice_number_padding.valueChanged.connect(self._global_setting_changed)
         self.font_family.currentTextChanged.connect(self._global_setting_changed)
         self.global_font_size.valueChanged.connect(self._global_setting_changed)
         self.document_kind.currentIndexChanged.connect(self._document_kind_changed)
@@ -633,12 +568,6 @@ class InvoiceTemplatesPage(QFrame):
 
         self._load_template(deepcopy(DEFAULT_TEMPLATE))
         self.set_permissions(window.current_user)
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        # This widget now only holds legacy serialization controls. It is not
-        # part of the designer layout and must never paint over the actual canvas.
-        self.invoice_number_card.hide()
 
     @staticmethod
     def _spin(minimum, maximum, suffix):
@@ -680,8 +609,8 @@ class InvoiceTemplatesPage(QFrame):
             "phone": self.phone.text().strip(),
             "seat_number_label": "شماره میز / صندلی",
             "footer": self.footer.toPlainText().strip(),
-            "invoice_number_format": self._build_invoice_number_format(),
-            "invoice_number_padding": self.invoice_number_padding.value(),
+            "invoice_number_format": self._invoice_number_format,
+            "invoice_number_padding": self._invoice_number_padding,
             "paper_size": self.paper_size.currentData() or "A4",
             "orientation": self.orientation.currentData() or "portrait",
             "margin_mm": self.margin_mm.value(),
@@ -711,15 +640,15 @@ class InvoiceTemplatesPage(QFrame):
             control.setText(str(values.get(key, fallback) or ""))
         self.address.setPlainText(str(values.get("address", "") or ""))
         self.footer.setPlainText(str(values.get("footer", "") or ""))
-        self._restore_invoice_number_builder(str(
+        self._invoice_number_format = str(
             values.get("invoice_number_format", DEFAULT_INVOICE_NUMBER_FORMAT)
             or DEFAULT_INVOICE_NUMBER_FORMAT
-        ))
+        ).strip() or DEFAULT_INVOICE_NUMBER_FORMAT
         try:
             padding = int(values.get("invoice_number_padding", DEFAULT_INVOICE_NUMBER_PADDING))
         except (TypeError, ValueError):
             padding = DEFAULT_INVOICE_NUMBER_PADDING
-        self.invoice_number_padding.setValue(max(1, min(12, padding)))
+        self._invoice_number_padding = max(1, min(12, padding))
         self.paper_size.setCurrentIndex(max(0, self.paper_size.findData(values.get("paper_size", "A4"))))
         paper_value = values.get("paper_size", "A4")
         self.orientation.setCurrentIndex(max(0, self.orientation.findData(values.get("orientation", "portrait"))))
@@ -752,8 +681,6 @@ class InvoiceTemplatesPage(QFrame):
         self._load_selected_properties(None)
         self._update_page_info()
         self._update_canvas_appearance()
-        self._update_invoice_number_example()
-        self.invoice_number_card.setVisible(self._template_kind == "invoice")
 
     def _rebuild_canvas(self):
         self.scene.clear()
@@ -1062,121 +989,29 @@ class InvoiceTemplatesPage(QFrame):
         self._refresh_element_list()
         self._update_page_info()
 
-    def _build_invoice_number_format(self):
-        return _compose_invoice_number_format(
-            self.invoice_number_style.currentData() or "date_daily",
-            self.invoice_number_prefix.text(),
-            self.invoice_number_date_format.currentData() or "iso",
-            self.invoice_number_separator.currentData() if self.invoice_number_separator.currentIndex() >= 0 else "-",
-            self.invoice_number_custom_format.text(),
-        )
-
-    def _restore_invoice_number_builder(self, number_format):
-        """Restore common saved patterns to friendly controls; preserve uncommon ones as advanced."""
-        stored = str(number_format or DEFAULT_INVOICE_NUMBER_FORMAT).strip()
-        normalized = stored.replace("{DATE}", "{YYYY}-{MM}-{DD}")
-        prefix_head = normalized.split("{", 1)[0]
-        prefix_guess = prefix_head.rstrip("-/._ ")
-        prefixes = ["", prefix_guess] if prefix_guess else [""]
-        match = None
-        for style, _label in NUMBERING_STYLES:
-            if style == "custom":
-                continue
-            for date_style, _date_label, _date_tokens in NUMBERING_DATE_FORMATS:
-                for separator, _separator_label in NUMBERING_SEPARATORS:
-                    for prefix in prefixes:
-                        if _compose_invoice_number_format(
-                            style, prefix, date_style, separator, ""
-                        ) == normalized:
-                            match = (style, prefix, date_style, separator)
-                            break
-                    if match:
-                        break
-                if match:
-                    break
-            if match:
-                break
-
-        if match:
-            style, prefix, date_style, separator = match
-            self.invoice_number_style.setCurrentIndex(self.invoice_number_style.findData(style))
-            self.invoice_number_prefix.setText(prefix)
-            self.invoice_number_date_format.setCurrentIndex(
-                max(0, self.invoice_number_date_format.findData(date_style))
-            )
-            self.invoice_number_separator.setCurrentIndex(
-                max(0, self.invoice_number_separator.findData(separator))
-            )
-            self.invoice_number_custom_format.clear()
-        else:
-            self.invoice_number_style.setCurrentIndex(
-                max(0, self.invoice_number_style.findData("custom"))
-            )
-            self.invoice_number_custom_format.setText(stored)
-        self._update_numbering_builder_visibility()
-
     def sync_invoice_numbering(self, number_format, padding):
-        """Synchronize hidden compatibility fields after the dedicated settings page saves."""
+        """Update serialized invoice-number metadata without exposing numbering controls here."""
         if self._template_kind != "invoice":
             return
-        was_loading = self._loading
-        self._loading = True
+        self._invoice_number_format = str(
+            number_format or DEFAULT_INVOICE_NUMBER_FORMAT
+        ).strip() or DEFAULT_INVOICE_NUMBER_FORMAT
         try:
-            self._restore_invoice_number_builder(number_format)
-            try:
-                normalized_padding = int(padding)
-            except (TypeError, ValueError):
-                normalized_padding = DEFAULT_INVOICE_NUMBER_PADDING
-            self.invoice_number_padding.setValue(max(1, min(12, normalized_padding)))
-        finally:
-            self._loading = was_loading
-        if not was_loading:
-            self._update_invoice_number_example()
-
-    def _numbering_builder_changed(self, *_args):
-        if self._loading:
-            return
-        self._update_numbering_builder_visibility()
-        self._global_setting_changed()
-
-    def _update_numbering_builder_visibility(self):
-        style = self.invoice_number_style.currentData() or "date_daily"
-        self.invoice_number_prefix.setEnabled(style.startswith("prefix_"))
-        self.invoice_number_date_format.setEnabled(style in {
-            "date_daily", "date_global", "prefix_date_daily", "prefix_date_global"
-        })
-        self.invoice_number_separator.setEnabled(style not in {"global", "custom"})
-        is_custom = style == "custom"
-        self.custom_format_label.setVisible(is_custom)
-        self.invoice_number_custom_format.setVisible(is_custom)
+            normalized_padding = int(padding)
+        except (TypeError, ValueError):
+            normalized_padding = DEFAULT_INVOICE_NUMBER_PADDING
+        self._invoice_number_padding = max(1, min(12, normalized_padding))
+        for item in self._items_by_id.values():
+            item.update()
 
     def _global_setting_changed(self, *_args):
         if self._loading:
             return
         # Keep existing item objects so their drag positions and current selection do not jump.
-        config = self._values()
         for item in self._items_by_id.values():
             item.page = self
             item.update()
         self._update_page_info()
-        self._update_invoice_number_example()
-
-    def _update_invoice_number_example(self):
-        if not hasattr(self, "invoice_number_example"):
-            return
-        try:
-            values = self._values()
-            sample = format_invoice_number(
-                SAMPLE_RECEIPT,
-                values.get("invoice_number_format", DEFAULT_INVOICE_NUMBER_FORMAT),
-                values.get("invoice_number_padding", DEFAULT_INVOICE_NUMBER_PADDING),
-            )
-            sample = sample.translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
-            self.invoice_number_example.setText(sample)
-        except ValueError as error:
-            self.invoice_number_example.setText("تنظیم شماره‌گذاری نیاز به اصلاح دارد: {}".format(error))
-        finally:
-            self._update_numbering_builder_visibility()
 
     def add_element(self):
         kind = self.new_kind.currentData() or "text"
@@ -1260,6 +1095,9 @@ class InvoiceTemplatesPage(QFrame):
     def apply_preset(self):
         preset = self.preset.currentData()
         values = deepcopy(DEFAULT_TEMPLATE)
+        # Print-layout presets must not reset the independent numbering configuration.
+        values["invoice_number_format"] = self._invoice_number_format
+        values["invoice_number_padding"] = self._invoice_number_padding
         if preset == "minimal":
             values.update({"paper_size": "A4", "orientation": "portrait", "accent_color": "#475569", "show_border": False, "frame_border_color": "#CBD5E1"})
         elif preset == "a5":
