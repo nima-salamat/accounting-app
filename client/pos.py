@@ -13,6 +13,7 @@ from client.ui.device_settings import DeviceSettingsDialog
 from client.ui.permissions import can_access
 from client.ui.sales_page import SalesPage
 from client.ui.theme import stylesheet
+from client.ui.currency import set_currency_unit
 from client.ui.icons import set_button_icon
 from client.ui.worker import ApiWorker
 
@@ -112,6 +113,11 @@ class POSWindow(QMainWindow):
             )
             return
         self.stack.setCurrentIndex(1)
+        self.run_api(
+            self.api.get_appearance_settings,
+            lambda values: set_currency_unit((values or {}).get("currency_unit", "toman")),
+            failure=lambda _error: None,
+        )
         self.sales_page.set_permissions(user)
         self.set_status("صندوق آماده است · {}".format(user.get("username", "")))
         self.sales_page.refresh_products()
