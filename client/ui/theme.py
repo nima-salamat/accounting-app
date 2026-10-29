@@ -194,6 +194,7 @@ def stylesheet(mode="light", design=None):
         "auth_title_size": round(d["font_size"] * 1.9 * d["heading_scale"]),
         "auth_hero_title_size": round(d["font_size"] * 2.1 * d["heading_scale"]),
         "auth_button_size": round(d["font_size"] * 1.05),
+        "product_price_size": round(d["font_size"] * 1.2),
     })
     app_stylesheet = r"""
     * {{ font-family: "{font_family}", "Vazirmatn", "Segoe UI", "Noto Sans Arabic", sans-serif; }}
@@ -219,7 +220,7 @@ def stylesheet(mode="light", design=None):
     QFrame#SalesProductCard:hover {{ border-color: {primary}; }}
     QLabel#SalesProductImage {{ background: {surface_alt}; color: {muted}; border: 1px dashed {border}; border-radius: 8px; padding: 5px; }}
     QLabel#SalesProductTitle {{ color: {text}; font-size: {font_size}px; font-weight: 750; }}
-    QLabel#SalesProductPrice {{ color: {primary}; font-size: {font_size + 3}px; font-weight: 850; }}
+    QLabel#SalesProductPrice {{ color: {primary}; font-size: {product_price_size}px; font-weight: 850; }}
     QLabel#SalesProductStock {{ background: {highlight}; color: {accent}; border-radius: 7px; padding: 4px 7px; font-size: 11px; }}
     QLabel#SalesProductStock[outOfStock="true"] {{ background: {surface_alt}; color: {danger}; }}
     QLabel#SalesCartItemTitle {{ color: {text}; font-size: {font_size}px; font-weight: 750; }}
