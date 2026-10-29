@@ -3,12 +3,25 @@ import unittest
 
 from client.ui.invoice_render import (
     DEFAULT_TEMPLATE, default_elements_for_paper, page_dimensions,
-    prepare_invoice_pages, render_invoice_html,
+    prepare_invoice_pages, render_invoice_html, _text_flags,
 )
+from PySide6.QtCore import Qt
 from accounting_app.services.invoice_numbering import format_invoice_number, validate_invoice_number_format
 
 
 class InvoiceRenderTests(unittest.TestCase):
+    def test_text_alignment_uses_physical_left_and_right_edges_in_rtl_and_ltr(self):
+        for direction in ("rtl", "ltr"):
+            for align, expected in (
+                ("left", Qt.AlignmentFlag.AlignLeft),
+                ("center", Qt.AlignmentFlag.AlignHCenter),
+                ("right", Qt.AlignmentFlag.AlignRight),
+            ):
+                with self.subTest(direction=direction, align=align):
+                    flags = _text_flags(align, direction)
+                    self.assertTrue(flags & int(Qt.AlignmentFlag.AlignAbsolute))
+                    self.assertTrue(flags & int(expected))
+
     def test_invoice_number_formats_support_date_daily_counter_and_minimum_padding(self):
         receipt = {
             "created_at": "2026-10-30T16:45:00",
