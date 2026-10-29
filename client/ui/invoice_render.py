@@ -11,6 +11,7 @@ from accounting_app.services.invoice_numbering import (
     DEFAULT_INVOICE_NUMBER_FORMAT, DEFAULT_INVOICE_NUMBER_PADDING,
     format_invoice_number, validate_invoice_number_format,
 )
+from client.ui.currency import format_currency
 
 # Desktop POS sales and its receipts history share the admin-designed sales invoice.
 # Thermal kiosk receipts remain a separate print workflow.
@@ -119,13 +120,8 @@ def _fa_digits(value):
     return str(value).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
 
 
-def _money(value):
-    try:
-        number = float(value or 0)
-        formatted = "{:,.0f}".format(number) if number.is_integer() else "{:,.2f}".format(number).rstrip("0").rstrip(".")
-        return _fa_digits(formatted)
-    except (TypeError, ValueError):
-        return "۰"
+def _money(value, include_unit=False):
+    return _fa_digits(format_currency(value, include_unit=include_unit))
 
 
 def _valid_color(value, fallback):
@@ -325,7 +321,7 @@ def _text_for_element(element, receipt, config):
     if kind == "seat_number":
         return "{}: {}".format(label or config.get("seat_number_label") or "میز / صندلی", receipt.get("seat_number") or "—")
     if kind == "totals":
-        return "{}: {}".format(label or "مبلغ نهایی", _money(receipt.get("total_price")))
+        return "{}: {}".format(label or "مبلغ نهایی", _money(receipt.get("total_price"), include_unit=True))
     if kind == "footer":
         return config.get("footer") or element.get("text") or label
     if kind == "text":
@@ -343,7 +339,7 @@ def _text_for_element(element, receipt, config):
             "{{page_count}}": _fa_digits(page_count),
             "{{invoice_number}}": _fa_digits(_receipt_number(receipt, config)),
             "{{date}}": _receipt_date(receipt),
-            "{{total}}": _money(receipt.get("total_price")),
+            "{{total}}": _money(receipt.get("total_price"), include_unit=True),
             "{{payment_status}}": _payment_label(receipt),
             "{{seat_number}}": _fa_digits(receipt.get("seat_number") or "—"),
             "{{company_name}}": str(config.get("company_name") or ""),
