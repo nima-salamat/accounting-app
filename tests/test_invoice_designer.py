@@ -74,6 +74,55 @@ class InvoiceDesignerTests(unittest.TestCase):
         self.assertAlmostEqual(element["x_mm"], 134)
         self.assertAlmostEqual(element["y_mm"], 18)
 
+    def test_drag_snap_aligns_edges_and_centers_on_both_axes(self):
+        elements = [
+            {
+                "id": "anchor", "type": "text", "label": "مرجع",
+                "text": "مرجع", "x_mm": 30, "y_mm": 30, "w_mm": 50, "h_mm": 10,
+                "font_size": 9, "align": "right", "bold": False, "visible": True,
+            },
+            {
+                "id": "moving", "type": "text", "label": "متحرک",
+                "text": "متحرک", "x_mm": 100, "y_mm": 60, "w_mm": 20, "h_mm": 12,
+                "font_size": 9, "align": "right", "bold": False, "visible": True,
+            },
+        ]
+        self.page._load_template({**DEFAULT_TEMPLATE, "elements": elements})
+        moving = self.page._items_by_id["moving"]
+
+        # The proposed left/top edges are close to the reference's right/bottom edges.
+        snapped = self.page._snap_item_position(moving, QPointF(77.0, 38.0))
+        self.assertAlmostEqual(snapped.x(), 80.0)
+        self.assertAlmostEqual(snapped.y(), 40.0)
+        self.assertEqual(len(self.page.scene._alignment_guide_items), 2)
+        self.assertIn("راهنمای هوشمند فعال", self.page.canvas_help.text())
+
+        self.page.scene.clear_alignment_guides()
+        self.page._reset_alignment_hint()
+        self.assertEqual(self.page.scene._alignment_guide_items, [])
+        self.assertEqual(self.page.canvas_help.text(), self.page._alignment_hint_default)
+
+    def test_snap_does_not_move_elements_when_no_alignment_is_close(self):
+        elements = [
+            {
+                "id": "anchor", "type": "text", "label": "مرجع",
+                "text": "مرجع", "x_mm": 20, "y_mm": 20, "w_mm": 30, "h_mm": 12,
+                "font_size": 9, "align": "right", "bold": False, "visible": True,
+            },
+            {
+                "id": "moving", "type": "text", "label": "متحرک",
+                "text": "متحرک", "x_mm": 100, "y_mm": 100, "w_mm": 20, "h_mm": 12,
+                "font_size": 9, "align": "right", "bold": False, "visible": True,
+            },
+        ]
+        self.page._load_template({**DEFAULT_TEMPLATE, "elements": elements})
+        moving = self.page._items_by_id["moving"]
+        proposed = QPointF(100.0, 100.0)
+        snapped = self.page._snap_item_position(moving, proposed)
+        self.assertAlmostEqual(snapped.x(), proposed.x())
+        self.assertAlmostEqual(snapped.y(), proposed.y())
+        self.assertEqual(self.page.scene._alignment_guide_items, [])
+
     def test_presets_change_both_paper_and_layout(self):
         self.page.preset.setCurrentIndex(self.page.preset.findData("thermal80"))
         self.page.apply_preset()
