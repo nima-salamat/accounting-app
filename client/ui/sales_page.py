@@ -8,6 +8,7 @@ from client.payment_terminal import authorize_payment, void_payment
 from client.ui.device_settings import device_settings
 from client.ui.invoice_dialog import InvoiceDialog, InvoicePreviewWidget, auto_print_invoice
 from client.ui.invoice_render import DEFAULT_TEMPLATE, SALES_INVOICE_TEMPLATE_KIND
+from client.ui.currency import currency_context, format_currency
 from client.ui.permissions import can_access
 from client.ui.icons import apply_button_icons, set_button_icon
 
@@ -271,6 +272,7 @@ class SalesPage(QFrame):
         self.sync_theme_button()
         apply_button_icons(self, getattr(self.window, "mode", "light"))
         self.sync_theme_button()
+        currency_context().changed.connect(self._currency_changed)
         if self._cart_was_collapsed:
             # Start fully hidden rather than briefly showing a clipped cart rail.
             self._set_cart_panel_visible(False)
@@ -710,6 +712,26 @@ class SalesPage(QFrame):
             if button is not None:
                 set_button_icon(button, action, mode)
 
+    def _currency_changed(self, *_args):
+        """Re-render every cached money label when the shared display unit changes."""
+        if hasattr(self, "products"):
+            self._render_products()
+        if hasattr(self, "_cart"):
+            self._render_cart()
+            self._refresh_cart_summary()
+        if hasattr(self, "search_suggestion_list"):
+            for index in range(self.search_suggestion_list.count()):
+                item = self.search_suggestion_list.item(index)
+                product = item.data(Qt.ItemDataRole.UserRole) or {}
+                item.setText("{}   ·   {}".format(
+                    product.get("name") or "کالای بدون نام",
+                    format_currency(product.get("sell_price")),
+                ))
+        if hasattr(self, "_history_records"):
+            self._render_recent_receipt_tables()
+        if getattr(self, "_history_invoice_payload", None) and hasattr(self, "history_invoice_preview"):
+            self._set_history_invoice_preview(self._history_invoice_payload)
+
     def _payment_status_changed(self, paid):
         self.payment_method_combo.setEnabled(bool(paid))
 
@@ -974,9 +996,9 @@ class SalesPage(QFrame):
                 product["_image_bytes"] = previous["_image_bytes"]
             self._product_cache[key] = product
             row = QListWidgetItem(
-                "{}   ·   {:,.2f}".format(
+                "{}   ·   {}".format(
                     product.get("name") or "کالای بدون نام",
-                    float(product.get("sell_price") or 0),
+                    format_currency(product.get("sell_price")),
                 )
             )
             row.setData(Qt.ItemDataRole.UserRole, product)
@@ -1327,7 +1349,7 @@ class SalesPage(QFrame):
                 table_preview.setItem(0, 2, QTableWidgetItem(category_name))
                 table_preview.setItem(
                     0, 3,
-                    QTableWidgetItem("{:,.2f}".format(float(sample.get("sell_price") or 0))),
+                    QTableWidgetItem(format_currency(sample.get("sell_price"))),
                 )
                 sample_key = str(sample.get("id") or "")
                 capacity = self._stock_capacity(sample, sample_key)
@@ -1725,7 +1747,7 @@ class SalesPage(QFrame):
             category_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             table.setItem(row, 2, category_item)
 
-            price_item = QTableWidgetItem("{:,.2f}".format(float(product.get("sell_price") or 0)))
+            price_item = QTableWidgetItem(format_currency(product.get("sell_price")))
             price_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             table.setItem(row, 3, price_item)
 
@@ -1882,7 +1904,7 @@ class SalesPage(QFrame):
                 else Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
 
-        price = QLabel("{:,.2f}".format(float(product.get("sell_price") or 0)))
+        price = QLabel(format_currency(product.get("sell_price")))
         price.setObjectName("SalesProductPrice")
         price.setAlignment(
             Qt.AlignmentFlag.AlignCenter if mode == "grid"
@@ -2078,7 +2100,7 @@ class SalesPage(QFrame):
             line_total = self._cart_line_total_labels.get(product_key)
             if line_total is not None:
                 price = float(product.get("sell_price") or 0)
-                line_total.setText("{:,.2f}".format(price * quantity))
+                line_total.setText(format_currency(price * quantity))
             quantity_label = self._cart_quantity_labels.get(product_key)
             if quantity_label is not None:
                 quantity_label.setText(str(quantity))
@@ -2147,7 +2169,7 @@ class SalesPage(QFrame):
             title = QLabel(str(product.get("name") or "کالا"))
             title.setObjectName("SalesCartItemTitle")
             title.setWordWrap(True)
-            unit_price = QLabel("هر واحد: {:,.2f}".format(price))
+            unit_price = QLabel("هر واحد: {}".format(format_currency(price)))
             unit_price.setObjectName("PageSubtitle")
             info_layout.addWidget(title)
             info_layout.addWidget(unit_price)
@@ -2188,7 +2210,7 @@ class SalesPage(QFrame):
             row_layout.addWidget(plus)
             self._cart_plus_buttons[key] = plus
 
-            line_total = QLabel("{:,.2f}".format(price * quantity))
+            line_total = QLabel(format_currency(price * quantity))
             line_total.setObjectName("SalesCartLineTotal")
             line_total.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             line_total.setMinimumWidth(62)
@@ -2229,7 +2251,7 @@ class SalesPage(QFrame):
                 total += float(product.get("sell_price") or 0) * quantity
             except (TypeError, ValueError):
                 continue
-        self.total_label.setText("جمع تخمینی: {:,.2f}".format(total))
+        self.total_label.setText("جمع تخمینی: {}".format(format_currency(total)))
         self.cart_status_label.setText(
             str(units) if self._cart_collapsed
             else "{} نوع · {} عدد".format(item_kinds, units)
@@ -2400,14 +2422,14 @@ class SalesPage(QFrame):
         self._refresh_product_stock_states()
         self._refresh_cart_summary()
         if updated:
-            message = "فاکتور شمارهٔ {} با مبلغ {:,.2f} به‌روزرسانی شد.".format(
+            message = "فاکتور شمارهٔ {} با مبلغ {} به‌روزرسانی شد.".format(
                 receipt.get("invoice_number") or receipt.get("day_receipt_id", "—"),
-                float(receipt.get("total_price") or 0),
+                format_currency(receipt.get("total_price")),
             )
         else:
-            message = "فروش شمارهٔ {} با مبلغ {:,.2f} ثبت شد.".format(
+            message = "فروش شمارهٔ {} با مبلغ {} ثبت شد.".format(
                 receipt.get("invoice_number") or receipt.get("day_receipt_id", "—"),
-                float(receipt.get("total_price") or 0),
+                format_currency(receipt.get("total_price")),
             )
         self.window.set_status(message)
         self.refresh_products()
@@ -2687,7 +2709,7 @@ class SalesPage(QFrame):
                     "پرداخت‌شده" if paid else "پرداخت‌نشده",
                     str(record.get("created_at") or "—").replace("T", " ")[:19],
                     str(record.get("seat_number") or "—"),
-                    "{:,.2f}".format(float(record.get("total_price") or 0)),
+                    format_currency(record.get("total_price")),
                     payment_method,
                 ]
                 for column, value in enumerate(values):
