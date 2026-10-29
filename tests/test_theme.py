@@ -22,8 +22,10 @@ class ThemeConfigurationTests(unittest.TestCase):
     def test_numeric_input_selection_text_has_contrast_in_both_themes(self):
         for mode in ("light", "dark"):
             css = stylesheet(mode)
-            self.assertIn("selection-color: {selection_text}", css)
-            self.assertIn("QAbstractSpinBox QLineEdit", css)
+            app_styles = css[css.rfind("QLineEdit, QComboBox, QSpinBox"):]
+            self.assertIn("selection-background-color:", app_styles)
+            self.assertIn("selection-color: #FFFFFF", app_styles)
+            self.assertIn("QAbstractSpinBox QLineEdit", app_styles)
 
     def test_stylesheet_uses_requested_font_and_density(self):
         qss = stylesheet("dark", {"font_family": "Tahoma", "font_size": 15, "density": "compact"})
