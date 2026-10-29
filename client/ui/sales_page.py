@@ -918,7 +918,8 @@ class SalesPage(QFrame):
     def _populate_category_tabs(self, preferred_id=None):
         bar = self.category_tabs
         bar.blockSignals(True)
-        bar.clear()
+        while bar.count():
+            bar.removeTab(bar.count() - 1)
         bar.addTab("همهٔ دسته‌ها")
         bar.setTabData(0, None)
         target_index = 0
