@@ -7,7 +7,7 @@ try:
 except ImportError:
     keyring = None
 
-from PySide6.QtCore import Qt, QTimer, QSettings, Signal, Slot
+from PySide6.QtCore import Qt, QTimer, QSettings, Signal, Slot, QSize
 from PySide6.QtWidgets import (
     QCheckBox, QFrame, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QVBoxLayout, QWidget, QProgressBar, QScrollArea,
@@ -126,9 +126,10 @@ class AuthPage(QWidget):
         password_row_layout.setContentsMargins(0, 0, 0, 0)
         password_row_layout.setSpacing(6)
         password_row_layout.addWidget(self.password, 1)
-        self.password_visibility_button = QPushButton("نمایش")
+        self.password_visibility_button = QPushButton()
         self.password_visibility_button.setCheckable(True)
-        self.password_visibility_button.setMaximumWidth(88)
+        self.password_visibility_button.setFixedSize(34, 34)
+        self.password_visibility_button.setIconSize(QSize(18, 18))
         self.password_visibility_button.setAccessibleName("نمایش رمز عبور")
         self.password_visibility_button.setToolTip("نمایش یا مخفی‌کردن رمز عبور")
         set_button_icon(self.password_visibility_button, "eye", mode)
@@ -159,6 +160,21 @@ class AuthPage(QWidget):
         self.setup_button.clicked.connect(self.open_setup_wizard)
         self.setup_button.hide()
         card_layout.addWidget(self.setup_button)
+
+        # Explicit focus order is stable even though the password row contains
+        # a nested widget and an icon-only button.
+        QWidget.setTabOrder(self.server_url, self.connect_button)
+        QWidget.setTabOrder(self.connect_button, self.username)
+        QWidget.setTabOrder(self.username, self.password)
+        QWidget.setTabOrder(self.password, self.password_visibility_button)
+        QWidget.setTabOrder(self.password_visibility_button, self.client_name)
+        QWidget.setTabOrder(self.client_name, self.remember_session_checkbox)
+        QWidget.setTabOrder(self.remember_session_checkbox, self.login_button)
+        QWidget.setTabOrder(self.login_button, self.setup_button)
+        self.username.returnPressed.connect(
+            lambda: self.password.setFocus(Qt.FocusReason.TabFocusReason)
+        )
+        self.login_button.setDefault(True)
 
         self.pending_panel = QFrame()
         self.pending_panel.setObjectName("Card")
@@ -208,7 +224,6 @@ class AuthPage(QWidget):
         self.password.setEchoMode(
             QLineEdit.EchoMode.Normal if visible else QLineEdit.EchoMode.Password
         )
-        self.password_visibility_button.setText("مخفی‌کردن" if visible else "نمایش")
         self.password_visibility_button.setAccessibleName(
             "مخفی‌کردن رمز عبور" if visible else "نمایش رمز عبور"
         )
@@ -238,9 +253,15 @@ class AuthPage(QWidget):
             ticket = worker.ticket
             worker.finished.connect(lambda: busy.setEnabled(True))
 
+    @staticmethod
+    def _display_error(error):
+        """Show the API's parsed user-facing detail instead of its request path."""
+        detail = getattr(error, "detail", None)
+        return str(detail).strip() if detail else str(error)
+
     @Slot(str, object)
     def _default_failure(self, _ticket, error):
-        self.message.setText(str(error))
+        self.message.setText(self._display_error(error))
         self.server_status.setText("●  اتصال یا درخواست ناموفق بود")
 
     def _cleanup(self, ticket):
@@ -298,7 +319,7 @@ class AuthPage(QWidget):
     @Slot(str, object)
     def _connection_failed(self, _ticket, error):
         self.server_status.setText("●  سرور در دسترس نیست")
-        self.message.setText(str(error))
+        self.message.setText(self._display_error(error))
 
     @staticmethod
     def _keyring_account(server_url):
@@ -412,7 +433,7 @@ class AuthPage(QWidget):
         self.login_button.setEnabled(True)
         self.server_status.setText("●  ورود دوباره لازم است")
         self.message.setText("نشست ذخیره‌شده دیگر معتبر نیست؛ رمز عبور را وارد کنید." if status_code == 401 else
-                             "نشست قبلی بازیابی نشد؛ اتصال را بررسی کنید. {}".format(error))
+                             "نشست قبلی بازیابی نشد؛ اتصال را بررسی کنید. {}".format(self._display_error(error)))
 
     def login(self):
         if self.api is None:
@@ -449,7 +470,10 @@ class AuthPage(QWidget):
             self.server_status.setText("●  درخواست ورود ثبت شد؛ منتظر تأیید")
             self.poll_timer.start()
             return
-        self.message.setText(payload.get("message") or "ورود تکمیل نشد.")
+        message = payload.get("message") or payload.get("detail") or payload.get("error")
+        if isinstance(message, dict):
+            message = message.get("message") or message.get("detail") or message.get("error")
+        self.message.setText(str(message) if message else "ورود تکمیل نشد.")
 
     def poll_activation(self):
         if not self.pending_ticket or self._poll_running or self.api is None:
@@ -484,7 +508,7 @@ class AuthPage(QWidget):
     @Slot(str, object)
     def _activation_failed(self, _ticket, error):
         self._poll_running = False
-        self.pending_detail.setText("بررسی وضعیت انجام نشد: {}".format(error))
+        self.pending_detail.setText("بررسی وضعیت انجام نشد: {}".format(self._display_error(error)))
 
     def stop_pending(self):
         self.poll_timer.stop()

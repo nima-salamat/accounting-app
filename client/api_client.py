@@ -1,10 +1,107 @@
 """Small thread-aware HTTP client for the standalone accounting API."""
 import ipaddress
+import re
 import threading
 import uuid
 from urllib.parse import urlsplit
 
 import requests
+
+
+_API_FIELD_LABELS = {
+    "username": "نام کاربری",
+    "password": "رمز عبور",
+    "password_confirmation": "تکرار رمز عبور",
+    "client_name": "نام دستگاه",
+    "company_name": "نام کسب‌وکار",
+    "email": "ایمیل",
+    "quantity": "تعداد",
+    "price": "قیمت",
+}
+
+
+def _humanize_validation_message(message):
+    """Translate common Pydantic validation text while preserving useful backend details."""
+    value = str(message or "").strip()
+    if value.startswith("Value error, "):
+        value = value[len("Value error, "):].strip()
+    if value.lower() in {"field required", "missing"}:
+        return "این فیلد الزامی است."
+    if value.lower() == "input should be a valid string":
+        return "مقدار واردشده باید متن باشد."
+    if value.lower() == "input should be a valid integer":
+        return "مقدار واردشده باید عدد صحیح باشد."
+    if value.lower() == "input should be a valid number":
+        return "مقدار واردشده باید عدد باشد."
+    if value.lower() == "input should be a valid boolean":
+        return "مقدار واردشده باید درست یا نادرست باشد."
+    match = re.search(r"should have at least (\\d+) characters", value, re.IGNORECASE)
+    if match:
+        return "باید حداقل {} نویسه باشد.".format(match.group(1))
+    match = re.search(r"should have at most (\\d+) characters", value, re.IGNORECASE)
+    if match:
+        return "باید حداکثر {} نویسه باشد.".format(match.group(1))
+    return value
+
+
+def _format_error_value(value):
+    """Flatten nested FastAPI errors without ever echoing submitted input/password values."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, list):
+        messages = []
+        for item in value:
+            rendered = _format_error_value(item)
+            if rendered and rendered not in messages:
+                messages.append(rendered)
+        return "؛ ".join(messages)
+    if isinstance(value, dict):
+        raw_message = (
+            value.get("msg") or value.get("message")
+            or value.get("detail") or value.get("error_description")
+        )
+        if raw_message is not None:
+            message = _format_error_value(raw_message)
+            location = value.get("loc") or value.get("field")
+            if isinstance(location, (list, tuple)):
+                parts = [
+                    str(part) for part in location
+                    if str(part).lower() not in {"body", "query", "path", "header", "cookie"}
+                    and not str(part).isdigit()
+                ]
+                field = parts[-1] if parts else ""
+            else:
+                field = str(location or "")
+            if field:
+                label = _API_FIELD_LABELS.get(field, field.replace("_", " "))
+                return "{}: {}".format(label, _humanize_validation_message(message))
+            return _humanize_validation_message(message)
+        for key in (
+            "detail", "message", "error_description", "error",
+            "errors", "non_field_errors",
+        ):
+            if key in value:
+                rendered = _format_error_value(value.get(key))
+                if rendered:
+                    return rendered
+    return ""
+
+
+def _extract_api_error_message(payload, raw_text="", status_code=None):
+    """Read both FastAPI's detail shape and common message/error shapes."""
+    detail = _format_error_value(payload)
+    if detail:
+        return detail
+    text = str(raw_text or "").strip()
+    if text and not text.startswith("<"):
+        return text[:500]
+    if status_code:
+        return "درخواست با خطای HTTP {} ناموفق بود.".format(status_code)
+    return "درخواست ناموفق بود."
 
 
 class ApiError(RuntimeError):
@@ -104,14 +201,9 @@ class AccountingApiClient:
         except ValueError:
             payload = None
         if not response.ok:
-            detail = payload.get("detail") if isinstance(payload, dict) else None
-            if isinstance(detail, list):
-                detail = "؛ ".join(
-                    str(item.get("msg", item)) if isinstance(item, dict) else str(item)
-                    for item in detail
-                )
-            if not detail:
-                detail = "درخواست ناموفق بود."
+            detail = _extract_api_error_message(
+                payload, getattr(response, "text", ""), response.status_code
+            )
             if response.status_code == 401:
                 self.clear_session()
             raise ApiError(response.status_code, str(detail), method, path)
@@ -261,7 +353,9 @@ class AccountingApiClient:
         except ValueError:
             payload = {}
         if not response.ok:
-            detail = payload.get("detail", "ارسال عکس ناموفق بود.") if isinstance(payload, dict) else "ارسال عکس ناموفق بود."
+            detail = _extract_api_error_message(
+                payload, getattr(response, "text", ""), response.status_code
+            )
             raise ApiError(response.status_code, str(detail), "POST", "/products/{}/image".format(product_id))
         return payload
 

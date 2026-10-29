@@ -426,7 +426,8 @@ class InvoiceTemplatesPage(QFrame):
         business_layout.addLayout(business_form)
         properties_layout.addWidget(business_card)
 
-        self.invoice_number_card = QFrame()
+        self.invoice_number_card = QFrame(self)
+        self.invoice_number_card.hide()
         self.invoice_number_card.setObjectName("Card")
         number_layout = QVBoxLayout(self.invoice_number_card)
         number_layout.setContentsMargins(12, 12, 12, 12)
@@ -484,7 +485,9 @@ class InvoiceTemplatesPage(QFrame):
         number_help.setObjectName("PageSubtitle")
         number_help.setWordWrap(True)
         number_layout.addWidget(number_help)
-        properties_layout.insertWidget(0, self.invoice_number_card)
+        # Numbering is configured on its own navigation page. Keep these hidden
+        # controls only so legacy template payloads continue to round-trip safely.
+        self.invoice_number_card.hide()
         properties_layout.addStretch(1)
         properties_scroll.setWidget(properties)
 
@@ -775,7 +778,6 @@ class InvoiceTemplatesPage(QFrame):
         if kind == self._template_kind:
             return
         self._template_kind = kind
-        self.invoice_number_card.setVisible(kind == "invoice")
         if self.window.api is None:
             self._load_template(self._local_default_for_kind(kind))
             return
@@ -1088,6 +1090,24 @@ class InvoiceTemplatesPage(QFrame):
             )
             self.invoice_number_custom_format.setText(stored)
         self._update_numbering_builder_visibility()
+
+    def sync_invoice_numbering(self, number_format, padding):
+        """Synchronize hidden compatibility fields after the dedicated settings page saves."""
+        if self._template_kind != "invoice":
+            return
+        was_loading = self._loading
+        self._loading = True
+        try:
+            self._restore_invoice_number_builder(number_format)
+            try:
+                normalized_padding = int(padding)
+            except (TypeError, ValueError):
+                normalized_padding = DEFAULT_INVOICE_NUMBER_PADDING
+            self.invoice_number_padding.setValue(max(1, min(12, normalized_padding)))
+        finally:
+            self._loading = was_loading
+        if not was_loading:
+            self._update_invoice_number_example()
 
     def _numbering_builder_changed(self, *_args):
         if self._loading:

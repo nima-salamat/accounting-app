@@ -25,6 +25,7 @@ from client.ui.sales_page import SalesPage
 from client.ui.settings_page import SettingsPage
 from client.ui.permissions_page import PermissionsPage
 from client.ui.invoice_templates_page import InvoiceTemplatesPage
+from client.ui.invoice_numbering_page import InvoiceNumberingPage
 from client.ui.inventory_page import InventoryPage
 from client.ui.returns_page import ReturnsPage
 from client.ui.accounting_pages import JournalsPage, FiscalYearsPage, AccountingReportsPage, AuditPage
@@ -193,6 +194,7 @@ class AccountingMainWindow(QMainWindow):
         self._make_nav(layout,"kiosk","مدیریت کیوسک","▣",False)
         self._make_nav(layout,"schemas","مدل‌ها و فیلدهای سفارشی","⌘",False)
         self._make_nav(layout,"invoices","قالب فاکتور","▤",False)
+        self._make_nav(layout,"invoice_numbering","شماره‌گذاری فاکتور","№",False)
         layout.addStretch(1)
         self.sidebar_user=QLabel("وارد نشده");self.sidebar_user.setObjectName("SidebarSub")
         layout.addWidget(self.sidebar_user)
@@ -210,7 +212,8 @@ class AccountingMainWindow(QMainWindow):
             "accounting_reports":"fa5s.chart-column", "audit":"fa5s.clipboard-list",
             "admin":"fa5s.chart-line", "sessions":"fa5s.laptop",
             "users":"fa5s.users", "permissions":"fa5s.user-shield",
-            "schemas":"fa5s.sliders-h", "invoices":"fa5s.file-invoice", "kiosk":"fa5s.tablet-alt",
+            "schemas":"fa5s.sliders-h", "invoices":"fa5s.file-invoice",
+            "invoice_numbering":"fa5s.list-ol", "kiosk":"fa5s.tablet-alt",
         }
         button=QPushButton(label if qta else "{}   {}".format(icon,label))
         button.setObjectName("NavigationButton")
@@ -246,7 +249,7 @@ class AccountingMainWindow(QMainWindow):
             ("inventory", "کالا و انبار", "▦", [("products", "محصولات"), ("categories", "دسته‌بندی‌ها"), ("warehouse", "اقلام انبار"), ("inventory", "موجودی کالا"), ("stocktakes", "انبارگردانی"), ("kiosk", "مدیریت کیوسک")]),
             ("accounting", "حسابداری", "≡", [("purchases", "خریدها، طرف‌حساب و هزینه"), ("checks_in", "چک‌های دریافتی"), ("checks_out", "چک‌های پرداختی"), ("journals", "اسناد حسابداری"), ("fiscal_years", "سال مالی"), ("accounting_reports", "گزارش‌های مالی"), ("audit", "سوابق فعالیت")]),
             ("management", "مدیریت", "⚙", [("admin", "پنل مدیریت"), ("sessions", "نشست‌ها و فعال‌سازی"), ("users", "کاربران"), ("permissions", "نقش‌ها و مجوزها"), ("schemas", "فیلدهای سفارشی")]),
-            ("templates", "قالب و تنظیمات", "⚑", [("invoices", "قالب فاکتور"), ("settings", "تنظیمات برنامه")]),
+            ("templates", "قالب و تنظیمات", "⚑", [("invoices", "قالب فاکتور"), ("invoice_numbering", "شماره‌گذاری فاکتور"), ("settings", "تنظیمات برنامه")]),
         ]
         self._workbar_groups = groups
         for group_id, label, glyph, _entries in groups:
@@ -406,6 +409,7 @@ class AccountingMainWindow(QMainWindow):
         self.schemas_page=SchemaPage(self)
         self.permissions_page=PermissionsPage(self)
         self.invoice_templates_page=InvoiceTemplatesPage(self)
+        self.invoice_numbering_page=InvoiceNumberingPage(self)
         self.returns_page=ReturnsPage(self)
         self.journals_page=JournalsPage(self)
         self.fiscal_years_page=FiscalYearsPage(self)
@@ -431,6 +435,7 @@ class AccountingMainWindow(QMainWindow):
             ("admin","پنل مدیریت",self.admin_page),("sessions","نشست‌ها و فعال‌سازی",self.sessions_page),
             ("users","کاربران و دسترسی‌ها",self.users_page),("permissions","نقش‌ها و مجوزها",self.permissions_page),
             ("schemas","فیلدهای سفارشی",self.schemas_page),("invoices","قالب فاکتور",self.invoice_templates_page),
+            ("invoice_numbering","شماره‌گذاری فاکتور",self.invoice_numbering_page),
             ("settings","تنظیمات",self.settings_page),
         ]
         for key,title,page in definitions:
@@ -461,7 +466,8 @@ class AccountingMainWindow(QMainWindow):
             "users":("کاربران","فعال‌سازی حساب و سیاست ورود"),
             "permissions":("نقش‌ها و مجوزها","تعیین مجوز مشاهده، ایجاد، ویرایش و حذف هر منبع"),
             "schemas":("مدل‌ها و فیلدهای سفارشی","مدیریت مدل‌ها و فیلدهای توسعه‌پذیر"),
-            "invoices":("قالب فاکتور","طراحی قالب چاپ مشترک کلاینت و صندوق فروش"),
+            "invoices":("قالب فاکتور","طراحی چیدمان و ظاهر برگه‌های چاپ"),
+            "invoice_numbering":("شماره‌گذاری فاکتور","تنظیم الگوی شماره و شمارنده به‌صورت مستقل از قالب چاپ"),
             "settings":("تنظیمات","تنظیم اتصال و ظاهر برنامه"),
         }
 
@@ -500,7 +506,8 @@ class AccountingMainWindow(QMainWindow):
             "warehouse": ("warehouse", "read"), "inventory": ("warehouse", "read"), "stocktakes": ("warehouse", "read"),
             "checks_in": ("checks_in", "read"),
             "checks_out": ("checks_out", "read"), "receipts": ("receipts", "read"),
-            "invoices": ("invoices", "read"), "schemas": ("schemas", "read"),
+            "invoices": ("invoices", "read"), "invoice_numbering": ("invoices", "read"),
+            "schemas": ("schemas", "read"),
             "purchases": ("purchase_invoices", "read"), "kiosk": ("kiosk", "read"),
             "returns": ("returns", "read"), "journals": ("journals", "read"),
             "fiscal_years": ("fiscal_years", "read"),
@@ -540,6 +547,7 @@ class AccountingMainWindow(QMainWindow):
         self.users_page.set_admin(admin)
         self.permissions_page.set_permissions(user)
         self.invoice_templates_page.set_permissions(user)
+        self.invoice_numbering_page.set_permissions(user)
         self.inventory_page.set_permissions(user)
         self.stocktakes_page.set_permissions(user)
         self.purchasing_page.set_permissions(user)

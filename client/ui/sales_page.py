@@ -864,6 +864,13 @@ class SalesPage(QFrame):
             return max(1, min(6, self._product_columns))
         return max(1, min(6, width // 165))
 
+    def _horizontal_column_count(self, width):
+        """Use fewer, wider cells for horizontal cards so a lone card stays compact."""
+        width = max(260, int(width))
+        if self._product_columns:
+            return max(1, min(6, self._product_columns))
+        return max(1, min(4, width // 340))
+
     def _schedule_product_table_refit(self):
         """Refit now and after delayed Qt layout/state transitions."""
         if getattr(self, "_product_layout_mode", "grid") != "table":
@@ -883,10 +890,14 @@ class SalesPage(QFrame):
         if self._product_layout_mode == "table":
             self._schedule_product_table_refit()
             return
-        if not getattr(self, "products", None) or self._product_layout_mode != "grid":
+        if not getattr(self, "products", None) or self._product_layout_mode not in {"grid", "horizontal"}:
             return
         width = max(260, self.catalog_scroll.viewport().width())
-        columns = self._grid_column_count(width)
+        columns = (
+            self._horizontal_column_count(width)
+            if self._product_layout_mode == "horizontal"
+            else self._grid_column_count(width)
+        )
         if columns != self._rendered_columns:
             self._render_products()
 
@@ -1590,8 +1601,10 @@ class SalesPage(QFrame):
 
         self.catalog_results_stack.setCurrentWidget(self.catalog_scroll)
         width = max(260, self.catalog_scroll.viewport().width())
-        if self._product_layout_mode in {"horizontal", "list"}:
+        if self._product_layout_mode == "list":
             columns = 1
+        elif self._product_layout_mode == "horizontal":
+            columns = self._horizontal_column_count(width)
         else:
             columns = self._grid_column_count(width)
         self._rendered_columns = columns
@@ -1620,7 +1633,20 @@ class SalesPage(QFrame):
 
         for index, product in enumerate(self.products):
             card = self._build_product_card(product)
-            self.product_grid.addWidget(card, index // columns, index % columns)
+            if self._product_layout_mode == "horizontal":
+                # Horizontal cards are content-sized, not full-width list rows.
+                # Alignment prevents QGridLayout from stretching a lone card across
+                # the entire catalog when the last row has unused columns.
+                card.setMaximumWidth(420)
+                card.setSizePolicy(
+                    QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
+                )
+                self.product_grid.addWidget(
+                    card, index // columns, index % columns,
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
+                )
+            else:
+                self.product_grid.addWidget(card, index // columns, index % columns)
         self.product_grid.setRowStretch((len(self.products) // columns) + 1, 1)
 
     def _build_product_table_image_cell(self, product, side, zoom_images=None):

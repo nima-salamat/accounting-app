@@ -620,6 +620,30 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.page.product_table.doubleClicked.emit(self.page.product_table.model().index(0, 1))
         self.assertEqual(self.page.collect_items()[0]["quantity"], 2)
 
+    def test_horizontal_layout_keeps_a_single_card_compact_and_uses_wide_columns(self):
+        self.page.refresh_products()
+        self.page.products = self.page.products[:1]
+        self.page.resize(1180, 780)
+        self.page._apply_product_display_settings("horizontal", True, "comfortable", 0)
+        self.app.processEvents()
+
+        card = self.page.product_grid.itemAt(0).widget()
+        viewport_width = self.page.catalog_scroll.viewport().width()
+        self.assertLess(card.width(), viewport_width)
+        self.assertLessEqual(card.width(), 420)
+        self.assertEqual(
+            self.page._rendered_columns,
+            self.page._horizontal_column_count(viewport_width),
+        )
+
+        previous_columns = self.page._rendered_columns
+        self.page.resize(760, 780)
+        self.app.processEvents()
+        self.page._reflow_products_for_resize()
+        self.app.processEvents()
+        self.assertGreaterEqual(self.page._rendered_columns, 1)
+        self.assertLessEqual(self.page._rendered_columns, previous_columns)
+
     def test_committed_search_shows_results_in_catalog_and_closes_suggestions(self):
         self.page.search.setText("item-10")
         self.page._request_search_suggestions("item-10", 1)
