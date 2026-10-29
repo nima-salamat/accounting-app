@@ -80,6 +80,7 @@ class SalesPage(QFrame):
         self.show_cart_button.setObjectName("PrimaryButton")
         self.show_cart_button.clicked.connect(lambda: self._set_cart_panel_visible(True))
         self.show_cart_button.hide()
+        set_button_icon(self.show_cart_button, "cart", getattr(self.window, "mode", "light"))
         header.addWidget(self.show_cart_button)
         root.addLayout(header)
 
@@ -233,6 +234,7 @@ class SalesPage(QFrame):
         header.addWidget(self.cart_status_label)
         self.cart_panel_toggle = QPushButton("جمع‌کردن")
         self.cart_panel_toggle.setToolTip("جمع‌کردن پنل سبد خرید")
+        set_button_icon(self.cart_panel_toggle, "minus", getattr(self.window, "mode", "light"))
         self.cart_panel_toggle.clicked.connect(lambda: self._set_cart_panel_visible(False))
         header.addWidget(self.cart_panel_toggle)
         layout.addLayout(header)
