@@ -1661,7 +1661,7 @@ class SalesPage(QFrame):
             if not show_add_button and key:
                 card.setProperty("salesProductKey", key)
 
-        if not horizontal:
+        if mode == "grid":
             if image is not None:
                 card_layout.addWidget(image)
             card_layout.addWidget(name)
@@ -1672,10 +1672,12 @@ class SalesPage(QFrame):
                 card_layout.addWidget(stock_badge)
             if add is not None:
                 card_layout.addWidget(add)
-        else:
+        elif mode == "list":
+            # Single full-width row with a dedicated add-action column. Keeping the
+            # action outside the details layout prevents it from being clipped.
             if image is not None:
                 card_layout.addWidget(image, 0, Qt.AlignmentFlag.AlignVCenter)
-            info = QWidget()
+            info = QWidget(card)
             info.setObjectName("SalesProductInfo")
             info_layout = QVBoxLayout(info)
             info_layout.setContentsMargins(3, 0, 3, 0)
@@ -1683,30 +1685,49 @@ class SalesPage(QFrame):
             info_layout.addWidget(name)
             if category is not None:
                 info_layout.addWidget(category)
-            if mode == "horizontal":
-                details_widget = QWidget(info)
-                details_widget.setObjectName("SalesProductDetails")
-                details_widget.setProperty("stackStockBelowPrice", not show_add_button)
-                details = QHBoxLayout(details_widget)
-                details.setContentsMargins(0, 0, 0, 0)
-                details.setSpacing(12 if not compact else 7)
-                details.addWidget(price)
-                if stock_badge is not None and stock_badge.objectName() == "SalesProductStock":
-                    details.addWidget(stock_badge)
-                details.addStretch(1)
-                details_widget.installEventFilter(self)
-                info_layout.addWidget(details_widget)
-                if add is not None:
-                    info_layout.addWidget(add, 0, Qt.AlignmentFlag.AlignLeft)
-            else:
-                info_layout.addWidget(price)
-                if stock_badge is not None and stock_badge.objectName() == "SalesProductStock":
-                    info_layout.addWidget(stock_badge)
-                card_layout.addWidget(info, 1)
-                if add is not None:
-                    card_layout.addWidget(add, 0, Qt.AlignmentFlag.AlignVCenter)
-            if mode == "horizontal":
-                card_layout.addWidget(info, 1)
+            details_widget = QWidget(info)
+            details_widget.setObjectName("SalesProductDetails")
+            details_widget.setProperty("stackStockBelowPrice", not show_add_button)
+            details = QHBoxLayout(details_widget)
+            details.setContentsMargins(0, 0, 0, 0)
+            details.setSpacing(7 if compact else 10)
+            details.addWidget(price)
+            if stock_badge is not None and stock_badge.objectName() == "SalesProductStock":
+                details.addWidget(stock_badge)
+            details.addStretch(1)
+            details_widget.installEventFilter(self)
+            info_layout.addWidget(details_widget)
+            card_layout.addWidget(info, 1)
+            if add is not None:
+                add.setMinimumWidth(88)
+                add.setMaximumWidth(112)
+                card_layout.addWidget(add, 0, Qt.AlignmentFlag.AlignVCenter)
+        else:
+            if image is not None:
+                card_layout.addWidget(image, 0, Qt.AlignmentFlag.AlignVCenter)
+            info = QWidget(card)
+            info.setObjectName("SalesProductInfo")
+            info_layout = QVBoxLayout(info)
+            info_layout.setContentsMargins(3, 0, 3, 0)
+            info_layout.setSpacing(2 if compact else 4)
+            info_layout.addWidget(name)
+            if category is not None:
+                info_layout.addWidget(category)
+            details_widget = QWidget(info)
+            details_widget.setObjectName("SalesProductDetails")
+            details_widget.setProperty("stackStockBelowPrice", not show_add_button)
+            details = QHBoxLayout(details_widget)
+            details.setContentsMargins(0, 0, 0, 0)
+            details.setSpacing(12 if not compact else 7)
+            details.addWidget(price)
+            if stock_badge is not None and stock_badge.objectName() == "SalesProductStock":
+                details.addWidget(stock_badge)
+            details.addStretch(1)
+            details_widget.installEventFilter(self)
+            info_layout.addWidget(details_widget)
+            if add is not None:
+                info_layout.addWidget(add, 0, Qt.AlignmentFlag.AlignLeft)
+            card_layout.addWidget(info, 1)
 
         if stock_badge is not None and stock_badge.objectName() == "SalesProductStockCircle":
             self._position_product_stock_circle(card)
