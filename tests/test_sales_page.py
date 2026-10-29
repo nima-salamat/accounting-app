@@ -5,8 +5,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import unittest
 from PySide6.QtCore import Qt, QSettings
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
+from client.ui.invoice_dialog import InvoicePreviewWidget
+from client.ui.invoice_render import DEFAULT_TEMPLATE
 from client.ui.sales_page import SalesPage
 
 
@@ -354,6 +356,31 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.assertEqual(self.page.catalog_panel.layout().indexOf(self.page.search_suggestions_frame), -1)
         self.assertTrue(self.page.search_suggestions_frame.isVisible())
         self.assertGreater(self.page.search_suggestions_frame.height(), 0)
+
+    def test_inline_invoice_preview_has_mouse_zoom_and_page_fit_controls(self):
+        preview = InvoicePreviewWidget()
+        receipt = {
+            "id": "receipt-preview",
+            "day_receipt_id": 101,
+            "total_price": 150,
+            "payed": True,
+            "items": [{
+                "product_id": "product-1",
+                "product_name": "item-1",
+                "sell_price": 150,
+                "quantity": 1,
+            }],
+        }
+        preview.set_invoice(receipt, DEFAULT_TEMPLATE)
+        self.app.processEvents()
+        self.assertTrue(preview.preview.dragMode() == preview.preview.DragMode.ScrollHandDrag)
+        self.assertIsNotNone(preview._page_item)
+        self.assertIn("A4", preview.page_info.text())
+        scale_before = preview.preview.transform().m11()
+        preview._zoom(1.2)
+        self.assertGreater(preview.preview.transform().m11(), scale_before)
+        preview.fit_width()
+        preview.close()
 
     def test_recent_invoices_are_a_mode_with_inline_preview(self):
         self.page.refresh_products()

@@ -219,6 +219,12 @@ def stylesheet(mode="light", design=None):
     QFrame#POSWorkspace {{ background: transparent; border: none; }}
     QFrame#SalesProductCard, QFrame#SalesCartItem {{ background: {surface}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
     QPushButton#SalesToolbarButton {{ min-height: 30px; max-height: 32px; padding: 5px 9px; border-radius: 7px; }}
+    QPushButton#SalesToolbarButton:checked {{ background: {primary}; color: #FFFFFF; border-color: {primary}; }}
+    QPushButton#SalesCartToggleButton {{ background: {surface_alt}; color: {primary}; border: 1px solid {border}; border-radius: 7px; padding: 0; font-size: 22px; font-weight: 800; }}
+    QPushButton#SalesCartToggleButton:hover {{ background: {highlight}; border-color: {primary}; color: {primary}; }}
+    QFrame#RecentInvoicesWorkspace {{ background: transparent; border: none; }}
+    QFrame#InvoicePreviewWorkspace {{ background: {surface_alt}; border: 1px solid {border}; border-radius: {corner_radius}px; }}
+    QSplitter#RecentInvoicesSplitter::handle {{ background: {border}; width: 6px; margin: 3px 0; border-radius: 3px; }}
     QPushButton#SalesDisplaySettingsButton {{ background: {surface_alt}; color: {text}; border: 1px solid {border}; border-radius: 8px; padding: 0; min-width: 34px; max-width: 34px; min-height: 34px; max-height: 34px; font-size: 18px; font-weight: 800; }}
     QPushButton#SalesDisplaySettingsButton:hover {{ background: {highlight}; border-color: {primary}; color: {primary}; }}
     QPushButton#SalesQtyButton {{ background: {surface_alt}; color: {text}; border: 1px solid {border}; border-radius: 7px; padding: 0; font-size: 16px; font-weight: 800; }}
