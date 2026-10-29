@@ -6,6 +6,9 @@ from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget,
 )
 
+from client.ui.icons import apply_button_icons
+from client.ui.theme import current_theme_mode
+
 
 class ImageFilePicker(QWidget):
     """Optional local image selection; the selected file is uploaded separately to the server."""
@@ -95,6 +98,7 @@ class RecordDialog(QDialog):
         buttons.accepted.connect(self._validate_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+        apply_button_icons(self, current_theme_mode())
 
     def _validate_and_accept(self):
         try:
