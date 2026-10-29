@@ -113,45 +113,40 @@ class InvoiceDesignerTests(unittest.TestCase):
         self.assertEqual(self.page._template_kind, "return_slip")
         self.assertEqual(self.page.paper_size.currentData(), "A5")
 
-    def test_invoice_number_settings_are_included_in_template_and_restore(self):
-        self.page.invoice_number_style.setCurrentIndex(
-            self.page.invoice_number_style.findData("prefix_date_daily")
-        )
-        self.page.invoice_number_prefix.setText("NUM")
-        self.page.invoice_number_padding.setValue(5)
-        values = self.page._values()
-        self.assertEqual(values["invoice_number_format"], "NUM-{YYYY}-{MM}-{DD}-{NUM}")
-        self.assertEqual(values["invoice_number_padding"], 5)
-        self.assertIn("NUM-۲۰۲۶-۱۰-۲۹-۰۱۰۰۱", self.page.invoice_number_example.text())
-
-        # Common existing templates are imported back into simple controls.
-        self.page._load_template({
-            **DEFAULT_TEMPLATE, "invoice_number_format": "{SEQ}", "invoice_number_padding": 7,
-        })
-        self.assertEqual(self.page.invoice_number_style.currentData(), "global")
-        self.assertEqual(self.page.invoice_number_padding.value(), 7)
-        self.assertFalse(self.page.invoice_number_custom_format.isVisible())
-
-    def test_invoice_numbering_builder_has_readable_choices_and_advanced_fallback(self):
-        choices = [
-            self.page.invoice_number_style.itemData(index)
-            for index in range(self.page.invoice_number_style.count())
-        ]
-        self.assertIn("date_daily", choices)
-        self.assertIn("prefix_date_daily", choices)
-        self.assertIn("global", choices)
-        self.assertIn("custom", choices)
+    def test_numbering_metadata_is_preserved_without_designer_controls(self):
+        self.assertFalse(hasattr(self.page, "invoice_number_card"))
+        for name in (
+            "invoice_number_style", "invoice_number_prefix",
+            "invoice_number_date_format", "invoice_number_separator",
+            "invoice_number_padding", "invoice_number_custom_format",
+        ):
+            self.assertFalse(hasattr(self.page, name), name)
 
         self.page._load_template({
             **DEFAULT_TEMPLATE,
-            "invoice_number_format": "2026-{MM}-{D}-NUM-{NUM}",
+            "invoice_number_format": "{SEQ}",
+            "invoice_number_padding": 7,
+        })
+        values = self.page._values()
+        self.assertEqual(values["invoice_number_format"], "{SEQ}")
+        self.assertEqual(values["invoice_number_padding"], 7)
+
+        self.page.sync_invoice_numbering("PREFIX-{SEQ}", 6)
+        values = self.page._values()
+        self.assertEqual(values["invoice_number_format"], "PREFIX-{SEQ}")
+        self.assertEqual(values["invoice_number_padding"], 6)
+
+    def test_custom_numbering_pattern_round_trips_without_numbering_ui(self):
+        pattern = "2026-{MM}-{D}-NUM-{NUM}"
+        self.page._load_template({
+            **DEFAULT_TEMPLATE,
+            "invoice_number_format": pattern,
             "invoice_number_padding": 4,
         })
-        self.assertEqual(self.page.invoice_number_style.currentData(), "custom")
-        self.assertEqual(
-            self.page.invoice_number_custom_format.text(), "2026-{MM}-{D}-NUM-{NUM}"
-        )
-        self.assertTrue(self.page.custom_format_label.isVisible() or not self.page.isVisible())
+        values = self.page._values()
+        self.assertEqual(values["invoice_number_format"], pattern)
+        self.assertEqual(values["invoice_number_padding"], 4)
+        self.assertFalse(hasattr(self.page, "invoice_number_custom_format"))
 
     def test_custom_elements_can_be_added_duplicated_and_removed(self):
         before = len(self.page._values()["elements"])
