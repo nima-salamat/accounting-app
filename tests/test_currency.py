@@ -49,8 +49,8 @@ class CurrencyDisplayTests(unittest.TestCase):
         html = render_invoice_html(receipt, DEFAULT_TEMPLATE)
         self.assertIn("قیمت واحد (ریال)", html)
         self.assertIn("جمع (ریال)", html)
-        self.assertIn("1,000", html)
-        self.assertIn("2,000 ریال", html)
+        self.assertIn("۱,۰۰۰", html)
+        self.assertIn("۲,۰۰۰ ریال", html)
 
     def test_conversion_preserves_the_internal_toman_amount(self):
         set_currency_unit("rial")
