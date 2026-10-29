@@ -775,7 +775,7 @@ class SalesPage(QFrame):
                 stock_badge.style().unpolish(stock_badge)
                 stock_badge.style().polish(stock_badge)
             if button is not None:
-                button.setEnabled(not tracked or selected < stock)
+                button.setEnabled(not tracked or selected < capacity)
 
     def add_to_cart(self, product):
         """Add one unit, enforcing known stock limits without replacing server validation."""
