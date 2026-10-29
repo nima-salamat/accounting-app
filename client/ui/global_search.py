@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 )
 
 from client.ui.permissions import can_access
+from client.ui.currency import format_currency
 
 
 class GlobalSearchDialog(QDialog):
@@ -81,7 +82,7 @@ class GlobalSearchDialog(QDialog):
         if can_access(user, "products", "read"):
             page = api.list_products_page(q=query, page=1, page_size=12)
             for item in page.get("items", []):
-                add("کالا", item.get("name"), "فروش {:,.2f}".format(float(item.get("sell_price") or 0)), "products", item.get("id"))
+                add("کالا", item.get("name"), "فروش {}".format(format_currency(item.get("sell_price"))), "products", item.get("id"))
         if can_access(user, "categories", "read"):
             page = api.list_categories_page(q=query, page=1, page_size=8)
             for item in page.get("items", []):
@@ -111,7 +112,7 @@ class GlobalSearchDialog(QDialog):
                     add(
                         "فاکتور",
                         "رسید روزانهٔ {}".format(day_id),
-                        "مبلغ {:,.2f}".format(float(item.get("total_price") or 0)),
+                        "مبلغ {}".format(format_currency(item.get("total_price"))),
                         "receipts",
                         receipt_id,
                     )
