@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 from client.api_client import AccountingApiClient
 from client.ui.setup_wizard import SetupWizard
 from client.ui.theme import set_design_config, stylesheet
-from client.ui.icons import apply_button_icons
+from client.ui.icons import apply_button_icons, set_button_icon
 from client.ui.worker import ApiWorker
 
 
@@ -130,6 +130,8 @@ class AuthPage(QWidget):
         self.password_visibility_button.setCheckable(True)
         self.password_visibility_button.setMaximumWidth(88)
         self.password_visibility_button.setAccessibleName("نمایش رمز عبور")
+        self.password_visibility_button.setToolTip("نمایش یا مخفی‌کردن رمز عبور")
+        set_button_icon(self.password_visibility_button, "eye", mode)
         self.password_visibility_button.toggled.connect(self._set_password_visibility)
         password_row_layout.addWidget(self.password_visibility_button)
         self.client_name = QLineEdit(socket.gethostname() or "Desktop client")
@@ -210,6 +212,7 @@ class AuthPage(QWidget):
         self.password_visibility_button.setAccessibleName(
             "مخفی‌کردن رمز عبور" if visible else "نمایش رمز عبور"
         )
+        set_button_icon(self.password_visibility_button, "eye_slash" if visible else "eye", self.mode)
 
     def set_mode(self, mode):
         self.mode = mode
