@@ -297,8 +297,11 @@ def stylesheet(mode="light", design=None):
     QPushButton#DangerButton {{ color: {danger}; border-color: {danger}; }}
     QPushButton#SalesExitButton {{ background: {danger}; color: #FFFFFF; border: 1px solid {danger}; border-radius: 7px; padding: 0px; min-width: 28px; min-height: 28px; max-width: 32px; max-height: 32px; }}
     QPushButton#SalesExitButton:hover {{ background: {danger}; border-color: {danger}; }}
-    QPushButton#SalesThemeButton, QPushButton#SalesCatalogRefreshButton, QPushButton#HistoryRefreshButton, QPushButton#SalesDeselectButton {{ padding: 0px; min-width: 28px; min-height: 28px; max-width: 32px; max-height: 32px; border-radius: 7px; }}
-    QPushButton#SalesDeselectButton:disabled {{ color: {muted}; border-color: {border}; background: {surface_alt}; }}
+    QPushButton#SalesThemeButton, QPushButton#SalesCatalogRefreshButton, QPushButton#HistoryRefreshButton, QPushButton#SalesDeselectButton, QPushButton#HistoryDeselectButton, QPushButton#HistoryPreviewToggleButton, QPushButton#HistoryExportButton {{ padding: 0px; min-width: 28px; min-height: 28px; max-width: 32px; max-height: 32px; border-radius: 7px; }}
+    QPushButton#SalesDeselectButton:disabled, QPushButton#HistoryDeselectButton:disabled {{ color: {muted}; border-color: {border}; background: {surface_alt}; }}
+    QPushButton#HistoryPreviewToggleButton:hover, QPushButton#HistoryExportButton:hover, QPushButton#HistoryDeselectButton:hover {{ background: {highlight}; border-color: {primary}; }}
+    QPushButton#HistoryInvoiceNumberPill {{ background: {highlight}; color: {primary}; border: 1px solid {border}; border-radius: {corner_radius}px; padding: 5px 10px; font-weight: 800; min-height: 26px; }}
+    QPushButton#HistoryInvoiceNumberPill:hover {{ border-color: {primary}; }}
     QPushButton#GhostButton {{ background: transparent; border-color: transparent; }}
     QPushButton#NavigationButton {{ text-align: right; background: transparent; color: {sidebar_text}; border: none; padding: 12px 14px; border-radius: {corner_radius}px; font-size: {font_size}px; font-weight: 550; }}
     QPushButton#NavigationButton:hover {{ background: rgba(255,255,255,0.08); }}
