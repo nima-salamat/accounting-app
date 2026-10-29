@@ -11,7 +11,7 @@ from accounting_app.services.invoice_numbering import (
     DEFAULT_INVOICE_NUMBER_FORMAT, DEFAULT_INVOICE_NUMBER_PADDING,
     format_invoice_number, validate_invoice_number_format,
 )
-from client.ui.currency import format_currency
+from client.ui.currency import currency_label, format_currency
 
 # Desktop POS sales and its receipts history share the admin-designed sales invoice.
 # Thermal kiosk receipts remain a separate print workflow.
@@ -437,7 +437,8 @@ def draw_invoice_element(painter, rect, element, receipt=None, template=None, *,
         capacity = max(1, int(content_rect.height() / row_h) - 1)
         selected_items = items[:capacity]
         has_more = len(items) > len(selected_items)
-        headers = ["#", "شرح کالا", "تعداد", "قیمت واحد", "جمع"]
+        unit_label = currency_label()
+        headers = ["#", "شرح کالا", "تعداد", "قیمت واحد ({})".format(unit_label), "جمع ({})".format(unit_label)]
         ratios = [0.08, 0.39, 0.14, 0.19, 0.20]
         header_rect = QRectF(content_rect.x(), content_rect.y(), content_rect.width(), row_h)
         painter.setPen(QPen(QColor(frame_color), 0.25))
@@ -663,7 +664,10 @@ def _element_html(element, receipt, config):
                 _fa_digits(index), _text(item.get("product_name") or item.get("name") or "کالای حذف‌شده"),
                 _fa_digits(quantity), _money(price), _money(total),
             ))
-        return "<div style='{}'><table class='items'><thead><tr><th>#</th><th>شرح کالا</th><th>تعداد</th><th>قیمت واحد</th><th>جمع</th></tr></thead><tbody>{}</tbody></table></div>".format(style, "".join(rows))
+        unit_label = _text(currency_label())
+        return "<div style='{}'><table class='items'><thead><tr><th>#</th><th>شرح کالا</th><th>تعداد</th><th>قیمت واحد ({})</th><th>جمع ({})</th></tr></thead><tbody>{}</tbody></table></div>".format(
+            style, unit_label, unit_label, "".join(rows)
+        )
     if kind == "company":
         detail = " · ".join(_text(v) for v in (config.get("legal_id"), config.get("phone"), config.get("address")) if v)
         detail_size = max(6, float(config["font_size"]) - 2)
