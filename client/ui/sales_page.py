@@ -739,7 +739,7 @@ class SalesPage(QFrame):
         settings = device_settings()
         if paid and settings.get("terminal_mode") == "tcp":
             self.window.run_api(
-                lambda: self._checkout_via_terminal(items, settings),
+                lambda: self._checkout_via_terminal(items, settings, seat_number=seat_number),
                 self._terminal_sale_created,
                 busy=self.submit_button,
             )
