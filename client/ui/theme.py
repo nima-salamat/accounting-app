@@ -248,6 +248,9 @@ def stylesheet(mode="light", design=None):
     QLabel#SalesProductPrice {{ color: {primary}; font-size: {product_price_size}px; font-weight: 850; }}
     QLabel#SalesProductStock {{ background: {highlight}; color: {accent}; border-radius: 7px; padding: 4px 7px; font-size: 11px; }}
     QLabel#SalesProductStock[outOfStock="true"] {{ background: {surface_alt}; color: {danger}; }}
+    QLabel#SalesProductStockCircle {{ background: {highlight}; color: {primary}; border: 1px solid {primary}; border-radius: 16px; padding: 0; font-size: 12px; font-weight: 850; qproperty-alignment: AlignCenter; }}
+    QLabel#SalesProductStockCircle[outOfStock="true"] {{ background: {danger}; border-color: {danger}; color: #FFFFFF; }}
+    QLabel#StatusPill {{ qproperty-alignment: AlignCenter; }}
     QLabel#SalesCartItemTitle {{ color: {text}; font-size: {font_size}px; font-weight: 750; }}
     QLabel#SalesCartLineTotal {{ color: {primary}; font-weight: 800; }}
     QSplitter#SalesWorkspaceSplitter::handle {{ background: {border}; width: 6px; margin: 3px 0; border-radius: 3px; }}
