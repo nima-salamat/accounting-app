@@ -13,7 +13,7 @@ from client.ui.theme import DARK, LIGHT
 ICON_BY_KEY = {
     "home": "fa5s.home", "dashboard": "fa5s.chart-pie", "sales": "fa5s.cash-register",
     "products": "fa5s.boxes", "categories": "fa5s.tags", "warehouse": "fa5s.warehouse",
-    "inventory": "fa5s.boxes-stacked", "stocktakes": "fa5s.clipboard-check",
+    "inventory": "fa5s.boxes", "stocktakes": "fa5s.clipboard-check",
     "accounting": "fa5s.book-open", "management": "fa5s.user-cog",
     "templates": "fa5s.file-invoice", "search": "fa5s.search", "refresh": "fa5s.sync-alt",
     "create": "fa5s.plus", "edit": "fa5s.edit", "delete": "fa5s.trash-alt",
@@ -41,7 +41,7 @@ _TEXT_RULES = (
     (("جست‌وجو", "جستجو", "search", "⌕"), "search"),
     (("بازخوانی", "تازه‌سازی", "refresh", "کالاها"), "refresh"),
     (("مخفی‌کردن", "مخفی کردن", "eye-slash"), "eye_slash"),
-    (("نمایش رمز", "show password"), "eye"),
+    (("نمایش رمز", "نمایش", "show password"), "eye"),
     (("بزرگ‌نمایی", "بزرگ نمایی", "zoom in"), "zoom_in"),
     (("کوچک‌نمایی", "کوچک نمایی", "zoom out"), "zoom_out"),
     (("برازش صفحه", "fit page"), "fit"),
