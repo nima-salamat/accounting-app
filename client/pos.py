@@ -5,7 +5,7 @@ import uuid
 from PySide6.QtCore import Qt, Slot, QSettings
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
-    QPushButton, QStackedWidget, QVBoxLayout, QWidget,
+    QPushButton, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 from client.ui.auth_page import AuthPage
@@ -49,9 +49,21 @@ class POSWindow(QMainWindow):
 
         self.status = QLabel("برای شروع وارد حساب کاربری شوید.")
         self.status.setObjectName("StatusPill")
-        self.status.setMaximumWidth(260)
-        self.status.setToolTip("وضعیت صندوق فروش")
-        self.sales_page.header_layout.addWidget(self.status)
+        self.status.setMinimumWidth(190)
+        self.status.setMaximumWidth(360)
+        self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status.setWordWrap(True)
+        self.status.setToolTip("آخرین وضعیت و رویداد صندوق فروش")
+        self.status_container = QWidget(self.sales_page)
+        status_layout = QHBoxLayout(self.status_container)
+        status_layout.setContentsMargins(0, 0, 0, 0)
+        status_layout.addStretch(1)
+        status_layout.addWidget(self.status, 0, Qt.AlignmentFlag.AlignCenter)
+        status_layout.addStretch(1)
+        self.status_container.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.sales_page.header_layout.addWidget(self.status_container, 1)
 
         self.device_button = QPushButton("تنظیم دستگاه‌ها")
         self.device_button.setObjectName("SalesToolbarButton")
@@ -59,9 +71,7 @@ class POSWindow(QMainWindow):
         self.device_button.clicked.connect(self.configure_devices)
         self.sales_page.header_layout.addWidget(self.device_button)
 
-        # In the RTL toolbar the exit icon is the leftmost action; the theme icon
-        # sits immediately to its right. These controls belong only to client.pos.
-        self.sales_page.header_layout.addStretch(1)
+        # This order in the RTL layout produces exit — theme — devices from left to right.
         self.sales_page.header_layout.addWidget(self.sales_page.theme_button)
 
         self.logout_button = QPushButton("", self.sales_page)
