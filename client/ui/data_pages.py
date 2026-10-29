@@ -87,15 +87,11 @@ class ApiTablePage(QFrame):
         tools.addWidget(self.selection_count)
         layout.addLayout(tools)
         self.table = QTableWidget(0, len(columns))
+        self.table.setObjectName("ResourceTable")
         self.table.setHorizontalHeaderLabels([label for _key, label in columns])
         self.table.setColumnHidden(0, True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.MultiSelection)
-        self.table.setStyleSheet(
-            "QTableWidget::item:selected { background-color: #3157A4; color: #FFFFFF; }"
-            "QTableWidget::item:selected:!active { background-color: #486DB8; color: #FFFFFF; }"
-            "QTableWidget::item { padding: 5px; }"
-        )
         self.table.itemSelectionChanged.connect(self._update_selection_count)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
