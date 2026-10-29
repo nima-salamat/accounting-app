@@ -27,6 +27,7 @@ PAPER_DIMENSIONS_MM = {
 }
 ALIGNMENTS = {"left", "center", "right"}
 COLUMNS = {"full", "left", "right"}
+MIN_THERMAL_ROLL_HEIGHT_MM = 40.0
 MAX_THERMAL_ROLL_HEIGHT_MM = 4000.0
 
 
@@ -142,9 +143,14 @@ def page_dimensions(template=None):
     width, height = PAPER_DIMENSIONS_MM[paper]
     if config.get("orientation") == "landscape" and paper not in ("receipt80", "receipt58"):
         width, height = height, width
-    if paper in ("receipt80", "receipt58") and config.get("roll_height_mm"):
+    if paper in ("receipt80", "receipt58") and config.get("roll_height_mm") is not None:
         try:
-            height = max(height, min(MAX_THERMAL_ROLL_HEIGHT_MM, float(config["roll_height_mm"])))
+            # A prepared roll height is the actual cut length, not a minimum
+            # that must be padded back to the roll's design-time base height.
+            height = max(
+                MIN_THERMAL_ROLL_HEIGHT_MM,
+                min(MAX_THERMAL_ROLL_HEIGHT_MM, float(config["roll_height_mm"])),
+            )
         except (TypeError, ValueError):
             pass
     return float(width), float(height)
@@ -512,33 +518,60 @@ def draw_invoice_element(painter, rect, element, receipt=None, template=None, *,
 
 
 def prepare_print_template(template=None, receipt=None):
-    """Expand thermal-roll layouts for all items without converting the roll to multiple pages."""
+    """Size continuous thermal receipts to their content, shrinking or growing as needed."""
     config = _template_config(template)
     if config["paper_size"] not in ("receipt80", "receipt58"):
         return config
+
     receipt = receipt or {}
     elements = config["elements"]
-    table = next((item for item in elements if item["type"] == "items_table" and item.get("visible", True)), None)
+    table = next(
+        (item for item in elements if item["type"] == "items_table" and item.get("visible", True)),
+        None,
+    )
     if table is not None:
         old_height = float(table["h_mm"])
-        item_count = len(receipt.get("items") or [])
-        wanted_height = max(old_height, (item_count + 1) * 4.7)
-        extra = wanted_height - old_height
         old_bottom = float(table["y_mm"]) + old_height
+        item_count = len(receipt.get("items") or [])
+
+        # The renderer uses a 4.7 mm minimum-height row, including the header.
+        # Add the content insets so every requested row fits without blank table space.
+        wanted_height = min(
+            MAX_THERMAL_ROLL_HEIGHT_MM,
+            max(6.1, (item_count + 1) * 4.7 + 1.4),
+        )
+        delta = wanted_height - old_height
         table["h_mm"] = wanted_height
-        if extra > 0:
+
+        # Everything laid out after the table follows its new bottom. This preserves
+        # spacing between the table, totals, custom text and footer for both shrink/grow.
+        if abs(delta) > 0.001:
             for element in elements:
                 if element is table:
                     continue
-                if element["type"] in ("totals", "footer") and float(element["y_mm"]) >= old_bottom - 0.5:
-                    element["y_mm"] = float(element["y_mm"]) + extra
-    width, base_height = PAPER_DIMENSIONS_MM[config["paper_size"]]
-    bottom = max((float(item["y_mm"]) + float(item["h_mm"]) for item in elements if item.get("visible", True)), default=base_height)
+                if float(element["y_mm"]) >= old_bottom - 0.5:
+                    max_y = max(0.0, MAX_THERMAL_ROLL_HEIGHT_MM - float(element["h_mm"]))
+                    element["y_mm"] = max(
+                        0.0,
+                        min(max_y, float(element["y_mm"]) + delta),
+                    )
+
+    _width, _base_height = PAPER_DIMENSIONS_MM[config["paper_size"]]
+    bottom = max(
+        (
+            float(item["y_mm"]) + float(item["h_mm"])
+            for item in elements if item.get("visible", True)
+        ),
+        default=0.0,
+    )
     try:
         margin = max(3.0, min(20.0, float(config.get("margin_mm", 4))))
     except (TypeError, ValueError):
         margin = 4.0
-    config["roll_height_mm"] = max(float(base_height), bottom + margin)
+    config["roll_height_mm"] = max(
+        MIN_THERMAL_ROLL_HEIGHT_MM,
+        min(MAX_THERMAL_ROLL_HEIGHT_MM, bottom + margin),
+    )
     return config
 
 
