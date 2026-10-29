@@ -48,6 +48,7 @@ class SalesPage(QFrame):
         self._can_edit_receipts = False
 
         self._suggestion_query = ""
+        self._search_committed = False
         self._suggestion_page = 0
         self._suggestion_page_size = 8
         self._suggestion_total = 0
@@ -493,6 +494,7 @@ class SalesPage(QFrame):
 
     def _search_text_changed(self, value):
         self._search_timer.stop()
+        self._search_committed = False
         query = str(value or "").strip()
         self._suggestion_query = query
         self._suggestion_page = 0
@@ -511,6 +513,7 @@ class SalesPage(QFrame):
     def _commit_search(self):
         """Show committed search results in the catalog and dismiss the overlay."""
         self._search_timer.stop()
+        self._search_committed = True
         self.search_suggestions_frame.hide()
         self.product_page = 1
         self.refresh_products()
@@ -538,6 +541,9 @@ class SalesPage(QFrame):
 
     def _show_search_suggestions(self, payload, query, page):
         self.search_more_button.setEnabled(True)
+        if self._search_committed:
+            self.search_suggestions_frame.hide()
+            return
         if query != self.search.text().strip():
             return
         items = list(payload.get("items") or [])

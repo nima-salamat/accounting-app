@@ -319,6 +319,14 @@ class SalesPageLayoutTests(unittest.TestCase):
             [product["name"] for product in self.page.products],
             ["item-10", "item-100", "item-101"],
         )
+        # A delayed asynchronous suggestion response must not reopen the overlay
+        # after the user has committed the search and loaded the catalog results.
+        self.page._show_search_suggestions(
+            self.window.api.list_products_page(q="item-10", page=1, page_size=8),
+            "item-10",
+            1,
+        )
+        self.assertFalse(self.page.search_suggestions_frame.isVisible())
 
     def test_search_suggestions_overlay_the_catalog_instead_of_reflowing_it(self):
         self.page.search.setText("item")
