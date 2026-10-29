@@ -292,6 +292,10 @@ def stylesheet(mode="light", design=None):
     QPushButton#PrimaryButton {{ background: {primary}; color: #FFFFFF; border: 1px solid {primary}; }}
     QPushButton#PrimaryButton:hover {{ background: {primary_hover}; }}
     QPushButton#DangerButton {{ color: {danger}; border-color: {danger}; }}
+    QPushButton#SalesExitButton {{ background: {danger}; color: #FFFFFF; border: 1px solid {danger}; border-radius: 7px; padding: 0px; min-width: 28px; min-height: 28px; max-width: 32px; max-height: 32px; }}
+    QPushButton#SalesExitButton:hover {{ background: {danger}; border-color: {danger}; }}
+    QPushButton#SalesThemeButton, QPushButton#SalesCatalogRefreshButton, QPushButton#HistoryRefreshButton, QPushButton#SalesDeselectButton {{ padding: 0px; min-width: 28px; min-height: 28px; max-width: 32px; max-height: 32px; border-radius: 7px; }}
+    QPushButton#SalesDeselectButton:disabled {{ color: {muted}; border-color: {border}; background: {surface_alt}; }}
     QPushButton#GhostButton {{ background: transparent; border-color: transparent; }}
     QPushButton#NavigationButton {{ text-align: right; background: transparent; color: {sidebar_text}; border: none; padding: 12px 14px; border-radius: {corner_radius}px; font-size: {font_size}px; font-weight: 550; }}
     QPushButton#NavigationButton:hover {{ background: rgba(255,255,255,0.08); }}
