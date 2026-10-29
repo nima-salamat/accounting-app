@@ -4,7 +4,7 @@ from PySide6.QtGui import QColor, QPageSize, QPageLayout, QPainter
 from PySide6.QtPrintSupport import QPrinter, QPrintDialog
 from PySide6.QtWidgets import (
     QApplication, QDialog, QFileDialog, QFrame, QGraphicsItem, QGraphicsScene, QGraphicsView,
-    QHBoxLayout, QMessageBox, QPushButton, QVBoxLayout,
+    QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout,
 )
 
 from client.ui.invoice_render import draw_invoice_page, page_dimensions, prepare_invoice_pages
@@ -62,6 +62,149 @@ class _InvoicePageItem(QGraphicsItem):
         )
 
 
+class InteractiveInvoiceView(QGraphicsView):
+    """Invoice canvas with mouse-wheel zoom and click-drag panning."""
+
+    def __init__(self, scene, parent=None):
+        super().__init__(scene, parent)
+        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+        self.setBackgroundBrush(QColor("#E9EDF4"))
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setRenderHints(self.renderHints())
+
+    def wheelEvent(self, event):
+        delta = event.angleDelta().y()
+        if not delta:
+            event.ignore()
+            return
+        scale_now = max(0.01, self.transform().m11())
+        factor = 1.15 if delta > 0 else 1.0 / 1.15
+        target = scale_now * factor
+        if 0.2 <= target <= 12.0:
+            self.scale(factor, factor)
+        event.accept()
+
+
+class InvoicePreviewWidget(QFrame):
+    """Reusable inline invoice preview with page navigation, zoom and mouse panning."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("InvoicePreviewWorkspace")
+        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        self.pages = []
+        self.current_page_index = 0
+        self.template = {}
+        self.receipt = {}
+        self.scene = QGraphicsScene(self)
+        self.preview = InteractiveInvoiceView(self.scene, self)
+        self.preview.setObjectName("InvoicePrintPreview")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(6)
+        layout.addWidget(self.preview, 1)
+
+        self.page_info = QLabel("برای پیش‌نمایش، یک فاکتور را انتخاب کنید.")
+        self.page_info.setObjectName("PageSubtitle")
+        self.page_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.page_info.setWordWrap(True)
+        layout.addWidget(self.page_info)
+
+        actions = QHBoxLayout()
+        self.previous_page_button = QPushButton("صفحهٔ قبل")
+        self.previous_page_button.clicked.connect(lambda: self._show_page(self.current_page_index - 1))
+        self.next_page_button = QPushButton("صفحهٔ بعد")
+        self.next_page_button.clicked.connect(lambda: self._show_page(self.current_page_index + 1))
+        self.zoom_out_button = QPushButton("−")
+        self.zoom_out_button.setToolTip("کوچک‌نمایی")
+        self.zoom_out_button.clicked.connect(lambda: self._zoom(1.0 / 1.2))
+        self.zoom_in_button = QPushButton("+")
+        self.zoom_in_button.setToolTip("بزرگ‌نمایی")
+        self.zoom_in_button.clicked.connect(lambda: self._zoom(1.2))
+        self.fit_width_button = QPushButton("برازش عرض")
+        self.fit_width_button.setToolTip("نمایش برگه با عرض فضای پیش‌نمایش")
+        self.fit_width_button.clicked.connect(self.fit_width)
+        actions.addWidget(self.previous_page_button)
+        actions.addWidget(self.next_page_button)
+        actions.addStretch(1)
+        actions.addWidget(self.zoom_out_button)
+        actions.addWidget(self.zoom_in_button)
+        actions.addWidget(self.fit_width_button)
+        layout.addLayout(actions)
+        self._page_item = None
+
+    def set_invoice(self, receipt, template=None):
+        self.receipt = dict(receipt or {})
+        self.pages = prepare_invoice_pages(self.receipt, template)
+        if not self.pages:
+            self.pages = [(self.receipt, dict(template or {}))]
+        self.current_page_index = 0
+        self._show_page(0)
+
+    def clear_invoice(self):
+        self.receipt = {}
+        self.pages = []
+        self.current_page_index = 0
+        if self._page_item is not None:
+            self.scene.removeItem(self._page_item)
+            self._page_item = None
+        self.scene.setSceneRect(QRectF())
+        self.page_info.setText("برای پیش‌نمایش، یک فاکتور را انتخاب کنید.")
+        self.previous_page_button.setEnabled(False)
+        self.next_page_button.setEnabled(False)
+        self.preview.resetTransform()
+
+    def _show_page(self, index):
+        if not self.pages:
+            return
+        self.current_page_index = max(0, min(len(self.pages) - 1, int(index)))
+        receipt, self.template = self.pages[self.current_page_index]
+        if self._page_item is not None:
+            self.scene.removeItem(self._page_item)
+        self._page_item = _InvoicePageItem(receipt, self.template)
+        self.scene.addItem(self._page_item)
+        self.scene.setSceneRect(self._page_item.boundingRect())
+        width, height = page_dimensions(self.template)
+        paper = self.template.get("paper_size", "A4")
+        if paper in ("receipt", "receipt80", "receipt58"):
+            description = "رسید حرارتی"
+        else:
+            orientation = "افقی" if self.template.get("orientation") == "landscape" else "عمودی"
+            description = "{} · {}".format(paper, orientation)
+        if len(self.pages) > 1:
+            description += " · صفحهٔ {} از {}".format(self.current_page_index + 1, len(self.pages))
+        self.page_info.setText("{} · {:.0f} × {:.0f} میلی‌متر".format(description, width, height))
+        self.previous_page_button.setEnabled(self.current_page_index > 0)
+        self.next_page_button.setEnabled(self.current_page_index < len(self.pages) - 1)
+        QTimer.singleShot(0, self.fit_width)
+
+    def _zoom(self, factor):
+        scale_now = max(0.01, self.preview.transform().m11())
+        if 0.2 <= scale_now * factor <= 12.0:
+            self.preview.scale(factor, factor)
+
+    def fit_width(self):
+        if self._page_item is None:
+            return
+        viewport_width = max(1, self.preview.viewport().width() - 8)
+        page_width = max(1.0, self._page_item.boundingRect().width())
+        scale = viewport_width / page_width
+        self.preview.resetTransform()
+        self.preview.scale(scale, scale)
+        self.preview.horizontalScrollBar().setValue(0)
+        self.preview.verticalScrollBar().setValue(0)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._page_item is not None:
+            QTimer.singleShot(0, self.fit_width)
+
+
 class InvoiceDialog(QDialog):
     def __init__(self, receipt, template=None, parent=None):
         super().__init__(parent)
@@ -91,14 +234,9 @@ class InvoiceDialog(QDialog):
         self.page_item = _InvoicePageItem(page_receipt, page_template)
         self.scene.addItem(self.page_item)
         self.scene.setSceneRect(self.page_item.boundingRect())
-        self.preview = QGraphicsView(self.scene, self)
+        self.preview = InteractiveInvoiceView(self.scene, self)
         self.preview.setObjectName("InvoicePrintPreview")
-        self.preview.setBackgroundBrush(QColor("#E9EDF4"))
-        self.preview.setFrameShape(QFrame.Shape.NoFrame)
         self.preview.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
-        self.preview.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.preview.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.preview.setRenderHints(self.preview.renderHints())
         layout.addWidget(self.preview, 1)
 
         self.page_info = QPushButton(self._page_info_text())
