@@ -80,6 +80,52 @@ class InvoiceRenderTests(unittest.TestCase):
         table = next(element for element in prepared["elements"] if element["type"] == "items_table")
         self.assertGreater(table["h_mm"], 137.0)
 
+    def test_thermal_roll_keeps_long_tables_above_the_sheet_geometry_limit(self):
+        template = dict(
+            DEFAULT_TEMPLATE,
+            paper_size="receipt80",
+            orientation="portrait",
+            margin_mm=4,
+            elements=default_elements_for_paper("receipt80", "portrait", 4),
+        )
+        items = [
+            {"product_name": "کالای {}".format(index), "quantity": 1, "sell_price": 100}
+            for index in range(500)
+        ]
+        receipt = {"id": "long-roll", "total_price": 50000, "items": items}
+        pages = prepare_invoice_pages(receipt, template)
+        self.assertEqual(len(pages), 1)
+        prepared_receipt, prepared_template = pages[0]
+        _width, height = page_dimensions(prepared_template)
+        table = next(element for element in prepared_template["elements"] if element["type"] == "items_table")
+        self.assertGreater(table["h_mm"], 2000.0)
+        self.assertGreater(height, table["y_mm"] + table["h_mm"])
+
+        html = render_invoice_html(prepared_receipt, prepared_template)
+        self.assertEqual(html.count("<tr>"), 501)  # Header plus all 500 products.
+        self.assertIn("کالای 499", html)
+
+    def test_text_elements_can_render_page_number_and_page_count(self):
+        counter = {
+            "id": "page-counter", "type": "text", "label": "شماره صفحه",
+            "x_mm": 10, "y_mm": 270, "w_mm": 80, "h_mm": 8,
+            "font_size": 8, "align": "center", "bold": False,
+            "visible": True, "text": "صفحه {{page_number}} از {{page_count}}",
+        }
+        template = dict(DEFAULT_TEMPLATE, elements=list(DEFAULT_TEMPLATE["elements"]) + [counter])
+        items = [
+            {"product_name": "کالای {}".format(index), "quantity": 1, "sell_price": 10}
+            for index in range(100)
+        ]
+        pages = prepare_invoice_pages({"id": "page-counter", "items": items}, template)
+        self.assertGreater(len(pages), 1)
+        digit_map = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+        count_text = str(len(pages)).translate(digit_map)
+        for page_index, (receipt, page_template) in enumerate(pages, start=1):
+            html = render_invoice_html(receipt, page_template)
+            expected = "صفحه {} از {}".format(str(page_index).translate(digit_map), count_text)
+            self.assertIn(expected, html)
+
     def test_untrusted_font_family_cannot_inject_css(self):
         html = render_invoice_html(
             {"id": "receipt-font-safe", "total_price": 0, "items": []},

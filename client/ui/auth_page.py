@@ -10,7 +10,7 @@ except ImportError:
 from PySide6.QtCore import Qt, QTimer, QSettings, Signal, Slot
 from PySide6.QtWidgets import (
     QCheckBox, QFrame, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QVBoxLayout, QWidget, QProgressBar,
+    QPushButton, QVBoxLayout, QWidget, QProgressBar, QScrollArea,
 )
 
 from client.api_client import AccountingApiClient
@@ -119,11 +119,22 @@ class AuthPage(QWidget):
         self.password.setEchoMode(QLineEdit.EchoMode.Password)
         self.password.setPlaceholderText("رمز عبور")
         self.password.returnPressed.connect(self.login)
-        self.client_name = QLineEdit()
+        password_row = QWidget(self.login_form)
+        password_row_layout = QHBoxLayout(password_row)
+        password_row_layout.setContentsMargins(0, 0, 0, 0)
+        password_row_layout.setSpacing(6)
+        password_row_layout.addWidget(self.password, 1)
+        self.password_visibility_button = QPushButton("نمایش")
+        self.password_visibility_button.setCheckable(True)
+        self.password_visibility_button.setMaximumWidth(88)
+        self.password_visibility_button.setAccessibleName("نمایش رمز عبور")
+        self.password_visibility_button.toggled.connect(self._set_password_visibility)
+        password_row_layout.addWidget(self.password_visibility_button)
+        self.client_name = QLineEdit(socket.gethostname() or "Desktop client")
         self.client_name.setObjectName("AuthInput")
         self.client_name.setPlaceholderText("نام این دستگاه")
         login_layout.addRow("نام کاربری", self.username)
-        login_layout.addRow("رمز عبور", self.password)
+        login_layout.addRow("رمز عبور", password_row)
         login_layout.addRow("نام دستگاه", self.client_name)
         card_layout.addWidget(self.login_form)
 
@@ -175,13 +186,28 @@ class AuthPage(QWidget):
         card_layout.addWidget(self.message)
         content_layout.addWidget(self.card, 0, Qt.AlignmentFlag.AlignHCenter)
         content_layout.addStretch(2)
-        outer.addWidget(content, 1)
+        # Scroll instead of clipping login controls on short or high-DPI displays.
+        scroll_area = QScrollArea(self)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setWidget(content)
+        outer.addWidget(scroll_area, 1)
 
         self.poll_timer = QTimer(self)
         self.poll_timer.setInterval(2500)
         self.poll_timer.timeout.connect(self.poll_activation)
         self.setStyleSheet(stylesheet(mode))
         self.connect_server()
+
+    def _set_password_visibility(self, visible):
+        """Toggle password display without modifying the credential value."""
+        self.password.setEchoMode(
+            QLineEdit.EchoMode.Normal if visible else QLineEdit.EchoMode.Password
+        )
+        self.password_visibility_button.setText("مخفی‌کردن" if visible else "نمایش")
+        self.password_visibility_button.setAccessibleName(
+            "مخفی‌کردن رمز عبور" if visible else "نمایش رمز عبور"
+        )
 
     def set_mode(self, mode):
         self.mode = mode

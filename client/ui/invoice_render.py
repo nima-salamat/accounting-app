@@ -18,6 +18,7 @@ PAPER_DIMENSIONS_MM = {
 }
 ALIGNMENTS = {"left", "center", "right"}
 COLUMNS = {"full", "left", "right"}
+MAX_THERMAL_ROLL_HEIGHT_MM = 4000.0
 
 
 def default_elements_for_paper(paper_size="A4", orientation="portrait", margin_mm=12):
@@ -131,7 +132,7 @@ def page_dimensions(template=None):
         width, height = height, width
     if paper in ("receipt80", "receipt58") and config.get("roll_height_mm"):
         try:
-            height = max(height, min(4000.0, float(config["roll_height_mm"])))
+            height = max(height, min(MAX_THERMAL_ROLL_HEIGHT_MM, float(config["roll_height_mm"])))
         except (TypeError, ValueError):
             pass
     return float(width), float(height)
@@ -145,6 +146,10 @@ def normalize_elements(elements, template=None):
             (template or {}).get("orientation", "portrait"),
             (template or {}).get("margin_mm", 12),
         )
+    # Continuous thermal receipts need taller element bounds than fixed-size sheets.
+    # Keep the roll bound finite so malformed persisted templates cannot create huge painter geometry.
+    is_thermal_roll = str((template or {}).get("paper_size") or "") in ("receipt", "receipt80", "receipt58")
+    vertical_limit = MAX_THERMAL_ROLL_HEIGHT_MM if is_thermal_roll else 600.0
     normalized = []
     seen = set()
     for index, source in enumerate(elements[:80]):
@@ -167,8 +172,8 @@ def normalize_elements(elements, template=None):
             "bold": bool(source.get("bold", False)),
         }
         for key, default, low, high in (
-            ("x_mm", 10, 0, 600), ("y_mm", 10, 0, 600),
-            ("w_mm", 40, 3, 600), ("h_mm", 10, 3, 600),
+            ("x_mm", 10, 0, 600), ("y_mm", 10, 0, vertical_limit),
+            ("w_mm", 40, 3, 600), ("h_mm", 10, 3, vertical_limit),
             ("font_size", 9, 6, 32),
         ):
             try:
@@ -219,7 +224,7 @@ def _template_config(template=None):
     config["show_border"] = bool(config.get("show_border", True))
     if config.get("roll_height_mm") is not None:
         try:
-            config["roll_height_mm"] = max(1.0, min(4000.0, float(config["roll_height_mm"])))
+            config["roll_height_mm"] = max(1.0, min(MAX_THERMAL_ROLL_HEIGHT_MM, float(config["roll_height_mm"])))
         except (TypeError, ValueError):
             config["roll_height_mm"] = None
     config["elements"] = normalize_elements(config.get("elements"), config)
@@ -283,7 +288,17 @@ def _text_for_element(element, receipt, config):
         return config.get("footer") or element.get("text") or label
     if kind == "text":
         text = element.get("text") or label
+        try:
+            page_number = max(1, int(receipt.get("_page_index", 0) or 0) + 1)
+        except (TypeError, ValueError):
+            page_number = 1
+        try:
+            page_count = max(page_number, int(receipt.get("_page_count", 1) or 1))
+        except (TypeError, ValueError):
+            page_count = page_number
         replacements = {
+            "{{page_number}}": _fa_digits(page_number),
+            "{{page_count}}": _fa_digits(page_count),
             "{{invoice_number}}": _fa_digits(_receipt_number(receipt)),
             "{{date}}": _receipt_date(receipt),
             "{{total}}": _money(receipt.get("total_price")),

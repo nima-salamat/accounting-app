@@ -101,7 +101,7 @@ class AccountingMainWindow(QMainWindow):
         super().__init__(parent)
         self.setWindowTitle("Accounting App")
         self.resize(1420,900)
-        self.setMinimumSize(1040,680)
+        self.setMinimumSize(900,580)
         self.local_settings = QSettings("AccountingApp", "DesktopClient")
         self.mode = str(self.local_settings.value("theme_mode", os.environ.get("ACCOUNTING_APP_THEME", "light"))).lower()
         if self.mode not in ("light", "dark"):

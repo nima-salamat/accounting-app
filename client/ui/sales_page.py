@@ -19,7 +19,15 @@ from PySide6.QtWidgets import (
 class SalesPage(QFrame):
     def __init__(self,window):
         super().__init__()
-        self.window=window;self.products=[]
+        self.window = window
+        self.products = []
+        self.product_page = 1
+        self.product_page_size = 50
+        self.total_products = 0
+        self._last_query = None
+        self._loaded_product_page = 1
+        self._cart = {}
+        self._product_cache = {}
         self.setObjectName("Card");self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         layout=QVBoxLayout(self);layout.setContentsMargins(18,18,18,18);layout.setSpacing(12)
         header=QHBoxLayout();title_box=QVBoxLayout()
@@ -46,7 +54,21 @@ class SalesPage(QFrame):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True);self.table.verticalHeader().setVisible(False)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        layout.addWidget(self.table,1)
+        layout.addWidget(self.table, 1)
+        pager = QHBoxLayout()
+        self.previous_page_button = QPushButton("صفحه قبل")
+        self.previous_page_button.clicked.connect(lambda: self._change_product_page(-1))
+        self.product_page_label = QLabel("صفحه 1 از 1")
+        self.product_page_label.setObjectName("PageSubtitle")
+        self.next_page_button = QPushButton("صفحه بعد")
+        self.next_page_button.clicked.connect(lambda: self._change_product_page(1))
+        self.cart_status_label = QLabel("سبد: ۰ قلم")
+        self.cart_status_label.setObjectName("StatusPill")
+        pager.addWidget(self.previous_page_button)
+        pager.addWidget(self.product_page_label, 1)
+        pager.addWidget(self.next_page_button)
+        pager.addWidget(self.cart_status_label)
+        layout.addLayout(pager)
         self.seat_row=QFrame()
         self.seat_row.setObjectName("Card")
         seat_layout=QHBoxLayout(self.seat_row)
@@ -85,40 +107,115 @@ class SalesPage(QFrame):
         )
 
     def refresh_products(self):
-        if not self.window.api:return
-        query=self.search.text().strip() or None
-        self.window.run_api(lambda:self.window.api.list_products(q=query,page_size=200),self.populate,busy=self.refresh_button)
+        """Fetch one server-paginated page instead of silently omitting later products."""
+        if not self.window.api:
+            return
+        query = self.search.text().strip() or None
+        if query != self._last_query:
+            self._last_query = query
+            self.product_page = 1
+        self.window.run_api(
+            lambda: self.window.api.list_products_page(
+                q=query, page=self.product_page, page_size=self.product_page_size
+            ),
+            self.populate,
+            failure=self._products_load_failed,
+            busy=self.refresh_button,
+        )
 
-    def populate(self,products):
-        self.products=products or [];self.table.setRowCount(0)
-        for row,product in enumerate(self.products):
+    def _update_pagination_controls(self):
+        page_count = max(1, (self.total_products + self.product_page_size - 1) // self.product_page_size)
+        self.product_page_label.setText(
+            "صفحه {} از {} · {} کالا".format(self.product_page, page_count, self.total_products)
+        )
+        self.previous_page_button.setEnabled(self.product_page > 1)
+        self.next_page_button.setEnabled(self.product_page < page_count)
+
+    def _products_load_failed(self, error):
+        self.product_page = self._loaded_product_page
+        self.window.show_error(error)
+        self._update_pagination_controls()
+
+    def _change_product_page(self, delta):
+        page_count = max(1, (self.total_products + self.product_page_size - 1) // self.product_page_size)
+        target = self.product_page + int(delta)
+        if 1 <= target <= page_count and target != self.product_page:
+            self.product_page = target
+            self.refresh_products()
+
+    def populate(self, payload):
+        if isinstance(payload, dict):
+            products = list(payload.get("items") or [])
+            try:
+                self.total_products = max(len(products), int(payload.get("total", len(products)) or 0))
+            except (TypeError, ValueError):
+                self.total_products = len(products)
+        else:
+            products = list(payload or [])
+            self.total_products = len(products)
+        page_count = max(1, (self.total_products + self.product_page_size - 1) // self.product_page_size)
+        if self.product_page > page_count:
+            self.product_page = page_count
+            self.refresh_products()
+            return
+
+        self._loaded_product_page = self.product_page
+        self.products = products
+        self.table.setRowCount(0)
+        for row, product in enumerate(self.products):
+            product_key = str(product["id"])
+            self._product_cache[product_key] = product
             self.table.insertRow(row)
-            values=(product["id"],product["name"],"{:,.2f}".format(float(product["sell_price"])))
-            for col,value in enumerate(values):
-                item=QTableWidgetItem(str(value))
-                if col==0:item.setData(Qt.ItemDataRole.UserRole,product)
-                self.table.setItem(row,col,item)
-            quantity=QSpinBox();quantity.setRange(0,100000);quantity.setValue(0)
-            quantity.valueChanged.connect(self.update_estimate)
-            self.table.setCellWidget(row,3,quantity)
+            values = (
+                product["id"], product["name"], "{:,.2f}".format(float(product.get("sell_price") or 0))
+            )
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                if col == 0:
+                    item.setData(Qt.ItemDataRole.UserRole, product)
+                self.table.setItem(row, col, item)
+            quantity = QSpinBox()
+            quantity.setRange(0, 100000)
+            quantity.setValue(int(self._cart.get(product_key, 0)))
+            quantity.valueChanged.connect(
+                lambda value, key=product_key: self._set_cart_quantity(key, value)
+            )
+            self.table.setCellWidget(row, 3, quantity)
+        self._update_pagination_controls()
+        self.update_estimate()
+
+    def _set_cart_quantity(self, product_key, quantity):
+        quantity = max(0, int(quantity))
+        if quantity:
+            self._cart[product_key] = quantity
+        else:
+            self._cart.pop(product_key, None)
         self.update_estimate()
 
     def collect_items(self):
-        output=[]
-        for row in range(self.table.rowCount()):
-            quantity=self.table.cellWidget(row,3).value()
-            if quantity>0:
-                product=self.table.item(row,0).data(Qt.ItemDataRole.UserRole)
-                output.append({"product_id":product["id"],"quantity":quantity})
+        output = []
+        for product_key, quantity in self._cart.items():
+            if quantity <= 0:
+                continue
+            product = self._product_cache.get(product_key)
+            product_id = product.get("id") if product else product_key
+            output.append({"product_id": product_id, "quantity": quantity})
         return output
 
-    def update_estimate(self,*_):
-        by_id={p["id"]:p for p in self.products}
-        total=0.0
-        for item in self.collect_items():
-            product=by_id.get(item["product_id"])
-            if product:total+=float(product["sell_price"])*item["quantity"]
+    def update_estimate(self, *_):
+        total = 0.0
+        for product_key, quantity in self._cart.items():
+            product = self._product_cache.get(product_key)
+            if not product:
+                continue
+            try:
+                price = float(product.get("sell_price") or 0)
+            except (TypeError, ValueError):
+                continue
+            total += price * quantity
         self.total_label.setText("جمع تخمینی: {:,.2f}".format(total))
+        units = sum(self._cart.values())
+        self.cart_status_label.setText("سبد: {} نوع · {} عدد".format(len(self._cart), units))
 
     def checkout(self):
         items=self.collect_items()
@@ -189,10 +286,12 @@ class SalesPage(QFrame):
     def _sale_created(self,receipt):
         self.paid.setChecked(False)
         self.seat_number.setCurrentIndex(0)
+        self._cart.clear()
         for row in range(self.table.rowCount()):
             widget = self.table.cellWidget(row,3)
             if widget:
                 widget.setValue(0)
+        self.update_estimate()
         self.window.set_status(
             "فروش شمارهٔ {} با مبلغ {:,.2f} ثبت شد.".format(
                 receipt.get("day_receipt_id", "—"), float(receipt.get("total_price") or 0)

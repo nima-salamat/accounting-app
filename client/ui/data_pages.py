@@ -278,7 +278,7 @@ class ApiTablePage(QFrame):
             self.window.show_error(exc); return
         self.window.run_api(
             lambda: self.create_fn(self.window.api, payload),
-            lambda _result: self._mutation_done(self.title + " ساخته شد."),
+            lambda result: self._mutation_done(self.title + " ساخته شد.", result=result),
             busy=self.create_button,
         )
 
@@ -297,7 +297,7 @@ class ApiTablePage(QFrame):
             self.window.show_error(exc); return
         self.window.run_api(
             lambda: self.update_fn(self.window.api, record["id"], payload),
-            lambda _result: self._mutation_done(self.title + " به‌روزرسانی شد."),
+            lambda result: self._mutation_done(self.title + " به‌روزرسانی شد.", result=result),
             busy=self.edit_button,
         )
 
@@ -321,10 +321,18 @@ class ApiTablePage(QFrame):
             busy=self.delete_button,
         )
 
-    def _mutation_done(self, message):
+    def _mutation_done(self, message, result=None):
         self.window.set_status(message)
         self.refresh()
         self.window.refresh_dashboard_data()
+        image_error = result.get("_image_upload_error") if isinstance(result, dict) else None
+        if image_error:
+            record_name = result.get("name") or result.get("id") or "محصول"
+            QMessageBox.warning(
+                self,
+                "رکورد ذخیره شد؛ بارگذاری تصویر ناموفق بود",
+                "«{}» با موفقیت ذخیره شده است، اما تصویر آن بارگذاری نشد. برای جلوگیری از ایجاد رکورد تکراری، محصول را دوباره نسازید؛ پس از اصلاح دسترسی یا انتخاب فایل، تصویر را از بخش ویرایش محصول بارگذاری کنید.\n\nجزئیات خطا: {}".format(record_name, image_error),
+            )
 
     def export_csv(self):
         if not self.records and self.total_records == 0:
@@ -433,22 +441,33 @@ class ProductsPage(ApiTablePage):
         return specs
 
     @staticmethod
+    def _save_product_image_without_losing_record(api, product, image_file):
+        """Keep the successful record mutation when its optional image upload fails."""
+        if not image_file:
+            return product
+        try:
+            api.upload_product_image(product["id"], image_file)
+        except Exception as exc:
+            # The record already exists. Returning partial-success data avoids unsafe retries.
+            result = dict(product)
+            result["_image_upload_error"] = str(exc) or exc.__class__.__name__
+            return result
+        return product
+
+    @staticmethod
     def _create_product(api, payload):
         values = dict(payload)
         image_file = values.pop("image_file", None)
         product = api.create_product(**values)
-        if image_file:
-            return api.upload_product_image(product["id"], image_file)
-        return product
+        return ProductsPage._save_product_image_without_losing_record(api, product, image_file)
 
     @staticmethod
     def _update_product(api, record_id, payload):
         values = dict(payload)
         image_file = values.pop("image_file", None)
-        product = api.update_product(record_id, **values)
-        if image_file:
-            return api.upload_product_image(product["id"], image_file)
-        return product
+        product = dict(api.update_product(record_id, **values))
+        product.setdefault("id", record_id)
+        return ProductsPage._save_product_image_without_losing_record(api, product, image_file)
 
 
 class CategoriesPage(ApiTablePage):
