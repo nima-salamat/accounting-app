@@ -1,5 +1,6 @@
 """WYSIWYG invoice designer with a physical page canvas, movable fields and grouped properties."""
 from copy import deepcopy
+import re
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QBrush, QPainter, QPen
@@ -53,6 +54,61 @@ PRESETS = [
     ("cafe", "رسید کافه و شماره میز"),
     ("return", "رسید مرجوعی · A5"),
 ]
+
+NUMBERING_STYLES = [
+    ("date_daily", "تاریخ + شمارهٔ همان روز (پیشنهادی)"),
+    ("global", "شمارهٔ ترتیبی سراسری"),
+    ("date_global", "تاریخ + شمارهٔ سراسری"),
+    ("prefix_global", "پیشوند + شمارهٔ سراسری"),
+    ("prefix_date_daily", "پیشوند + تاریخ + شمارهٔ همان روز"),
+    ("prefix_date_global", "پیشوند + تاریخ + شمارهٔ سراسری"),
+    ("year_global", "سال + شمارهٔ سراسری"),
+    ("prefix_year_global", "پیشوند + سال + شمارهٔ سراسری"),
+    ("custom", "ترکیب سفارشی (پیشرفته)"),
+]
+NUMBERING_DATE_FORMATS = [
+    ("iso", "سال-ماه-روز  (2026-10-30)", "{YYYY}-{MM}-{DD}"),
+    ("compact", "فشرده  (20261030)", "{YYYY}{MM}{DD}"),
+    ("dmy", "روز-ماه-سال  (30-10-2026)", "{DD}-{MM}-{YYYY}"),
+    ("slash", "سال/ماه/روز  (2026/10/30)", "{YYYY}/{MM}/{DD}"),
+    ("short_year", "سال کوتاه  (261030)", "{YY}{MM}{DD}"),
+]
+NUMBERING_SEPARATORS = [
+    ("-", "خط تیره  -"),
+    ("/", "ممیز  /"),
+    (".", "نقطه  ."),
+    ("", "بدون جداکننده"),
+]
+
+
+def _compose_invoice_number_format(style, prefix="", date_style="iso", separator="-", custom_format=""):
+    """Build the stored format from friendly controls; users don't need to know token syntax."""
+    if style == "custom":
+        return str(custom_format or "").strip()
+    prefix = str(prefix or "").strip()
+    separator = str(separator or "")
+    date_parts = {key: tokens for key, _label, tokens in NUMBERING_DATE_FORMATS}
+    date_token = date_parts.get(date_style, date_parts["iso"])
+    if style == "global":
+        parts = ["{SEQ}"]
+    elif style == "date_daily":
+        parts = [date_token, "{NUM}"]
+    elif style == "date_global":
+        parts = [date_token, "{SEQ}"]
+    elif style == "prefix_global":
+        parts = [part for part in (prefix, "{SEQ}") if part]
+    elif style == "prefix_date_daily":
+        parts = [part for part in (prefix, date_token, "{NUM}") if part]
+    elif style == "prefix_date_global":
+        parts = [part for part in (prefix, date_token, "{SEQ}") if part]
+    elif style == "year_global":
+        parts = ["{YYYY}", "{SEQ}"]
+    elif style == "prefix_year_global":
+        parts = [part for part in (prefix, "{YYYY}", "{SEQ}") if part]
+    else:
+        parts = [date_token, "{NUM}"]
+    return separator.join(parts)
+
 
 TEMPLATE_KINDS = [
     ("invoice", "فاکتور فروش"),
@@ -380,33 +436,57 @@ class InvoiceTemplatesPage(QFrame):
         number_title = QLabel("شماره‌گذاری فاکتور")
         number_title.setObjectName("PageTitle")
         number_layout.addWidget(number_title)
+        number_intro = QLabel("بدون نوشتن JSON یا کد، روش شماره‌گذاری را انتخاب کنید.")
+        number_intro.setObjectName("PageSubtitle")
+        number_intro.setWordWrap(True)
+        number_layout.addWidget(number_intro)
         number_form = QFormLayout()
         number_form.setSpacing(8)
-        self.invoice_number_format = QLineEdit()
-        self.invoice_number_format.setMaxLength(120)
-        self.invoice_number_format.setPlaceholderText("{DATE}-{NUM}")
-        self.invoice_number_format.setToolTip(
-            "متغیرها: {DATE}، {YYYY}، {YY}، {MM}، {M}، {DD}، {D}، {NUM} و {SEQ}"
+
+        self.invoice_number_style = QComboBox()
+        for key, label in NUMBERING_STYLES:
+            self.invoice_number_style.addItem(label, key)
+        self.invoice_number_prefix = QLineEdit()
+        self.invoice_number_prefix.setMaxLength(24)
+        self.invoice_number_prefix.setPlaceholderText("مثلاً INV یا فروش")
+        self.invoice_number_prefix.setToolTip("پیشوند دلخواه؛ لازم نیست آکولاد یا کد وارد کنید.")
+        self.invoice_number_date_format = QComboBox()
+        for key, label, _tokens in NUMBERING_DATE_FORMATS:
+            self.invoice_number_date_format.addItem(label, key)
+        self.invoice_number_separator = QComboBox()
+        for key, label in NUMBERING_SEPARATORS:
+            self.invoice_number_separator.addItem(label, key)
+        self.invoice_number_padding = self._spin(1, 12, " رقم")
+        self.invoice_number_custom_format = QLineEdit()
+        self.invoice_number_custom_format.setMaxLength(120)
+        self.invoice_number_custom_format.setPlaceholderText("مثلاً INV-{DATE}-{NUM}")
+        self.invoice_number_custom_format.setToolTip(
+            "فقط برای حالت پیشرفته است؛ در حالت‌های معمول نیازی به نوشتن این الگو نیست."
         )
-        self.invoice_number_padding = self._spin(0, 12, " رقم")
         self.invoice_number_example = QLabel()
-        self.invoice_number_example.setObjectName("PageSubtitle")
+        self.invoice_number_example.setObjectName("StatusPill")
         self.invoice_number_example.setWordWrap(True)
         self.invoice_number_example.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        number_form.addRow("روش شماره‌گذاری", self.invoice_number_style)
+        number_form.addRow("پیشوند دلخواه", self.invoice_number_prefix)
+        number_form.addRow("قالب تاریخ", self.invoice_number_date_format)
+        number_form.addRow("جداکننده", self.invoice_number_separator)
+        number_form.addRow("تعداد رقم شمارنده", self.invoice_number_padding)
+        self.custom_format_label = QLabel("الگوی سفارشی")
+        self.custom_format_label.setObjectName("PageSubtitle")
+        number_form.addRow(self.custom_format_label, self.invoice_number_custom_format)
+        number_form.addRow("پیش‌نمایش شماره", self.invoice_number_example)
+        number_layout.addLayout(number_form)
         number_help = QLabel(
-            "مثال: {DATE}-{NUM} → 2026-10-30-00001. "
-            "{NUM} شمارهٔ روزانه و {SEQ} شمارندهٔ سراسری است. "
-            "طول رقم حداقل است؛ با بزرگ‌تر شدن شمارنده، رقم اضافه می‌شود. "
-            "برای یکتایی، از {SEQ} یا تاریخ کامل همراه {NUM} استفاده کنید."
+            "مثلاً روش «تاریخ + شمارهٔ همان روز» با ۵ رقم، شماره‌ای مثل "
+            "2026-10-30-00001 می‌سازد. پیشوندی مثل INV هم قابل اضافه‌کردن است. "
+            "تعداد رقم حداقل است؛ پس از ۹۹۹۹۹، شماره به ۱۰۰۰۰۰ تبدیل می‌شود. "
+            "شمارهٔ فاکتورهای قبلی با تغییر تنظیمات عوض نمی‌شود."
         )
         number_help.setObjectName("PageSubtitle")
         number_help.setWordWrap(True)
-        number_form.addRow("فرمت شماره", self.invoice_number_format)
-        number_form.addRow("حداقل رقم شمارنده", self.invoice_number_padding)
-        number_form.addRow("نمونهٔ فعلی", self.invoice_number_example)
-        number_layout.addLayout(number_form)
         number_layout.addWidget(number_help)
-        properties_layout.addWidget(self.invoice_number_card)
+        properties_layout.insertWidget(0, self.invoice_number_card)
         properties_layout.addStretch(1)
         properties_scroll.setWidget(properties)
 
@@ -518,7 +598,11 @@ class InvoiceTemplatesPage(QFrame):
             control.textChanged.connect(self._global_setting_changed)
         self.address.textChanged.connect(self._global_setting_changed)
         self.footer.textChanged.connect(self._global_setting_changed)
-        self.invoice_number_format.textChanged.connect(self._global_setting_changed)
+        self.invoice_number_style.currentIndexChanged.connect(self._numbering_builder_changed)
+        self.invoice_number_prefix.textChanged.connect(self._numbering_builder_changed)
+        self.invoice_number_date_format.currentIndexChanged.connect(self._numbering_builder_changed)
+        self.invoice_number_separator.currentIndexChanged.connect(self._numbering_builder_changed)
+        self.invoice_number_custom_format.textChanged.connect(self._numbering_builder_changed)
         self.invoice_number_padding.valueChanged.connect(self._global_setting_changed)
         self.font_family.currentTextChanged.connect(self._global_setting_changed)
         self.global_font_size.valueChanged.connect(self._global_setting_changed)
@@ -571,7 +655,7 @@ class InvoiceTemplatesPage(QFrame):
             "phone": self.phone.text().strip(),
             "seat_number_label": "شماره میز / صندلی",
             "footer": self.footer.toPlainText().strip(),
-            "invoice_number_format": self.invoice_number_format.text().strip(),
+            "invoice_number_format": self._build_invoice_number_format(),
             "invoice_number_padding": self.invoice_number_padding.value(),
             "paper_size": self.paper_size.currentData() or "A4",
             "orientation": self.orientation.currentData() or "portrait",
@@ -602,7 +686,7 @@ class InvoiceTemplatesPage(QFrame):
             control.setText(str(values.get(key, fallback) or ""))
         self.address.setPlainText(str(values.get("address", "") or ""))
         self.footer.setPlainText(str(values.get("footer", "") or ""))
-        self.invoice_number_format.setText(str(
+        self._restore_invoice_number_builder(str(
             values.get("invoice_number_format", DEFAULT_INVOICE_NUMBER_FORMAT)
             or DEFAULT_INVOICE_NUMBER_FORMAT
         ))
@@ -610,7 +694,7 @@ class InvoiceTemplatesPage(QFrame):
             padding = int(values.get("invoice_number_padding", DEFAULT_INVOICE_NUMBER_PADDING))
         except (TypeError, ValueError):
             padding = DEFAULT_INVOICE_NUMBER_PADDING
-        self.invoice_number_padding.setValue(max(0, min(12, padding)))
+        self.invoice_number_padding.setValue(max(1, min(12, padding)))
         self.paper_size.setCurrentIndex(max(0, self.paper_size.findData(values.get("paper_size", "A4"))))
         paper_value = values.get("paper_size", "A4")
         self.orientation.setCurrentIndex(max(0, self.orientation.findData(values.get("orientation", "portrait"))))
@@ -954,6 +1038,76 @@ class InvoiceTemplatesPage(QFrame):
         self._refresh_element_list()
         self._update_page_info()
 
+    def _build_invoice_number_format(self):
+        return _compose_invoice_number_format(
+            self.invoice_number_style.currentData() or "date_daily",
+            self.invoice_number_prefix.text(),
+            self.invoice_number_date_format.currentData() or "iso",
+            self.invoice_number_separator.currentData() if self.invoice_number_separator.currentIndex() >= 0 else "-",
+            self.invoice_number_custom_format.text(),
+        )
+
+    def _restore_invoice_number_builder(self, number_format):
+        """Restore common saved patterns to friendly controls; preserve uncommon ones as advanced."""
+        stored = str(number_format or DEFAULT_INVOICE_NUMBER_FORMAT).strip()
+        normalized = stored.replace("{DATE}", "{YYYY}-{MM}-{DD}")
+        prefix_head = normalized.split("{", 1)[0]
+        prefix_guess = prefix_head.rstrip("-/._ ")
+        prefixes = ["", prefix_guess] if prefix_guess else [""]
+        match = None
+        for style, _label in NUMBERING_STYLES:
+            if style == "custom":
+                continue
+            for date_style, _date_label, _date_tokens in NUMBERING_DATE_FORMATS:
+                for separator, _separator_label in NUMBERING_SEPARATORS:
+                    for prefix in prefixes:
+                        if _compose_invoice_number_format(
+                            style, prefix, date_style, separator, ""
+                        ) == normalized:
+                            match = (style, prefix, date_style, separator)
+                            break
+                    if match:
+                        break
+                if match:
+                    break
+            if match:
+                break
+
+        if match:
+            style, prefix, date_style, separator = match
+            self.invoice_number_style.setCurrentIndex(self.invoice_number_style.findData(style))
+            self.invoice_number_prefix.setText(prefix)
+            self.invoice_number_date_format.setCurrentIndex(
+                max(0, self.invoice_number_date_format.findData(date_style))
+            )
+            self.invoice_number_separator.setCurrentIndex(
+                max(0, self.invoice_number_separator.findData(separator))
+            )
+            self.invoice_number_custom_format.clear()
+        else:
+            self.invoice_number_style.setCurrentIndex(
+                max(0, self.invoice_number_style.findData("custom"))
+            )
+            self.invoice_number_custom_format.setText(stored)
+        self._update_numbering_builder_visibility()
+
+    def _numbering_builder_changed(self, *_args):
+        if self._loading:
+            return
+        self._update_numbering_builder_visibility()
+        self._global_setting_changed()
+
+    def _update_numbering_builder_visibility(self):
+        style = self.invoice_number_style.currentData() or "date_daily"
+        self.invoice_number_prefix.setEnabled(style.startswith("prefix_"))
+        self.invoice_number_date_format.setEnabled(style in {
+            "date_daily", "date_global", "prefix_date_daily", "prefix_date_global"
+        })
+        self.invoice_number_separator.setEnabled(style not in {"global", "custom"})
+        is_custom = style == "custom"
+        self.custom_format_label.setVisible(is_custom)
+        self.invoice_number_custom_format.setVisible(is_custom)
+
     def _global_setting_changed(self, *_args):
         if self._loading:
             return
@@ -978,7 +1132,9 @@ class InvoiceTemplatesPage(QFrame):
             sample = sample.translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
             self.invoice_number_example.setText(sample)
         except ValueError as error:
-            self.invoice_number_example.setText("فرمت نامعتبر: {}".format(error))
+            self.invoice_number_example.setText("تنظیم شماره‌گذاری نیاز به اصلاح دارد: {}".format(error))
+        finally:
+            self._update_numbering_builder_visibility()
 
     def add_element(self):
         kind = self.new_kind.currentData() or "text"
