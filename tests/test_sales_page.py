@@ -4,6 +4,8 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import unittest
+import tempfile
+from unittest.mock import patch
 from PySide6.QtCore import Qt, QSettings, QEvent, QPointF
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QSizePolicy, QWidget
@@ -119,6 +121,10 @@ class SalesPageLayoutTests(unittest.TestCase):
         settings.setValue("sales/show_product_stock", True)
         settings.setValue("sales/show_product_add_button", True)
         settings.setValue("sales/product_stock_display_style", "text")
+        settings.setValue("sales/use_category_tabs", False)
+        settings.setValue("sales/cart_collapsed", False)
+        settings.setValue("sales/history_preview_collapsed", False)
+        settings.remove("sales/history_splitter_sizes")
         settings.remove("sales/product_table_column_widths")
         settings.sync()
         self.window = _WindowStub()
@@ -530,6 +536,135 @@ class SalesPageLayoutTests(unittest.TestCase):
             standalone_page.close()
             standalone_page.deleteLater()
             self.app.processEvents()
+
+
+
+    def test_category_tabs_setting_filters_by_tab_but_searches_all_categories(self):
+        self.page.refresh_products()
+        self.page._apply_product_display_settings(
+            "grid", True, "comfortable", 0, use_category_tabs=True
+        )
+        self.app.processEvents()
+        self.assertTrue(self.page.category_tabs.isVisible())
+        self.assertTrue(self.page.category_combo.isHidden())
+        self.assertEqual(self.page.category_tabs.tabText(0), "همهٔ دسته‌ها")
+        self.assertEqual(self.page.category_tabs.count(), 3)
+
+        self.page.category_tabs.setCurrentIndex(1)
+        self.assertTrue(all(item["category_id"] == "cat-a" for item in self.page.products))
+        self.assertEqual(self.window.api.list_calls[-1][1], "cat-a")
+
+        self.page.search.setText("item-10")
+        self.page.search_button.click()
+        self.assertEqual(self.window.api.list_calls[-1][0], "item-10")
+        self.assertIsNone(self.window.api.list_calls[-1][1])
+        self.assertEqual(self.page.category_tabs.currentIndex(), 0)
+        self.assertEqual(len(self.page.products), 3)
+        self.assertEqual({item["category_id"] for item in self.page.products}, {"cat-a", "cat-b"})
+        self.assertTrue(self.page._local_settings.value("sales/use_category_tabs", False, type=bool))
+
+    def test_cart_collapse_is_functional_and_persisted_for_next_open(self):
+        self.assertFalse(self.page._cart_collapsed)
+        self.page._set_cart_panel_visible(False)
+        self.app.processEvents()
+        self.assertTrue(self.page._cart_collapsed)
+        self.assertTrue(self.page._local_settings.value("sales/cart_collapsed", False, type=bool))
+        collapsed_sizes = self.page.splitter.sizes()
+        self.assertLessEqual(collapsed_sizes[1], 180)
+
+        reopened = SalesPage(self.window)
+        reopened.show()
+        self.app.processEvents()
+        try:
+            self.assertTrue(reopened._cart_collapsed)
+            self.assertTrue(reopened.cart_scroll.isHidden())
+            reopened.cart_panel_toggle.click()
+            self.app.processEvents()
+            self.assertFalse(reopened._cart_collapsed)
+            self.assertFalse(reopened.cart_scroll.isHidden())
+            self.assertFalse(reopened._local_settings.value("sales/cart_collapsed", True, type=bool))
+        finally:
+            reopened.close()
+            reopened.deleteLater()
+            self.app.processEvents()
+
+    def test_invoice_preview_can_collapse_and_reopen_with_persisted_state(self):
+        self.page.set_workspace_mode("history")
+        self.app.processEvents()
+        preview_panel = self.page.history_splitter.widget(1)
+        self.assertFalse(preview_panel.isHidden())
+        self.page._set_history_preview_visible(False)
+        self.app.processEvents()
+        self.assertTrue(preview_panel.isHidden())
+        self.assertTrue(self.page.history_preview_reopen_button.isVisible())
+        self.assertTrue(self.page._local_settings.value(
+            "sales/history_preview_collapsed", False, type=bool
+        ))
+
+        self.page._set_history_preview_visible(True)
+        self.app.processEvents()
+        self.assertFalse(preview_panel.isHidden())
+        self.assertTrue(self.page.history_preview_close_button.isVisible())
+        self.assertFalse(self.page._local_settings.value(
+            "sales/history_preview_collapsed", True, type=bool
+        ))
+
+    def test_invoice_deselect_clears_selection_and_preview(self):
+        self.page.set_workspace_mode("history")
+        record = {
+            "id": "full-invoice-uuid-1234",
+            "day_receipt_id": 33,
+            "payed": True,
+            "created_at": "2026-10-30T12:00:00",
+            "seat_number": None,
+            "total_price": 50,
+            "payment_method": "cash",
+        }
+        self.page._populate_recent_receipts({"items": [record], "total": 1, "page": 1})
+        table = self.page._history_tables["all"]
+        table.selectRow(0)
+        self.app.processEvents()
+        self.assertTrue(self.page.history_deselect_button.isEnabled())
+        self.page.history_deselect_button.click()
+        self.assertEqual(table.currentRow(), -1)
+        self.assertFalse(self.page.history_deselect_button.isEnabled())
+        self.assertIsNone(self.page.history_invoice_preview._page_item)
+        self.assertIsNone(self.page._history_invoice_payload)
+
+    def test_invoice_number_chip_copies_id_and_shows_full_id_on_hover(self):
+        receipt_id = "3da9f062-6f0b-4f0f-9417-abcd7890abcd"
+        receipt = {
+            "id": receipt_id, "day_receipt_id": 44, "total_price": 50, "payed": True,
+            "items": [{"product_id": "product-1", "product_name": "item-1", "sell_price": 50, "quantity": 1}],
+        }
+        self.page._set_history_invoice_preview({"receipt": receipt, "template": DEFAULT_TEMPLATE})
+        self.assertEqual(self.page.history_preview_status.text(), "شماره: 44")
+        self.assertIn(receipt_id, self.page.history_preview_status.toolTip())
+        self.page.history_preview_status.click()
+        self.assertEqual(QApplication.clipboard().text(), receipt_id)
+
+    def test_inline_preview_exports_png_and_jpg(self):
+        receipt = {
+            "id": "receipt-export", "day_receipt_id": 9, "total_price": 25, "payed": True,
+            "items": [{"product_id": "product-1", "product_name": "item-1", "sell_price": 25, "quantity": 1}],
+        }
+        preview = InvoicePreviewWidget()
+        preview.resize(700, 520)
+        preview.set_invoice(receipt, DEFAULT_TEMPLATE)
+        try:
+            for extension, image_filter in (
+                ("png", "PNG image (*.png)"),
+                ("jpg", "JPEG image (*.jpg *.jpeg)"),
+            ):
+                with self.subTest(extension=extension), tempfile.TemporaryDirectory() as tmp:
+                    path = os.path.join(tmp, "invoice." + extension)
+                    with patch("client.ui.invoice_dialog.QFileDialog.getSaveFileName", return_value=(path, image_filter)):
+                        with patch("client.ui.invoice_dialog.QMessageBox.information"):
+                            self.assertTrue(preview.export_invoice(extension))
+                    self.assertTrue(os.path.exists(path))
+                    self.assertGreater(os.path.getsize(path), 100)
+        finally:
+            preview.close()
 
 if __name__ == "__main__":
     unittest.main()
