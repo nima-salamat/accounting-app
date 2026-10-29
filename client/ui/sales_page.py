@@ -267,7 +267,8 @@ class SalesPage(QFrame):
         apply_button_icons(self, getattr(self.window, "mode", "light"))
         self.sync_theme_button()
         if self._cart_was_collapsed:
-            QTimer.singleShot(0, lambda: self._set_cart_panel_visible(False))
+            # Start fully hidden rather than briefly showing a clipped cart rail.
+            self._set_cart_panel_visible(False)
         if self._history_preview_was_collapsed:
             QTimer.singleShot(0, lambda: self._set_history_preview_visible(False))
 
@@ -414,13 +415,17 @@ class SalesPage(QFrame):
         self.product_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.product_table.setShowGrid(False)
         self.product_table.setSortingEnabled(False)
+        self.product_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         table_header = self.product_table.horizontalHeader()
         table_header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         table_header.setStretchLastSection(False)
-        # Keep the image/action affordances visible at normal POS window sizes.
-        for column, width in enumerate((116, 198, 95, 105, 90, 100)):
+        # These weights describe proportions, not fixed pixel widths. The table
+        # redistributes them whenever its viewport changes size.
+        self._product_table_column_weights = [116, 198, 95, 105, 90, 100]
+        for column, width in enumerate(self._product_table_column_weights):
             self.product_table.setColumnWidth(column, width)
         self._restore_product_table_column_widths()
+        self.product_table.viewport().installEventFilter(self)
         self._product_table_width_save_timer = QTimer(self)
         self._product_table_width_save_timer.setSingleShot(True)
         self._product_table_width_save_timer.setInterval(300)
@@ -512,27 +517,25 @@ class SalesPage(QFrame):
         sizes = list(self.splitter.sizes())
         cart_index = self.splitter.indexOf(self.cart_panel)
         if visible:
-            # Restore the cart's normal constraints before asking QSplitter for space.
+            # Restore constraints and show the complete cart as one unit.
             self._cart_collapsed = False
             self._local_settings.setValue("sales/cart_collapsed", False)
             self.cart_panel.setMaximumWidth(16777215)
             self.cart_panel.setMinimumWidth(320)
+            self.cart_panel.show()
             self.cart_status_label.setObjectName("StatusPill")
             self.cart_status_label.setMinimumWidth(58)
             self.cart_status_label.setMaximumWidth(180)
             self.cart_status_label.style().unpolish(self.cart_status_label)
             self.cart_status_label.style().polish(self.cart_status_label)
-            for index in range(self.cart_title_box.count()):
-                widget = self.cart_title_box.itemAt(index).widget()
-                if widget is not None:
-                    widget.show()
             self.cart_scroll.show()
             self.clear_cart_button.show()
             self.cart_empty_label.setVisible(not bool(self._cart))
             self.cart_panel_toggle.setText("‹")
             self.cart_panel_toggle.setToolTip("جمع‌کردن پنل سبد خرید")
         else:
-            # Remember the expanded proportions before constraining the cart to its rail.
+            # Save expanded proportions, then hide the entire panel. A thin rail still
+            # leaves the badge/margins visible and is not a true collapsed state.
             if (
                 not self._cart_collapsed
                 and len(sizes) == 2
@@ -543,21 +546,7 @@ class SalesPage(QFrame):
                 self._local_settings.setValue("sales/splitter_sizes", sizes)
             self._cart_collapsed = True
             self._local_settings.setValue("sales/cart_collapsed", True)
-            for index in range(self.cart_title_box.count()):
-                widget = self.cart_title_box.itemAt(index).widget()
-                if widget is not None:
-                    widget.hide()
-            self.cart_scroll.hide()
-            self.clear_cart_button.hide()
-            self.cart_empty_label.hide()
-            collapsed_width = 92
-            self.cart_panel.setMinimumWidth(collapsed_width)
-            self.cart_panel.setMaximumWidth(collapsed_width)
-            self.cart_status_label.setObjectName("SalesCartCountBadge")
-            self.cart_status_label.setMinimumWidth(32)
-            self.cart_status_label.setMaximumWidth(32)
-            self.cart_status_label.style().unpolish(self.cart_status_label)
-            self.cart_status_label.style().polish(self.cart_status_label)
+            self.cart_panel.hide()
             self.cart_panel_toggle.setText("›")
             self.cart_panel_toggle.setToolTip("بازکردن پنل سبد خرید")
 
@@ -577,10 +566,11 @@ class SalesPage(QFrame):
         sizes = [1, 1]
 
         if self._cart_collapsed:
-            cart_width = min(92, max(1, available - self.catalog_panel.minimumWidth()))
-            sizes[cart_index] = cart_width
-            sizes[catalog_index] = max(1, available - cart_width)
+            self.cart_panel.hide()
+            sizes[cart_index] = 0
+            sizes[catalog_index] = available
         else:
+            self.cart_panel.show()
             saved = list(self._saved_splitter_sizes or [])
             if len(saved) == 2 and sum(saved) > 0:
                 cart_ratio = saved[cart_index] / sum(saved)
@@ -735,6 +725,8 @@ class SalesPage(QFrame):
                 QTimer.singleShot(0, self._position_search_suggestions)
             elif watched is getattr(getattr(self, "catalog_scroll", None), "viewport", lambda: None)():
                 QTimer.singleShot(0, self._reflow_products_for_resize)
+            elif watched is getattr(getattr(self, "product_table", None), "viewport", lambda: None)():
+                QTimer.singleShot(0, self._fit_product_table_columns)
         return super().eventFilter(watched, event)
 
     def _position_product_stock_circle(self, card):
@@ -782,6 +774,9 @@ class SalesPage(QFrame):
         return max(1, min(6, width // 165))
 
     def _reflow_products_for_resize(self):
+        if self._product_layout_mode == "table":
+            QTimer.singleShot(0, self._fit_product_table_columns)
+            return
         if not getattr(self, "products", None) or self._product_layout_mode != "grid":
             return
         width = max(260, self.catalog_scroll.viewport().width())
@@ -938,20 +933,17 @@ class SalesPage(QFrame):
         self.product_deselect_button.setEnabled(in_table_mode and selected)
 
     def _restore_product_table_column_widths(self):
+        """Restore preferred column proportions; absolute saved pixels are not layout."""
         try:
             raw = self._local_settings.value("sales/product_table_column_widths", "")
             widths = json.loads(raw) if isinstance(raw, str) and raw else list(raw or [])
             if len(widths) != self.product_table.columnCount():
                 return
-            header = self.product_table.horizontalHeader()
-            header.blockSignals(True)
-            for column, width in enumerate(widths):
-                width = int(width)
-                if 36 <= width <= 1200:
-                    self.product_table.setColumnWidth(column, width)
-            header.blockSignals(False)
+            parsed = [int(width) for width in widths]
+            if all(36 <= width <= 1200 for width in parsed):
+                self._product_table_column_weights = parsed
         except (TypeError, ValueError, json.JSONDecodeError):
-            self.product_table.horizontalHeader().blockSignals(False)
+            return
 
     def _schedule_product_table_width_save(self, *_args):
         timer = getattr(self, "_product_table_width_save_timer", None)
@@ -959,14 +951,74 @@ class SalesPage(QFrame):
             timer.start()
 
     def _save_product_table_column_widths(self):
+        # This method is called after a user drags a column handle. Persist those
+        # proportions and then normalize them to the table's current viewport.
         widths = [
-            self.product_table.columnWidth(column)
+            max(36, int(self.product_table.columnWidth(column)))
             for column in range(self.product_table.columnCount())
         ]
+        self._product_table_column_weights = widths
         self._local_settings.setValue(
             "sales/product_table_column_widths", json.dumps(widths)
         )
         self._local_settings.sync()
+        self._fit_product_table_columns()
+
+    def _fit_product_table_columns(self):
+        """Fit every visible column to the table viewport, keeping the saved proportions."""
+        table = getattr(self, "product_table", None)
+        if table is None:
+            return
+        viewport_width = int(table.viewport().width())
+        if viewport_width <= 0 or table.columnCount() == 0:
+            return
+
+        visible = [
+            column for column in range(table.columnCount())
+            if not table.isColumnHidden(column)
+        ]
+        if not visible:
+            return
+        weights = list(getattr(self, "_product_table_column_weights", []) or [])
+        if len(weights) != table.columnCount():
+            weights = [116, 198, 95, 105, 90, 100][:table.columnCount()]
+        weights = [max(1, int(width)) for width in weights]
+        total_weight = sum(weights[column] for column in visible)
+        if total_weight <= 0:
+            return
+
+        widths = {}
+        remaining = viewport_width
+        for column in visible[:-1]:
+            width = max(1, int(viewport_width * weights[column] / total_weight))
+            widths[column] = width
+            remaining -= width
+        widths[visible[-1]] = max(1, remaining)
+
+        header = table.horizontalHeader()
+        header.blockSignals(True)
+        try:
+            for column, width in widths.items():
+                if table.columnWidth(column) != width:
+                    table.setColumnWidth(column, width)
+        finally:
+            header.blockSignals(False)
+
+        # Keep the thumbnail scaled to the width actually allocated to its column.
+        # This prevents large fixed-size images from spilling into adjacent cells.
+        if not self._show_product_images or table.isColumnHidden(0):
+            return
+        image_side = min(160, max(40, table.columnWidth(0) - 12))
+        for row, product in enumerate(self.products):
+            if row >= table.rowCount():
+                break
+            cell = table.cellWidget(row, 0)
+            image = cell.findChild(QLabel, "SalesProductImage") if cell else None
+            if image is None or image.width() != image_side:
+                table.setCellWidget(
+                    row, 0, self._build_product_table_image_cell(product, image_side)
+                )
+                table.setRowHeight(row, image_side + 14)
 
     def _category_changed(self, *_args):
         self.product_page = 1
@@ -1531,6 +1583,7 @@ class SalesPage(QFrame):
             table.setItem(0, 0, empty)
             table.setSpan(0, 0, 1, table.columnCount())
             table.setRowHeight(0, 52)
+            QTimer.singleShot(0, self._fit_product_table_columns)
             return
 
         compact = self._product_card_density == "compact"
@@ -1588,6 +1641,8 @@ class SalesPage(QFrame):
             self._product_add_buttons[key] = add_button
 
             table.setRowHeight(row, row_height)
+
+        QTimer.singleShot(0, self._fit_product_table_columns)
 
     def _original_quantity_for_product(self, product_key):
         if not self._editing_receipt:

@@ -213,7 +213,7 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.page.add_to_cart(self.page.products[0])
 
         self.page._set_cart_panel_visible(False)
-        self.assertTrue(self.page.cart_panel.isVisible())
+        self.assertTrue(self.page.cart_panel.isHidden())
         self.assertTrue(self.page._cart_collapsed)
         self.assertTrue(self.page.cart_scroll.isHidden())
         self.assertEqual(self.page.cart_panel_toggle.text(), "›")
@@ -334,7 +334,8 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.app.processEvents()
         self.assertTrue(self.page._cart_collapsed)
         cart_index = self.page.splitter.indexOf(self.page.cart_panel)
-        self.assertLessEqual(self.page.splitter.sizes()[cart_index], 120)
+        self.assertTrue(self.page.cart_panel.isHidden())
+        self.assertEqual(self.page.splitter.sizes()[cart_index], 0)
         self.assertEqual(self.page.cart_panel_toggle.toolTip(), "بازکردن پنل سبد خرید")
 
         self.page.cart_panel_toggle.click()
@@ -345,6 +346,24 @@ class SalesPageLayoutTests(unittest.TestCase):
             self.page.splitter.sizes()[cart_index], self.page.cart_panel.minimumWidth()
         )
         self.assertEqual(self.page.cart_panel_toggle.toolTip(), "جمع‌کردن پنل سبد خرید")
+
+    def test_product_table_columns_fit_the_viewport_when_page_resizes(self):
+        self.page.refresh_products()
+        self.page._apply_product_display_settings("table", True, "comfortable", 0)
+        for page_width in (1180, 980, 880):
+            self.page.resize(page_width, 780)
+            self.app.processEvents()
+            self.page._fit_product_table_columns()
+            self.app.processEvents()
+            table = self.page.product_table
+            visible_width = sum(
+                table.columnWidth(column)
+                for column in range(table.columnCount())
+                if not table.isColumnHidden(column)
+            )
+            self.assertLessEqual(abs(visible_width - table.viewport().width()), 2)
+            self.assertFalse(table.horizontalScrollBar().isVisible())
+            self.assertGreater(table.columnWidth(1), 0)
 
     def test_cancel_loaded_invoice_button_is_in_the_footer_next_to_total(self):
         self.assertGreaterEqual(self.page.footer_layout.indexOf(self.page.total_label), 0)
@@ -550,7 +569,18 @@ class SalesPageLayoutTests(unittest.TestCase):
 
         another_page = SalesPage(self.window)
         try:
-            self.assertEqual(another_page.product_table.columnWidth(1), 333)
+            self.assertEqual(another_page._product_table_column_weights[1], 333)
+            another_page.show()
+            self.app.processEvents()
+            another_page._fit_product_table_columns()
+            visible_width = sum(
+                another_page.product_table.columnWidth(column)
+                for column in range(another_page.product_table.columnCount())
+                if not another_page.product_table.isColumnHidden(column)
+            )
+            self.assertLessEqual(
+                abs(visible_width - another_page.product_table.viewport().width()), 2
+            )
         finally:
             another_page.close()
             another_page.deleteLater()
@@ -601,14 +631,16 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.app.processEvents()
         self.assertTrue(self.page._cart_collapsed)
         self.assertTrue(self.page._local_settings.value("sales/cart_collapsed", False, type=bool))
+        self.assertTrue(self.page.cart_panel.isHidden())
         collapsed_sizes = self.page.splitter.sizes()
-        self.assertLessEqual(collapsed_sizes[1], 180)
+        self.assertEqual(collapsed_sizes[1], 0)
 
         reopened = SalesPage(self.window)
         reopened.show()
         self.app.processEvents()
         try:
             self.assertTrue(reopened._cart_collapsed)
+            self.assertTrue(reopened.cart_panel.isHidden())
             self.assertTrue(reopened.cart_scroll.isHidden())
             reopened.cart_panel_toggle.click()
             self.app.processEvents()
