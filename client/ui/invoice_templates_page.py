@@ -2,10 +2,11 @@
 from copy import deepcopy
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QBrush, QPainter, QPen
+from PySide6.QtGui import QColor, QBrush, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
     QCheckBox, QColorDialog, QComboBox, QFormLayout, QFrame, QGraphicsItem,
-    QGraphicsLineItem, QGraphicsRectItem, QGraphicsScene, QGraphicsView, QHBoxLayout, QLabel,
+    QGraphicsLineItem, QGraphicsRectItem, QGraphicsScene, QGraphicsSimpleTextItem,
+    QGraphicsView, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
     QScrollArea, QSpinBox, QSplitter, QTextEdit, QVBoxLayout, QWidget,
 )
@@ -124,29 +125,53 @@ class _DesignerScene(QGraphicsScene):
         super().__init__(parent)
         self._alignment_guide_items = []
 
-    def set_alignment_guides(self, vertical_positions=(), horizontal_positions=()):
-        """Paint temporary, non-interactive smart guides over the page canvas."""
+    def set_alignment_guides(self, vertical_positions=(), horizontal_positions=(), measurements=()):
+        """Paint temporary, non-interactive alignment and spacing guides."""
         self.clear_alignment_guides()
         if self.sceneRect().isEmpty():
             return
-        pen = QPen(QColor("#E11D48"))
-        pen.setWidthF(0.35)
-        pen.setStyle(Qt.PenStyle.DashLine)
+        align_pen = QPen(QColor("#E11D48"))
+        align_pen.setWidthF(0.35)
+        align_pen.setStyle(Qt.PenStyle.DashLine)
+        measure_pen = QPen(QColor("#0F9D8A"))
+        measure_pen.setWidthF(0.35)
         bounds = self.sceneRect()
         for x in vertical_positions:
             line = QGraphicsLineItem(float(x), bounds.top(), float(x), bounds.bottom())
-            line.setPen(pen)
+            line.setPen(align_pen)
             line.setZValue(500)
             line.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             self.addItem(line)
             self._alignment_guide_items.append(line)
         for y in horizontal_positions:
             line = QGraphicsLineItem(bounds.left(), float(y), bounds.right(), float(y))
-            line.setPen(pen)
+            line.setPen(align_pen)
             line.setZValue(500)
             line.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             self.addItem(line)
             self._alignment_guide_items.append(line)
+        for measurement in measurements:
+            line = QGraphicsLineItem(
+                float(measurement["x1"]), float(measurement["y1"]),
+                float(measurement["x2"]), float(measurement["y2"]),
+            )
+            line.setPen(measure_pen)
+            line.setZValue(510)
+            line.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+            self.addItem(line)
+            self._alignment_guide_items.append(line)
+
+            label = QGraphicsSimpleTextItem(str(measurement["label"]))
+            label.setFont(QFont("Vazirmatn", 5))
+            label.setBrush(QBrush(QColor("#087F70")))
+            label.setZValue(520)
+            label.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+            label.setPos(
+                (float(measurement["x1"]) + float(measurement["x2"])) / 2 + 0.5,
+                (float(measurement["y1"]) + float(measurement["y2"])) / 2 + 0.5,
+            )
+            self.addItem(label)
+            self._alignment_guide_items.append(label)
         self.update()
 
     def clear_alignment_guides(self):
@@ -768,7 +793,7 @@ class InvoiceTemplatesPage(QFrame):
             self.canvas_help.setText(self._alignment_hint_default)
 
     def _snap_item_position(self, item, proposed):
-        """Magnetically align an element's edges/center with nearby elements."""
+        """Magnetically align edges/centers, then equalize nearby gaps when possible."""
         bounds = self.scene.sceneRect()
         width = float(item.rect().width())
         height = float(item.rect().height())
@@ -778,58 +803,142 @@ class InvoiceTemplatesPage(QFrame):
         scale = max(0.01, abs(float(self.canvas.transform().m11())))
         # Keep the snapping zone close to 7 screen pixels across different zoom levels.
         threshold = max(1.0, min(5.0, 7.0 / scale))
+        x_refs = (x, x + width / 2, x + width)
+        y_refs = (y, y + height / 2, y + height)
         x_candidates = []
         y_candidates = []
-        x_refs = (("لبهٔ چپ", x), ("مرکز", x + width / 2), ("لبهٔ راست", x + width))
-        y_refs = (("لبهٔ بالا", y), ("مرکز", y + height / 2), ("لبهٔ پایین", y + height))
-
+        others = []
         for other in self._items_by_id.values():
             if other is item or other.scene() is not self.scene:
                 continue
-            other_x = float(other.pos().x())
-            other_y = float(other.pos().y())
-            other_w = float(other.rect().width())
-            other_h = float(other.rect().height())
-            target_x = (
-                ("لبهٔ چپ", other_x),
-                ("مرکز", other_x + other_w / 2),
-                ("لبهٔ راست", other_x + other_w),
-            )
-            target_y = (
-                ("لبهٔ بالا", other_y),
-                ("مرکز", other_y + other_h / 2),
-                ("لبهٔ پایین", other_y + other_h),
-            )
-            for own_name, own_value in x_refs:
-                for target_name, target_value in target_x:
+            ox = float(other.pos().x())
+            oy = float(other.pos().y())
+            ow = float(other.rect().width())
+            oh = float(other.rect().height())
+            others.append((ox, oy, ow, oh))
+            target_x = (ox, ox + ow / 2, ox + ow)
+            target_y = (oy, oy + oh / 2, oy + oh)
+            for own_value in x_refs:
+                for target_value in target_x:
                     delta = target_value - own_value
                     candidate_x = x + delta
                     if abs(delta) <= threshold and -0.001 <= candidate_x <= bounds.width() - width + 0.001:
-                        x_candidates.append((abs(delta), candidate_x, target_value, own_name, target_name))
-            for own_name, own_value in y_refs:
-                for target_name, target_value in target_y:
+                        x_candidates.append((abs(delta), candidate_x, target_value))
+            for own_value in y_refs:
+                for target_value in target_y:
                     delta = target_value - own_value
                     candidate_y = y + delta
                     if abs(delta) <= threshold and -0.001 <= candidate_y <= bounds.height() - height + 0.001:
-                        y_candidates.append((abs(delta), candidate_y, target_value, own_name, target_name))
+                        y_candidates.append((abs(delta), candidate_y, target_value))
 
+        # Existing gaps become "magnetic" spacing targets. A target is considered
+        # only when the moving element overlaps its neighbour on the perpendicular axis.
+        known_x_gaps = []
+        known_y_gaps = []
+        for index, first in enumerate(others):
+            ax, ay, aw, ah = first
+            for second in others[index + 1:]:
+                bx, by, bw, bh = second
+                if min(ay + ah, by + bh) - max(ay, by) > 0.5:
+                    if ax + aw <= bx:
+                        gap = bx - (ax + aw)
+                    elif bx + bw <= ax:
+                        gap = ax - (bx + bw)
+                    else:
+                        gap = 0.0
+                    if 0.5 < gap <= 40.0:
+                        known_x_gaps.append(gap)
+                if min(ax + aw, bx + bw) - max(ax, bx) > 0.5:
+                    if ay + ah <= by:
+                        gap = by - (ay + ah)
+                    elif by + bh <= ay:
+                        gap = ay - (by + bh)
+                    else:
+                        gap = 0.0
+                    if 0.5 < gap <= 40.0:
+                        known_y_gaps.append(gap)
+
+        x_gap_candidates = []
+        y_gap_candidates = []
+        x_measurements = []
+        y_measurements = []
+        for ox, oy, ow, oh in others:
+            overlap_y1, overlap_y2 = max(y, oy), min(y + height, oy + oh)
+            if overlap_y2 - overlap_y1 > 0.5:
+                mid_y = (overlap_y1 + overlap_y2) / 2
+                if ox >= x + width:
+                    for gap in known_x_gaps:
+                        candidate_x = ox - gap - width
+                        delta = candidate_x - x
+                        if abs(delta) <= threshold and 0 <= candidate_x <= bounds.width() - width:
+                            x_gap_candidates.append((abs(delta), candidate_x, gap, candidate_x + width, ox, mid_y))
+                elif ox + ow <= x:
+                    for gap in known_x_gaps:
+                        candidate_x = ox + ow + gap
+                        delta = candidate_x - x
+                        if abs(delta) <= threshold and 0 <= candidate_x <= bounds.width() - width:
+                            x_gap_candidates.append((abs(delta), candidate_x, gap, ox + ow, candidate_x, mid_y))
+
+            overlap_x1, overlap_x2 = max(x, ox), min(x + width, ox + ow)
+            if overlap_x2 - overlap_x1 > 0.5:
+                mid_x = (overlap_x1 + overlap_x2) / 2
+                if oy >= y + height:
+                    for gap in known_y_gaps:
+                        candidate_y = oy - gap - height
+                        delta = candidate_y - y
+                        if abs(delta) <= threshold and 0 <= candidate_y <= bounds.height() - height:
+                            y_gap_candidates.append((abs(delta), candidate_y, gap, mid_x, candidate_y + height, oy))
+                elif oy + oh <= y:
+                    for gap in known_y_gaps:
+                        candidate_y = oy + oh + gap
+                        delta = candidate_y - y
+                        if abs(delta) <= threshold and 0 <= candidate_y <= bounds.height() - height:
+                            y_gap_candidates.append((abs(delta), candidate_y, gap, mid_x, oy + oh, candidate_y))
+
+        # Prefer true edge/center alignment over equal spacing; spacing snapping is
+        # a secondary aid so it never pulls a clearly aligned element away.
         x_match = min(x_candidates, key=lambda value: value[0]) if x_candidates else None
         y_match = min(y_candidates, key=lambda value: value[0]) if y_candidates else None
+        x_gap_match = min(x_gap_candidates, key=lambda value: value[0]) if not x_match and x_gap_candidates else None
+        y_gap_match = min(y_gap_candidates, key=lambda value: value[0]) if not y_match and y_gap_candidates else None
         if x_match:
             x = max(0.0, min(x_match[1], bounds.width() - width))
+        elif x_gap_match:
+            x = x_gap_match[1]
         if y_match:
             y = max(0.0, min(y_match[1], bounds.height() - height))
+        elif y_gap_match:
+            y = y_gap_match[1]
 
+        digit_map = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+        measurements = []
+        if x_gap_match:
+            gap, x1, x2, line_y = x_gap_match[2], x_gap_match[3], x_gap_match[4], x_gap_match[5]
+            measurements.append({
+                "x1": x1, "y1": line_y, "x2": x2, "y2": line_y,
+                "label": "{} mm".format(str(round(gap, 1)).translate(digit_map)),
+            })
+        if y_gap_match:
+            gap, line_x, y1, y2 = y_gap_match[2], y_gap_match[3], y_gap_match[4], y_gap_match[5]
+            measurements.append({
+                "x1": line_x, "y1": y1, "x2": line_x, "y2": y2,
+                "label": "{} mm".format(str(round(gap, 1)).translate(digit_map)),
+            })
         self.scene.set_alignment_guides(
             vertical_positions=[x_match[2]] if x_match else (),
             horizontal_positions=[y_match[2]] if y_match else (),
+            measurements=measurements,
         )
-        if x_match or y_match:
+        if x_match or y_match or x_gap_match or y_gap_match:
             active = []
             if x_match:
-                active.append("تراز افقی")
+                active.append("هم‌ترازی افقی")
             if y_match:
-                active.append("تراز عمودی")
+                active.append("هم‌ترازی عمودی")
+            if x_gap_match:
+                active.append("فاصلهٔ افقی برابر")
+            if y_gap_match:
+                active.append("فاصلهٔ عمودی برابر")
             self.canvas_help.setText("راهنمای هوشمند فعال: " + " و ".join(active) + " · با رها کردن موس بسته می‌شود.")
         else:
             self._reset_alignment_hint()
