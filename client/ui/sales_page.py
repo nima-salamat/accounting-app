@@ -2330,7 +2330,8 @@ class SalesPage(QFrame):
             message = "فروش شمارهٔ {} با مبلغ {:,.2f} ثبت شد.".format(
                 receipt.get("invoice_number") or receipt.get("day_receipt_id", "—"),
                 float(receipt.get("total_price") or 0),
-            )        self.window.set_status(message)
+            )
+        self.window.set_status(message)
         self.refresh_products()
         refresh_dashboard = getattr(self.window, "refresh_dashboard_data", None)
         if callable(refresh_dashboard):
