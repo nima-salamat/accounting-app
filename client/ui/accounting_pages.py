@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from client.ui.permissions import can_access
+from client.ui.currency import currency_label, format_currency, to_base_amount, to_display_amount
 
 
 ACCOUNT_TYPE_LABELS = {
@@ -44,6 +45,7 @@ class JournalLineEditor(QFrame):
             control.setDecimals(2)
             control.setSingleStep(10)
             control.setMinimumWidth(130)
+            control.setSuffix(" " + currency_label())
         self.debit.setPrefix("بدهکار ")
         self.credit.setPrefix("بستانکار ")
         self.remove_button = QPushButton("حذف")
@@ -157,8 +159,9 @@ class ManualJournalDialog(QDialog):
         debit, credit = self._totals()
         difference = round(debit - credit, 2)
         self.totals.setText(
-            "بدهکار {:,.2f}   |   بستانکار {:,.2f}   |   اختلاف {:+,.2f}".format(
-                debit, credit, difference
+            "بدهکار {}   |   بستانکار {}   |   اختلاف {}".format(
+                format_currency(debit), format_currency(credit),
+                format_currency(difference, signed=True),
             )
         )
         self.totals.setStyleSheet("color:#17846D;" if difference == 0 and debit > 0 else "color:#C74455;")
@@ -190,8 +193,8 @@ class ManualJournalDialog(QDialog):
                 {
                     "account_id": row.account.currentData(),
                     "description": row.description.text().strip(),
-                    "debit": row.debit.value(),
-                    "credit": row.credit.value(),
+                    "debit": float(to_base_amount(row.debit.value())),
+                    "credit": float(to_base_amount(row.credit.value())),
                 }
                 for row in self.lines
             ],
@@ -287,8 +290,8 @@ class JournalsPage(QFrame):
             values = [
                 item.get("id"), item.get("entry_number"), item.get("entry_date"),
                 item.get("description"), item.get("reference") or "—",
-                "{:,.2f}".format(float(item.get("debit_total") or 0)),
-                "{:,.2f}".format(float(item.get("credit_total") or 0)),
+                format_currency(item.get("debit_total")),
+                format_currency(item.get("credit_total")),
             ]
             for col, value in enumerate(values):
                 cell = QTableWidgetItem(str(value or "—"))
@@ -356,14 +359,14 @@ class JournalsPage(QFrame):
         ]
         for line in item.get("lines") or []:
             lines.append(
-                "{} · {} · بدهکار {:,.2f} · بستانکار {:,.2f}".format(
+                "{} · {} · بدهکار {} · بستانکار {}".format(
                     line.get("account_code"), line.get("account_name"),
-                    float(line.get("debit") or 0), float(line.get("credit") or 0),
+                    format_currency(line.get("debit")), format_currency(line.get("credit")),
                 )
             )
         lines.append("")
-        lines.append("جمع بدهکار: {:,.2f}".format(float(item.get("debit_total") or 0)))
-        lines.append("جمع بستانکار: {:,.2f}".format(float(item.get("credit_total") or 0)))
+        lines.append("جمع بدهکار: {}".format(format_currency(item.get("debit_total"))))
+        lines.append("جمع بستانکار: {}".format(format_currency(item.get("credit_total"))))
         QMessageBox.information(self, "جزئیات سند", "\n".join(lines))
 
 
@@ -613,13 +616,13 @@ class AccountingReportsPage(QFrame):
         profit = result.get("profit_and_loss") or {}
         balance_sheet = result.get("balance_sheet") or {}
         for key in ("income", "expenses", "net_profit"):
-            self.metrics[key].setText("{:,.2f}".format(float(profit.get(key) or 0)))
-        self.metrics["assets"].setText("{:,.2f}".format(float(balance_sheet.get("assets") or 0)))
+            self.metrics[key].setText(format_currency(profit.get(key)))
+        self.metrics["assets"].setText(format_currency(balance_sheet.get("assets")))
         totals = result.get("trial_balance") or {}
         self.balance_label.setText(
-            "تراز آزمایشی: بدهکار {:,.2f} · بستانکار {:,.2f} · {}".format(
-                float(totals.get("debit_total") or 0),
-                float(totals.get("credit_total") or 0),
+            "تراز آزمایشی: بدهکار {} · بستانکار {} · {}".format(
+                format_currency(totals.get("debit_total")),
+                format_currency(totals.get("credit_total")),
                 "متوازن" if totals.get("balanced") else "نامتوازن",
             )
         )
@@ -629,9 +632,9 @@ class AccountingReportsPage(QFrame):
             values = [
                 item.get("code"), item.get("name"),
                 ACCOUNT_TYPE_LABELS.get(item.get("account_type"), item.get("account_type")),
-                "{:,.2f}".format(float(item.get("debit") or 0)),
-                "{:,.2f}".format(float(item.get("credit") or 0)),
-                "{:,.2f}".format(float(item.get("net") or 0)),
+                format_currency(item.get("debit")),
+                format_currency(item.get("credit")),
+                format_currency(item.get("net")),
             ]
             for col, value in enumerate(values):
                 self.table.setItem(row, col, QTableWidgetItem(str(value)))
