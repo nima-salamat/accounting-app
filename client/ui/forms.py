@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 
 from client.ui.icons import apply_button_icons
 from client.ui.theme import current_theme_mode
+from client.ui.currency import currency_label, to_base_amount, to_display_amount
 
 
 class ImageFilePicker(QWidget):
@@ -59,6 +60,9 @@ class RecordDialog(QDialog):
             key = spec["key"]
             kind = spec.get("kind", "text")
             value = self.record.get(key, spec.get("default"))
+            is_currency = bool(spec.get("currency"))
+            if is_currency and value not in (None, ""):
+                value = to_display_amount(value)
             if kind == "image":
                 widget = ImageFilePicker(self.record.get("image_path"), self)
             elif kind == "bool":
@@ -83,7 +87,10 @@ class RecordDialog(QDialog):
                     widget.setText(str(value))
                 widget.setPlaceholderText(spec.get("placeholder", ""))
             self.inputs[key] = widget
-            label = QLabel(spec["label"] + ("  *" if spec.get("required") else ""))
+            label_text = spec["label"]
+            if is_currency:
+                label_text += " ({})".format(currency_label())
+            label = QLabel(label_text + ("  *" if spec.get("required") else ""))
             label.setMinimumWidth(145)
             form.addRow(label, widget)
         layout.addLayout(form)
@@ -149,7 +156,7 @@ class RecordDialog(QDialog):
                     raise ValueError("«{}» باید عدد باشد.".format(spec["label"])) from exc
                 if number < 0:
                     raise ValueError("«{}» نمی‌تواند منفی باشد.".format(spec["label"]))
-                output[key] = raw
+                output[key] = str(to_base_amount(number)) if spec.get("currency") else raw
             else:
                 output[key] = raw
         return output
