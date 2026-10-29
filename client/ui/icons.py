@@ -17,6 +17,7 @@ ICON_BY_KEY = {
     "accounting": "fa5s.book-open", "management": "fa5s.user-cog",
     "templates": "fa5s.file-invoice", "search": "fa5s.search", "refresh": "fa5s.sync-alt",
     "create": "fa5s.plus", "edit": "fa5s.edit", "delete": "fa5s.trash-alt",
+    "download": "fa5s.download",
     "export": "fa5s.file-csv", "select": "fa5s.check-square", "clear": "fa5s.times-circle",
     "previous": "fa5s.chevron-right", "next": "fa5s.chevron-left", "history": "fa5s.file-invoice",
     "print": "fa5s.print", "checkout": "fa5s.cash-register", "cart": "fa5s.cart-plus",
