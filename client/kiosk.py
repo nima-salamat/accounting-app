@@ -25,6 +25,7 @@ from client.ui.invoice_dialog import auto_print_invoice
 from client.ui.invoice_render import DEFAULT_TEMPLATE
 from client.ui.permissions import can_access
 from client.ui.theme import set_design_config, stylesheet
+from client.ui.icons import apply_button_icons, set_button_icon
 from client.ui.touch_keyboard import TouchKeyboardDialog
 from client.ui.worker import ApiWorker
 
@@ -734,8 +735,9 @@ class KioskShopPage(QFrame):
                 badge.setProperty("outOfStock", True)
             card_layout.addWidget(badge)
 
-            add = QPushButton("افزودن به سبد  +")
+            add = QPushButton("افزودن به سبد")
             add.setObjectName("KioskAddButton")
+            set_button_icon(add, "cart", "light")
             add.setMinimumHeight(44)
             available = not (tracked and stock <= 0)
             add.setEnabled(available)
@@ -971,6 +973,7 @@ class KioskWindow(QMainWindow):
         self.exit_shortcut.activated.connect(self.request_exit)
 
         self._boot()
+        apply_button_icons(self, "light")
 
     def load_shared_appearance(self, url):
         """Fetch non-sensitive shared design settings asynchronously for the kiosk UI."""
@@ -993,6 +996,7 @@ class KioskWindow(QMainWindow):
             return
         set_design_config(values)
         self.setStyleSheet(stylesheet("light") + self._kiosk_stylesheet)
+        apply_button_icons(self, "light")
 
     def _boot(self):
         configured = self.local_settings.value("configured", False, type=bool)
