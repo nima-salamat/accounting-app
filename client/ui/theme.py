@@ -221,7 +221,9 @@ def stylesheet(mode="light", design=None):
     QListWidget#SalesSearchSuggestionList {{ background: {surface}; border: 1px solid {border}; border-radius: 7px; padding: 2px; }}
     QListWidget#SalesSearchSuggestionList::item {{ padding: 5px 8px; border-bottom: 1px solid {border}; }}
     QListWidget#SalesSearchSuggestionList::item:selected {{ background: {highlight}; color: {text}; }}
-    QPushButton#SalesProductAddButton {{ min-height: 28px; padding: 4px 7px; font-size: 11px; }}
+    QPushButton#SalesProductAddButton {{ background: {primary}; color: #FFFFFF; border: 1px solid {primary}; border-radius: 7px; min-height: 28px; padding: 4px 7px; font-size: 11px; font-weight: 750; }}
+    QPushButton#SalesProductAddButton:hover {{ background: {primary_hover}; border-color: {primary_hover}; }}
+    QPushButton#SalesProductAddButton:disabled {{ background: {surface_alt}; color: {muted}; border-color: {border}; }}
     QFrame#SalesProductCard:hover {{ border-color: {primary}; }}
     QLabel#SalesProductImage {{ background: {surface_alt}; color: {muted}; border: 1px dashed {border}; border-radius: 8px; padding: 5px; }}
     QLabel#SalesProductTitle {{ color: {text}; font-size: {font_size}px; font-weight: 750; }}

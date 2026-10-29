@@ -1334,12 +1334,3 @@ class SalesPage(QFrame):
 
     def _show_recent_invoice(self, payload, dialog):
         InvoiceDialog(payload["receipt"], payload.get("template") or DEFAULT_TEMPLATE, self.window).exec()
-        receipt = self.window.api.get_receipt(receipt_id)
-        try:
-            template = self.window.api.get_invoice_template()
-        except Exception:
-            template = DEFAULT_TEMPLATE
-        return {"receipt": receipt, "template": template}
-
-    def _show_recent_invoice(self, payload, dialog):
-        InvoiceDialog(payload["receipt"], payload.get("template") or DEFAULT_TEMPLATE, self.window).exec()

@@ -5,7 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import unittest
 from PySide6.QtCore import Qt, QSettings
-from PySide6.QtWidgets import QApplication, QSpinBox
+from PySide6.QtWidgets import QApplication, QLabel, QSpinBox
 
 from client.ui.sales_page import SalesPage
 
