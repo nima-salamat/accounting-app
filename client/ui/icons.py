@@ -11,14 +11,14 @@ from client.ui.theme import DARK, LIGHT
 
 
 ICON_BY_KEY = {
-    "home": "fa5s.home", "dashboard": "fa5s.chart-pie", "sales": "fa5s.cash-register",
+    "home": "fa5s.home", "dashboard": "fa5s.chart-pie", "sales": "fa5s.shopping-basket",
     "products": "fa5s.boxes", "categories": "fa5s.tags", "warehouse": "fa5s.warehouse",
     "inventory": "fa5s.boxes", "stocktakes": "fa5s.clipboard-check",
     "accounting": "fa5s.book-open", "management": "fa5s.user-cog",
     "templates": "fa5s.file-invoice", "search": "fa5s.search", "refresh": "fa5s.sync-alt",
     "create": "fa5s.plus", "edit": "fa5s.edit", "delete": "fa5s.trash-alt",
     "export": "fa5s.file-csv", "select": "fa5s.check-square", "clear": "fa5s.times-circle",
-    "previous": "fa5s.chevron-right", "next": "fa5s.chevron-left", "history": "fa5s.history",
+    "previous": "fa5s.chevron-right", "next": "fa5s.chevron-left", "history": "fa5s.file-invoice",
     "print": "fa5s.print", "checkout": "fa5s.cash-register", "cart": "fa5s.cart-plus",
     "clear_cart": "fa5s.cart-arrow-down", "save": "fa5s.save", "preset": "fa5s.clone",
     "duplicate": "fa5s.clone", "zoom_in": "fa5s.search-plus", "zoom_out": "fa5s.search-minus",
