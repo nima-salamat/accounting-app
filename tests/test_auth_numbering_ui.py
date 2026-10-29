@@ -133,6 +133,9 @@ class InvoiceNumberingPageTests(unittest.TestCase):
         self.assertEqual(
             self.designer.layout().indexOf(self.designer.invoice_number_card), -1
         )
+        self.designer.show()
+        self.app.processEvents()
+        self.assertFalse(self.designer.invoice_number_card.isVisible())
         self.assertEqual(self.page.invoice_number_style.currentData(), "date_daily")
         self.assertEqual(self.page.title_label.text(), "شماره‌گذاری فاکتور")
 

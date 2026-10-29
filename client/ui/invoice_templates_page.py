@@ -616,6 +616,12 @@ class InvoiceTemplatesPage(QFrame):
         self._load_template(deepcopy(DEFAULT_TEMPLATE))
         self.set_permissions(window.current_user)
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        # This widget now only holds legacy serialization controls. It is not
+        # part of the designer layout and must never paint over the actual canvas.
+        self.invoice_number_card.hide()
+
     @staticmethod
     def _spin(minimum, maximum, suffix):
         control = QSpinBox()
