@@ -11,6 +11,10 @@ from PySide6.QtWidgets import (
 from client.ui.forms import RecordDialog
 from client.ui.permissions import can_access
 from client.ui.invoice_dialog import InvoiceDialog
+from client.ui.currency import (
+    currency_label, format_currency, format_display_amount,
+    to_base_amount, to_display_amount,
+)
 
 
 def _table(parent, headers, hidden_first=False):
@@ -40,10 +44,7 @@ def _set_rows(table, rows, keys):
 
 
 def _currency(value):
-    try:
-        return "{:,.2f}".format(float(value or 0))
-    except (TypeError, ValueError):
-        return "0.00"
+    return format_currency(value)
 
 
 class PurchaseInvoiceDialog(QDialog):
@@ -109,7 +110,11 @@ class PurchaseInvoiceDialog(QDialog):
         root.addWidget(meta)
 
         self.items_table = QTableWidget(0, 5)
-        self.items_table.setHorizontalHeaderLabels(["کالا (اختیاری)", "شرح قلم", "تعداد", "بهای واحد", "جمع ردیف"])
+        self.items_table.setHorizontalHeaderLabels([
+            "کالا (اختیاری)", "شرح قلم", "تعداد",
+            "بهای واحد ({})".format(currency_label()),
+            "جمع ردیف ({})".format(currency_label()),
+        ])
         self.items_table.setAlternatingRowColors(True)
         self.items_table.verticalHeader().setVisible(False)
         self.items_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -156,7 +161,7 @@ class PurchaseInvoiceDialog(QDialog):
         cost.setRange(0, 999999999999.99)
         cost.setDecimals(2)
         cost.setSingleStep(1)
-        total = QLabel("0.00")
+        total = QLabel(format_display_amount(0))
         total.setAlignment(Qt.AlignmentFlag.AlignCenter)
         product.currentIndexChanged.connect(
             lambda _idx, combo=product, name=description: self._product_changed(combo, name)
@@ -185,8 +190,8 @@ class PurchaseInvoiceDialog(QDialog):
         for row_index, line in enumerate(self.rows):
             value = Decimal(str(line["quantity"].value())) * Decimal(str(line["cost"].value()))
             grand += value
-            line["total"].setText(_currency(value))
-        self.total_label.setText("جمع فاکتور: {}".format(_currency(grand)))
+            line["total"].setText(format_display_amount(value))
+        self.total_label.setText("جمع فاکتور: {}".format(format_display_amount(grand)))
 
     def remove_line(self):
         row = self.items_table.currentRow()
@@ -220,7 +225,7 @@ class PurchaseInvoiceDialog(QDialog):
             product_id = line["product"].currentData()
             description = line["description"].text().strip()
             quantity = line["quantity"].value()
-            unit_cost = line["cost"].value()
+            unit_cost = float(to_base_amount(line["cost"].value()))
             if product_id is None and len(description) < 2:
                 raise ValueError("در ردیف {} که کالای کاتالوگ ندارد، شرح قلم را وارد کنید.".format(index))
             if quantity <= 0:
@@ -260,9 +265,10 @@ class PurchasePaymentDialog(QDialog):
         root.addWidget(info)
         form = QFormLayout()
         self.amount = QDoubleSpinBox()
-        self.amount.setRange(0.01, max(0.01, float(total - paid)))
+        display_remaining = float(to_display_amount(total - paid))
+        self.amount.setRange(0.01, max(0.01, display_remaining))
         self.amount.setDecimals(2)
-        self.amount.setValue(float(total - paid))
+        self.amount.setValue(display_remaining)
         self.paid_on = QDateEdit(QDate.currentDate())
         self.paid_on.setCalendarPopup(True)
         self.paid_on.setDisplayFormat("yyyy-MM-dd")
@@ -273,7 +279,7 @@ class PurchasePaymentDialog(QDialog):
         self.reference = QLineEdit()
         self.reference.setPlaceholderText("مرجع پرداخت (اختیاری)")
         self.notes = QLineEdit()
-        form.addRow("مبلغ پرداخت", self.amount)
+        form.addRow("مبلغ پرداخت ({})".format(currency_label()), self.amount)
         form.addRow("تاریخ پرداخت", self.paid_on)
         form.addRow("روش پرداخت", self.method)
         form.addRow("مرجع", self.reference)
@@ -288,7 +294,7 @@ class PurchasePaymentDialog(QDialog):
 
     def values(self):
         return {
-            "amount": self.amount.value(),
+            "amount": float(to_base_amount(self.amount.value())),
             "paid_on": self.paid_on.date().toString("yyyy-MM-dd"),
             "payment_method": self.method.currentData(),
             "reference": self.reference.text().strip() or None,
@@ -695,7 +701,7 @@ class ExpensesTab(QFrame):
             {"key": "description", "label": "شرح هزینه", "required": True},
             {"key": "category", "label": "دسته هزینه", "required": True, "default": "general"},
             {"key": "expense_date", "label": "تاریخ (YYYY-MM-DD)", "required": True, "default": QDate.currentDate().toString("yyyy-MM-dd")},
-            {"key": "amount", "label": "مبلغ", "kind": "number", "required": True},
+            {"key": "amount", "label": "مبلغ", "kind": "number", "required": True, "currency": True},
             {"key": "payment_method", "label": "روش پرداخت", "kind": "select", "required": True,
              "choices": [("نقدی", "cash"), ("کارت / بانکی", "card"), ("انتقال بانکی", "bank_transfer"), ("پرداخت‌نشده", "unpaid")]},
             {"key": "expense_account_id", "label": "حساب هزینه", "kind": "select", "nullable": True,
