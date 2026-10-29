@@ -13,6 +13,7 @@ from client.ui.currency import (
     to_base_amount, to_display_amount,
 )
 from client.ui.forms import RecordDialog
+from client.ui.invoice_render import DEFAULT_TEMPLATE, render_invoice_html
 from server.app.schemas import AppearanceSettingsUpdate
 
 
@@ -35,6 +36,21 @@ class CurrencyDisplayTests(unittest.TestCase):
         self.assertEqual(format_currency(125000), "1,250,000 ریال")
         self.assertEqual(format_currency(125000, include_unit=False), "1,250,000")
         self.assertEqual(format_display_amount(125000), "125,000 ریال")
+
+    def test_invoice_receipt_uses_the_selected_unit_in_table_headers_and_prices(self):
+        set_currency_unit("rial")
+        receipt = {
+            "id": "currency-receipt",
+            "total_price": 200,
+            "items": [
+                {"product_name": "قلم", "quantity": 2, "sell_price": 100},
+            ],
+        }
+        html = render_invoice_html(receipt, DEFAULT_TEMPLATE)
+        self.assertIn("قیمت واحد (ریال)", html)
+        self.assertIn("جمع (ریال)", html)
+        self.assertIn("1,000", html)
+        self.assertIn("2,000 ریال", html)
 
     def test_conversion_preserves_the_internal_toman_amount(self):
         set_currency_unit("rial")
