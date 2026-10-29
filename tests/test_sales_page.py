@@ -495,6 +495,7 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.assertTrue(self.page.product_deselect_button.isVisible())
         self.assertFalse(self.page.product_deselect_button.isEnabled())
 
+        self.page.product_table.setCurrentCell(0, 1)
         self.page.product_table.selectRow(0)
         self.assertTrue(self.page.product_deselect_button.isEnabled())
         self.page.product_deselect_button.click()
