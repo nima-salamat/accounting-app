@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 
 from client.ui.permissions import can_access
 from client.ui.theme import DEFAULT_DESIGN, set_design_config
+from client.ui.currency import set_currency_unit
 
 
 class SettingsPage(QFrame):
@@ -75,6 +76,16 @@ class SettingsPage(QFrame):
         form = QFormLayout()
         form.setHorizontalSpacing(18)
         form.setVerticalSpacing(10)
+        self.currency_unit = QComboBox()
+        self.currency_unit.addItem("تومان", "toman")
+        self.currency_unit.addItem("ریال (هر تومان = ۱۰ ریال)", "rial")
+        currency_hint = QLabel(
+            "مبالغ در سرور با مبنای تومان نگهداری می‌شوند؛ انتخاب ریال فقط نمایش را "
+            "۱۰ برابر می‌کند و مقدار اصلی ذخیره‌شده را تغییر نمی‌دهد."
+        )
+        currency_hint.setObjectName("PageSubtitle")
+        currency_hint.setWordWrap(True)
+
         self.font_family = QComboBox()
         self.font_family.setEditable(True)
         self.font_family.addItems([
@@ -108,6 +119,8 @@ class SettingsPage(QFrame):
         self.section_spacing = QSpinBox()
         self.section_spacing.setRange(4, 24)
         self.section_spacing.setSuffix(" px")
+        form.addRow("واحد پول نمایش", self.currency_unit)
+        form.addRow(currency_hint)
         form.addRow("خانوادهٔ فونت", self.font_family)
         form.addRow("اندازهٔ متن پایه", self.font_size)
         form.addRow("مقیاس تیترها", self.heading_scale)
@@ -179,6 +192,7 @@ class SettingsPage(QFrame):
 
     def _design_values(self):
         return {
+            "currency_unit": self.currency_unit.currentData() or "toman",
             "font_family": self.font_family.currentText().strip() or DEFAULT_DESIGN["font_family"],
             "font_size": self.font_size.value(),
             "heading_scale": self.heading_scale.value(),
@@ -193,6 +207,8 @@ class SettingsPage(QFrame):
     def _set_design_values(self, values):
         values = dict(DEFAULT_DESIGN, **(values if isinstance(values, dict) else {}))
         self._loading = True
+        currency_index = self.currency_unit.findData(values.get("currency_unit", "toman"))
+        self.currency_unit.setCurrentIndex(max(0, currency_index))
         self.font_family.setCurrentText(str(values.get("font_family", "Vazirmatn")))
         for control, key in (
             (self.font_size, "font_size"), (self.heading_scale, "heading_scale"),
@@ -224,6 +240,7 @@ class SettingsPage(QFrame):
 
     def _appearance_loaded(self, values):
         self._set_design_values(values)
+        set_currency_unit(values.get("currency_unit", "toman"))
         set_design_config(values)
         self.window._apply_theme()
         self.appearance_status.setText("تنظیمات مشترک ظاهر از دیتابیس سرور دریافت شد.")
@@ -245,6 +262,7 @@ class SettingsPage(QFrame):
 
     def _appearance_saved(self, values):
         self._set_design_values(values)
+        set_currency_unit(values.get("currency_unit", "toman"))
         set_design_config(values)
         self.window._apply_theme()
         self.appearance_status.setText("تنظیمات ظاهری در دیتابیس مشترک سرور ذخیره شد.")
@@ -252,6 +270,7 @@ class SettingsPage(QFrame):
 
     def reset_appearance(self):
         self._set_design_values(DEFAULT_DESIGN)
+        set_currency_unit("toman")
         set_design_config(DEFAULT_DESIGN)
         self.window._apply_theme()
         self.appearance_status.setText("مقادیر پیش‌فرض انتخاب شدند؛ برای اعمال به سایر کلاینت‌ها ذخیره کنید.")
