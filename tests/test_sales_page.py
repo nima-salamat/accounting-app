@@ -8,7 +8,7 @@ import tempfile
 from unittest.mock import patch
 from PySide6.QtCore import Qt, QSettings, QEvent, QPointF
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QSizePolicy, QWidget
+from PySide6.QtWidgets import QApplication, QBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
 
 from client.ui.invoice_dialog import InvoicePreviewWidget
 from client.ui.invoice_render import DEFAULT_TEMPLATE, SALES_INVOICE_TEMPLATE_KIND
