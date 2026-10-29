@@ -11,6 +11,7 @@ from client.ui.invoice_dialog import InvoiceDialog
 from client.ui.invoice_render import SALES_INVOICE_TEMPLATE_KIND
 from client.ui.returns_page import ReturnDialog
 from client.ui.currency import format_currency
+from client.ui.currency import format_currency
 
 
 def display_value(key, value):
@@ -701,7 +702,7 @@ class ReceiptsPage(QFrame):
 
     def show_details(self, receipt):
         lines=["شماره فاکتور: {}".format(receipt.get("invoice_number") or receipt["day_receipt_id"]),
-               "مبلغ کل: {}".format(receipt["total_price"]),
+               "مبلغ کل: {}".format(format_currency(receipt["total_price"])),
                "پرداخت: {}".format("بله" if receipt["payed"] else "خیر"),"","اقلام:"]
         lines += ["{} × {} | خرید {} | فروش {}".format(item.get("product_name") or "محصول حذف‌شده",
                   item["quantity"],item["buy_price"],item["sell_price"]) for item in receipt.get("items",[])]
