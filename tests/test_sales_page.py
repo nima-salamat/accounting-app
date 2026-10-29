@@ -6,7 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import unittest
 from PySide6.QtCore import Qt, QSettings, QEvent, QPointF
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QSizePolicy, QWidget
 
 from client.ui.invoice_dialog import InvoicePreviewWidget
 from client.ui.invoice_render import DEFAULT_TEMPLATE
@@ -118,6 +118,7 @@ class SalesPageLayoutTests(unittest.TestCase):
         settings.setValue("sales/product_columns", 0)
         settings.setValue("sales/show_product_stock", True)
         settings.setValue("sales/show_product_add_button", True)
+        settings.setValue("sales/product_stock_display_style", "text")
         settings.remove("sales/product_table_column_widths")
         settings.sync()
         self.window = _WindowStub()
@@ -276,10 +277,10 @@ class SalesPageLayoutTests(unittest.TestCase):
     def test_product_cards_use_a_compact_width_and_shorter_image_area(self):
         self.page.refresh_products()
         card = self.page.product_grid.itemAt(0).widget()
-        self.assertEqual(card.maximumWidth(), 16777215)
+        self.assertLessEqual(card.maximumWidth(), 320)
         self.assertLess(card.minimumWidth(), 140)
         image = card.findChild(QLabel, "SalesProductImage")
-        self.assertLessEqual(image.maximumHeight(), 74)
+        self.assertEqual(image.width(), image.height())
 
     def test_sales_page_does_not_duplicate_global_theme_control(self):
         self.assertTrue(self.page.theme_button.isHidden())
@@ -312,6 +313,47 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.assertEqual(len(widths), 6)
         self.assertLessEqual(max(widths) - min(widths), 4)
 
+    def test_cart_toggle_is_in_the_catalog_header_not_inside_the_cart(self):
+        self.assertGreaterEqual(self.page.catalog_title_row.indexOf(self.page.cart_panel_toggle), 0)
+        self.assertEqual(self.page.cart_header_layout.indexOf(self.page.cart_panel_toggle), -1)
+
+    def test_cancel_loaded_invoice_button_is_in_the_footer_next_to_total(self):
+        self.assertGreaterEqual(self.page.footer_layout.indexOf(self.page.total_label), 0)
+        self.assertGreaterEqual(self.page.footer_layout.indexOf(self.page.cancel_edit_button), 0)
+        self.assertEqual(
+            abs(self.page.footer_layout.indexOf(self.page.total_label)
+                - self.page.footer_layout.indexOf(self.page.cancel_edit_button)),
+            1,
+        )
+        self.assertEqual(self.page.cancel_edit_button.text(), "لغو بارگذاری")
+
+    def test_stock_circle_style_and_list_preview_are_rendered(self):
+        self.page.refresh_products()
+        self.page._apply_product_display_settings(
+            "grid", True, "comfortable", 0, stock_display_style="circle"
+        )
+        card = self.page.product_grid.itemAt(0).widget()
+        circle = card.findChild(QLabel, "SalesProductStockCircle")
+        self.assertIsNotNone(circle)
+        self.assertEqual((circle.width(), circle.height()), (32, 32))
+        self.assertFalse(card.findChildren(QLabel, "SalesProductStock"))
+
+        preview = self.page._build_product_card(
+            self.page.products[0], preview=True, layout_mode="list",
+            show_images=True, show_stock=True, show_add_button=True,
+            stock_display_style="text",
+        )
+        self.assertEqual(
+            preview.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Expanding
+        )
+        self.assertTrue(preview.findChildren(QPushButton, "SalesProductAddButton"))
+
+    def test_recent_invoice_title_and_reload_button_are_inside_the_list_panel(self):
+        list_panel = self.page.history_splitter.widget(0)
+        self.assertIs(self.page.history_title.parentWidget(), list_panel)
+        self.assertIs(self.page.history_refresh_button.parentWidget(), list_panel)
+        self.assertEqual(self.page.history_tabs.parentWidget(), list_panel)
+
     def test_catalog_supports_horizontal_list_and_table_layouts(self):
         self.page.refresh_products()
         self.page._apply_product_display_settings("horizontal", True, "compact", 0)
@@ -325,6 +367,15 @@ class SalesPageLayoutTests(unittest.TestCase):
                    if button.objectName() == "SalesProductAddButton")
         self.assertIs(price.parentWidget(), stock.parentWidget())
         self.assertIs(price.parentWidget().parentWidget(), add.parentWidget())
+
+        self.page._apply_product_display_settings(
+            "horizontal", True, "compact", 0, show_stock=True, show_add_button=False
+        )
+        no_add_card = self.page.product_grid.itemAt(0).widget()
+        self.assertFalse(no_add_card.findChildren(QPushButton, "SalesProductAddButton"))
+        self.assertTrue(
+            no_add_card.findChild(QWidget, "SalesProductDetails").property("stackStockBelowPrice")
+        )
 
         self.page._apply_product_display_settings("table", True, "compact", 0)
         self.assertIs(self.page.catalog_results_stack.currentWidget(), self.page.product_table)
