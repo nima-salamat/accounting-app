@@ -124,20 +124,26 @@ class InvoiceNumberingPageTests(unittest.TestCase):
         self.designer.deleteLater()
         self.app.processEvents()
 
-    def test_numbering_has_its_own_page_and_is_not_shown_in_invoice_designer(self):
-        self.assertIs(self.designer.invoice_number_card.parentWidget(), self.designer)
-        self.assertEqual(
-            self.designer.invoice_number_card.objectName(),
-            "InvoiceNumberingCompatibilityCard",
-        )
-        self.assertEqual(
-            self.designer.layout().indexOf(self.designer.invoice_number_card), -1
-        )
+    def test_numbering_is_separate_and_designer_has_no_numbering_controls(self):
+        self.assertFalse(hasattr(self.designer, "invoice_number_card"))
+        for name in (
+            "invoice_number_style", "invoice_number_prefix",
+            "invoice_number_date_format", "invoice_number_separator",
+            "invoice_number_padding", "invoice_number_custom_format",
+        ):
+            self.assertFalse(hasattr(self.designer, name), name)
+
         self.designer.show()
         self.app.processEvents()
-        self.assertFalse(self.designer.invoice_number_card.isVisible())
         self.assertEqual(self.page.invoice_number_style.currentData(), "date_daily")
         self.assertEqual(self.page.title_label.text(), "شماره‌گذاری فاکتور")
+
+    def test_numbering_save_syncs_metadata_without_reintroducing_controls(self):
+        self.designer.sync_invoice_numbering("SHOP-{SEQ}", 6)
+        values = self.designer._values()
+        self.assertEqual(values["invoice_number_format"], "SHOP-{SEQ}")
+        self.assertEqual(values["invoice_number_padding"], 6)
+        self.assertFalse(hasattr(self.designer, "invoice_number_card"))
 
     def test_friendly_builder_generates_format_and_preview(self):
         self.page.invoice_number_style.setCurrentIndex(
