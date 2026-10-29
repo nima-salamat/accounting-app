@@ -327,7 +327,7 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.assertGreaterEqual(self.page.footer_layout.indexOf(self.page.total_label), 0)
         self.assertGreaterEqual(self.page.footer_layout.indexOf(self.page.cancel_edit_button), 0)
         self.assertEqual(
-            self.page.footer_layout.indexOf(self.cancel_edit_button),
+            self.page.footer_layout.indexOf(self.page.cancel_edit_button),
             self.page.footer_layout.indexOf(self.page.total_label) - 1,
         )
         self.assertEqual(self.page.cancel_edit_button.text(), "لغو بارگذاری")
