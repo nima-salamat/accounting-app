@@ -62,11 +62,11 @@ class SettingsPage(QFrame):
         appearance_layout = QVBoxLayout(appearance)
         appearance_layout.setContentsMargins(18, 16, 18, 16)
         appearance_layout.setSpacing(12)
-        appearance_title = QLabel("ظاهر و فونت مشترک برنامه‌ها")
+        appearance_title = QLabel("ظاهر، فونت و واحد پول مشترک برنامه‌ها")
         appearance_title.setObjectName("PageTitle")
         appearance_description = QLabel(
-            "این مقادیر در دیتابیس سرور ذخیره می‌شوند و کلاینت‌های متصل آن‌ها را دریافت می‌کنند. "
-            "تم روشن/تاریک انتخاب شخصی این دستگاه است؛ تنظیمات تایپوگرافی در سطح سرور مشترک است."
+            "فونت، چیدمان و واحد پول در دیتابیس سرور ذخیره می‌شوند تا کلاینت‌های دسکتاپ و POS "
+            "واحد نمایش یکسانی داشته باشند. تم روشن/تاریک همچنان انتخاب شخصی این دستگاه است."
         )
         appearance_description.setObjectName("PageSubtitle")
         appearance_description.setWordWrap(True)
