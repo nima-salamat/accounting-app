@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
     QScrollArea, QSplitter, QStackedWidget, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QHeaderView, QWidget, QListWidget, QListWidgetItem,
-    QSizePolicy, QTabBar, QTabWidget,
+    QSizePolicy, QTabBar, QTabWidget, QMenu, QApplication,
 )
 
 
@@ -2116,6 +2116,24 @@ class SalesPage(QFrame):
         )
         history_heading.addWidget(self.history_title)
         history_heading.addStretch(1)
+        self.history_deselect_button = QPushButton("", list_panel)
+        self.history_deselect_button.setObjectName("HistoryDeselectButton")
+        self.history_deselect_button.setFixedSize(32, 32)
+        self.history_deselect_button.setToolTip("لغو انتخاب فاکتور")
+        self.history_deselect_button.setAccessibleName("لغو انتخاب فاکتور")
+        set_button_icon(self.history_deselect_button, "clear", getattr(self.window, "mode", "light"))
+        self.history_deselect_button.setEnabled(False)
+        self.history_deselect_button.clicked.connect(self._deselect_recent_receipt)
+        self.history_preview_reopen_button = QPushButton("", list_panel)
+        self.history_preview_reopen_button.setObjectName("HistoryPreviewToggleButton")
+        self.history_preview_reopen_button.setFixedSize(32, 32)
+        self.history_preview_reopen_button.setToolTip("بازکردن پیش‌نمایش فاکتور")
+        self.history_preview_reopen_button.setAccessibleName("بازکردن پیش‌نمایش فاکتور")
+        set_button_icon(self.history_preview_reopen_button, "next", getattr(self.window, "mode", "light"))
+        self.history_preview_reopen_button.hide()
+        self.history_preview_reopen_button.clicked.connect(lambda: self._set_history_preview_visible(True))
+        history_heading.addWidget(self.history_deselect_button)
+        history_heading.addWidget(self.history_preview_reopen_button)
         history_heading.addWidget(self.history_refresh_button)
         list_layout.addLayout(history_heading)
         self.history_tabs = QTabWidget(list_panel)
@@ -2150,6 +2168,8 @@ class SalesPage(QFrame):
             table.cellDoubleClicked.connect(
                 lambda _row, _column: self._preview_selected_recent_receipt()
             )
+            table.itemSelectionChanged.connect(self._update_history_deselect_state)
+            table.currentCellChanged.connect(self._update_history_deselect_state)
             tab_layout.addWidget(table, 1)
             hint = QLabel("")
             hint.setObjectName("PageSubtitle")
@@ -2189,11 +2209,30 @@ class SalesPage(QFrame):
         preview_heading = QHBoxLayout()
         preview_title = QLabel("پیش‌نمایش فاکتور")
         preview_title.setObjectName("PageTitle")
-        self.history_preview_status = QLabel("هنوز فاکتوری انتخاب نشده است.")
-        self.history_preview_status.setObjectName("PageSubtitle")
-        self.history_preview_status.setWordWrap(True)
+        self.history_preview_status = QPushButton("شماره: —")
+        self.history_preview_status.setObjectName("HistoryInvoiceNumberPill")
+        self.history_preview_status.setToolTip("بعد از انتخاب فاکتور، برای کپی شناسه کلیک کنید.")
+        self.history_preview_status.setEnabled(False)
+        self.history_preview_status.clicked.connect(self._copy_history_invoice_id)
+        self.history_export_button = QPushButton("", preview_panel)
+        self.history_export_button.setObjectName("HistoryExportButton")
+        self.history_export_button.setFixedSize(32, 32)
+        self.history_export_button.setToolTip("ذخیرهٔ فاکتور به PDF، PNG یا JPG")
+        self.history_export_button.setAccessibleName("ذخیرهٔ فاکتور به فایل")
+        set_button_icon(self.history_export_button, "download", getattr(self.window, "mode", "light"))
+        self.history_export_button.setEnabled(False)
+        self.history_export_button.clicked.connect(self._open_history_export_menu)
+        self.history_preview_close_button = QPushButton("", preview_panel)
+        self.history_preview_close_button.setObjectName("HistoryPreviewToggleButton")
+        self.history_preview_close_button.setFixedSize(32, 32)
+        self.history_preview_close_button.setToolTip("بستن پیش‌نمایش فاکتور")
+        self.history_preview_close_button.setAccessibleName("بستن پیش‌نمایش فاکتور")
+        set_button_icon(self.history_preview_close_button, "previous", getattr(self.window, "mode", "light"))
+        self.history_preview_close_button.clicked.connect(lambda: self._set_history_preview_visible(False))
         preview_heading.addWidget(preview_title)
         preview_heading.addWidget(self.history_preview_status, 1)
+        preview_heading.addWidget(self.history_export_button)
+        preview_heading.addWidget(self.history_preview_close_button)
         preview_layout.addLayout(preview_heading)
         self.history_invoice_preview = InvoicePreviewWidget(preview_panel)
         self.history_invoice_preview.setMinimumWidth(300)
@@ -2206,8 +2245,20 @@ class SalesPage(QFrame):
         self.history_splitter.addWidget(preview_panel)
         self.history_splitter.setStretchFactor(0, 3)
         self.history_splitter.setStretchFactor(1, 2)
-        self.history_splitter.setSizes([780, 520])
+        self._history_splitter_sizes = self._local_settings.value(
+            "sales/history_splitter_sizes", [780, 520]
+        )
+        try:
+            self._history_splitter_sizes = [
+                max(1, int(self._history_splitter_sizes[0])),
+                max(1, int(self._history_splitter_sizes[1])),
+            ]
+        except (TypeError, ValueError, IndexError):
+            self._history_splitter_sizes = [780, 520]
+        self.history_splitter.setSizes(self._history_splitter_sizes)
+        self.history_splitter.splitterMoved.connect(self._history_splitter_moved)
         root.addWidget(self.history_splitter, 1)
+        self._update_history_deselect_state()
         return page
 
     def _filtered_recent_receipts(self, key):
@@ -2307,6 +2358,88 @@ class SalesPage(QFrame):
             busy=self.history_load_more_button if append else self.history_refresh_button,
         )
 
+    def _history_splitter_moved(self, *_args):
+        sizes = self.history_splitter.sizes()
+        if not self._history_preview_collapsed and len(sizes) == 2 and all(size > 0 for size in sizes):
+            self._history_splitter_sizes = sizes
+            self._local_settings.setValue("sales/history_splitter_sizes", sizes)
+
+    def _set_history_preview_visible(self, visible):
+        visible = bool(visible)
+        if visible == (not self._history_preview_collapsed):
+            return
+        preview_panel = self.history_splitter.widget(1)
+        sizes = self.history_splitter.sizes()
+        if visible:
+            self._history_preview_collapsed = False
+            self._local_settings.setValue("sales/history_preview_collapsed", False)
+            preview_panel.show()
+            self.history_preview_close_button.show()
+            self.history_preview_reopen_button.hide()
+            self.history_splitter.setSizes(self._history_splitter_sizes or [780, 520])
+        else:
+            if len(sizes) == 2 and sizes[1] > 0 and sum(sizes) > 200:
+                self._history_splitter_sizes = sizes
+                self._local_settings.setValue("sales/history_splitter_sizes", sizes)
+            self._history_preview_collapsed = True
+            self._local_settings.setValue("sales/history_preview_collapsed", True)
+            preview_panel.hide()
+            self.history_preview_close_button.hide()
+            self.history_preview_reopen_button.show()
+            self.history_splitter.setSizes([max(1, sum(sizes)), 0])
+        self._local_settings.sync()
+
+    def _update_history_deselect_state(self, *_args):
+        if not hasattr(self, "history_deselect_button"):
+            return
+        table = self._current_history_table()
+        selected = bool(
+            table and (table.selectionModel().hasSelection() or table.currentRow() >= 0)
+        )
+        self.history_deselect_button.setEnabled(selected)
+
+    def _current_history_table(self):
+        current = self.history_tabs.currentWidget()
+        return next(
+            (table for table in self._history_tables.values() if table.parentWidget() is current),
+            None,
+        )
+
+    def _deselect_recent_receipt(self):
+        table = self._current_history_table()
+        if table is not None:
+            table.clearSelection()
+            table.setCurrentCell(-1, -1)
+        self._history_invoice_payload = None
+        self.history_invoice_preview.clear_invoice()
+        self.history_preview_status.setText("شماره: —")
+        self.history_preview_status.setProperty("receiptId", "")
+        self.history_preview_status.setToolTip("ابتدا یک فاکتور را پیش‌نمایش کنید.")
+        self.history_preview_status.setEnabled(False)
+        self.history_export_button.setEnabled(False)
+        self._update_history_deselect_state()
+
+    def _copy_history_invoice_id(self):
+        receipt_id = str(self.history_preview_status.property("receiptId") or "")
+        if receipt_id:
+            QApplication.clipboard().setText(receipt_id)
+            self.history_preview_status.setToolTip("شناسه کپی شد: {}".format(receipt_id))
+
+    def _open_history_export_menu(self):
+        if not self._history_invoice_payload:
+            return
+        menu = QMenu(self.history_export_button)
+        for label, fmt in (
+            ("PDF · همهٔ صفحات", "pdf"),
+            ("PNG · تصویر باکیفیت", "png"),
+            ("JPG · تصویر", "jpg"),
+        ):
+            action = menu.addAction(label)
+            action.triggered.connect(
+                lambda _checked=False, selected=fmt: self.history_invoice_preview.export_invoice(selected)
+            )
+        menu.exec(self.history_export_button.mapToGlobal(QPoint(0, self.history_export_button.height())))
+
     def _selected_recent_receipt(self):
         current = self.history_tabs.currentWidget()
         key = next(
@@ -2322,8 +2455,14 @@ class SalesPage(QFrame):
         record = self._selected_recent_receipt()
         if not record:
             self.history_preview_status.setText("ابتدا یک فاکتور را از فهرست انتخاب کنید.")
+            self.history_preview_status.setProperty("receiptId", "")
+            self.history_preview_status.setEnabled(False)
+            self.history_export_button.setEnabled(False)
             return
         self.history_preview_status.setText("در حال آماده‌سازی پیش‌نمایش…")
+        self.history_preview_status.setProperty("receiptId", "")
+        self.history_preview_status.setEnabled(False)
+        self.history_export_button.setEnabled(False)
         self.window.run_api(
             lambda: self._load_recent_invoice(record["id"]),
             self._set_history_invoice_preview,
@@ -2337,7 +2476,14 @@ class SalesPage(QFrame):
         self._history_invoice_payload = payload
         receipt = payload.get("receipt") or {}
         number = receipt.get("day_receipt_id") or str(receipt.get("id") or "")[:8] or "—"
-        self.history_preview_status.setText("فاکتور شمارهٔ {} آماده است.".format(number))
+        receipt_id = str(receipt.get("id") or "")
+        self.history_preview_status.setText("شماره: {}".format(number))
+        self.history_preview_status.setProperty("receiptId", receipt_id)
+        self.history_preview_status.setToolTip(
+            "شناسهٔ کامل: {}\nبرای کپی شناسه کلیک کنید.".format(receipt_id)
+        )
+        self.history_preview_status.setEnabled(bool(receipt_id))
+        self.history_export_button.setEnabled(bool(receipt_id))
         self.history_invoice_preview.set_invoice(
             receipt, payload.get("template") or DEFAULT_TEMPLATE
         )
