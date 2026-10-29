@@ -5,7 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import unittest
 from PySide6.QtCore import Qt, QSettings
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QSpinBox
 
 from client.ui.sales_page import SalesPage
 
@@ -192,7 +192,7 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.page.refresh_products()
         self.page.add_to_cart(self.page.products[0])
         self.app.processEvents()
-        quantity_spin = self.page.cart_items_host.findChildren(__import__("PySide6.QtWidgets", fromlist=["QSpinBox"]).QSpinBox)[0]
+        quantity_spin = self.page.cart_items_host.findChildren(QSpinBox)[0]
         quantity_spin.setValue(3)
         self.assertEqual(self.page._cart_line_total_labels["product-1"].text(), "مجموع: 3.00")
         self.assertEqual(self.page.total_label.text(), "جمع تخمینی: 3.00")
