@@ -35,6 +35,7 @@ class _PagedApi:
         ]
         self.list_calls = []
         self.recent_calls = []
+        self.recent_filter_calls = []
         self.invoice_template_calls = []
         self.invoice_templates = {}
         self.invoice_template_error = None
@@ -54,8 +55,12 @@ class _PagedApi:
             "total": len(matches),
         }
 
-    def list_recent_receipts_page(self, q=None, page=1, page_size=50):
+    def list_recent_receipts_page(self, q=None, page=1, page_size=50, **filters):
         self.recent_calls.append((q, page, page_size))
+        self.recent_filter_calls.append(dict(filters))
+        return {"items": [], "page": page, "page_size": page_size, "total": 0}
+
+    def list_receipts_page(self, page=1, page_size=25, **filters):
         return {"items": [], "page": page, "page_size": page_size, "total": 0}
 
     def list_categories_page(self, page=1, page_size=200):
@@ -104,6 +109,7 @@ class _WindowStub:
         self.mode = "light"
         self.standalone_pos = False
         self.company_profile = {}
+        self.current_user = {"is_admin": True}
 
     def run_api(self, operation, callback, failure=None, busy=None):
         if busy is not None:
@@ -993,6 +999,43 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.assertEqual(page, 1)
         self.assertEqual(page_size, self.page._history_page_size)
         self.assertEqual(self.page._history_search_query, "invoice-17")
+
+    def test_receipt_table_formats_total_once_and_shows_paid_state_correctly(self):
+        receipts_page = ReceiptsPage(self.window)
+        receipts_page.populate({
+            "records": [
+                {
+                    "id": "receipt-paid", "invoice_number": "INV-1",
+                    "day_receipt_id": 1, "total_price": 1250.0, "payed": True,
+                    "created_at": "2026-10-30T10:00:00",
+                },
+                {
+                    "id": "receipt-unpaid", "invoice_number": "INV-2",
+                    "day_receipt_id": 2, "total_price": 875.0, "payed": False,
+                    "created_at": "2026-10-30T11:00:00",
+                },
+            ],
+            "total": 2,
+            "page": 1,
+            "custom": {"fields": [], "values": {}},
+        })
+        amount = receipts_page.table.item(0, 2).text()
+        self.assertTrue("1,250" in amount or "12,500" in amount)
+        self.assertNotIn("0 تومان", amount)
+        self.assertEqual("پرداخت‌شده", receipts_page.table.item(0, 3).text())
+        self.assertEqual("پرداخت‌نشده", receipts_page.table.item(1, 3).text())
+
+    def test_recent_invoice_history_sends_date_and_sort_filters_to_server(self):
+        self.page.history_start_date_enabled.setChecked(True)
+        self.page.history_sort_combo.setCurrentIndex(2)  # Amount descending
+        self.page._load_recent_receipt_page(1, append=False)
+        filters = self.window.api.recent_filter_calls[-1]
+        self.assertEqual(
+            filters["start_date"],
+            self.page.history_start_date.date().toString("yyyy-MM-dd"),
+        )
+        self.assertEqual(filters["sort_by"], "total_price")
+        self.assertEqual(filters["sort_order"], "desc")
 
     def test_list_layout_has_a_visible_add_button_and_zoom_can_be_disabled(self):
         self.page.refresh_products()
