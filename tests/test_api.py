@@ -83,6 +83,7 @@ class ApiTests(unittest.TestCase):
             "heading_scale": 1.2, "density": "spacious", "corner_radius": 12,
             "control_height": 40, "control_padding": 9,
             "horizontal_padding": 14, "section_spacing": 16,
+            "currency_unit": "toman",
         }
         saved = self.client.put("/api/v1/appearance-settings", headers=headers, json=payload)
         self.assertEqual(saved.status_code, 200, saved.text)
