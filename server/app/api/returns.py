@@ -98,9 +98,12 @@ def list_returns(
             "day_receipt_id": Receipt.day_receipt_id,
             "operator_name": SaleReturn.operator_name,
         }
-        column = columns.get(str(sort_by or "created_at"), SaleReturn.created_at)
+        sort_key = str(sort_by or "created_at")
+        if sort_key not in columns:
+            sort_key = "created_at"
+        column = columns[sort_key]
         primary = column.desc() if str(sort_order or "desc").lower() != "asc" else column.asc()
-        ordered = query.order_by(primary) if column == SaleReturn.created_at else query.order_by(
+        ordered = query.order_by(primary) if sort_key == "created_at" else query.order_by(
             primary, SaleReturn.created_at.desc()
         )
         total = query.count()
