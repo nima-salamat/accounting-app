@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QFrame,
     QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QSpinBox,
-    QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QHeaderView,
+    QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QHeaderView, QDateEdit,
 )
 
 from client.ui.permissions import can_access
@@ -189,6 +189,59 @@ class ReturnsPage(QFrame):
         header.addWidget(self.print_button)
         root.addLayout(header)
 
+        filters = QHBoxLayout()
+        self.search_input = QLineEdit(self)
+        self.search_input.setPlaceholderText("جست‌وجوی شماره فاکتور، شناسه، کارمند یا مبلغ…")
+        self.search_input.setClearButtonEnabled(True)
+        self.search_input.returnPressed.connect(self.apply_filters)
+        filters.addWidget(self.search_input, 2)
+
+        self.refund_method_filter = QComboBox(self)
+        self.refund_method_filter.addItem("همهٔ روش‌های استرداد", "all")
+        for key, label in REFUND_METHODS.items():
+            self.refund_method_filter.addItem(label, key)
+        filters.addWidget(self.refund_method_filter)
+
+        self.start_date_enabled = QCheckBox("از تاریخ", self)
+        self.start_date_edit = QDateEdit(self)
+        self.start_date_edit.setCalendarPopup(True)
+        self.start_date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.start_date_edit.setEnabled(False)
+        self.start_date_enabled.toggled.connect(self.start_date_edit.setEnabled)
+        filters.addWidget(self.start_date_enabled)
+        filters.addWidget(self.start_date_edit)
+
+        self.end_date_enabled = QCheckBox("تا تاریخ", self)
+        self.end_date_edit = QDateEdit(self)
+        self.end_date_edit.setCalendarPopup(True)
+        self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.end_date_edit.setEnabled(False)
+        self.end_date_enabled.toggled.connect(self.end_date_edit.setEnabled)
+        filters.addWidget(self.end_date_enabled)
+        filters.addWidget(self.end_date_edit)
+
+        self.sort_combo = QComboBox(self)
+        for label, value in (
+            ("جدیدترین", "created_at:desc"),
+            ("قدیمی‌ترین", "created_at:asc"),
+            ("مبلغ: نزولی", "total_amount:desc"),
+            ("مبلغ: صعودی", "total_amount:asc"),
+            ("شماره فاکتور: نزولی", "day_receipt_id:desc"),
+            ("شماره فاکتور: صعودی", "day_receipt_id:asc"),
+            ("کارمند: الف تا ی", "operator_name:asc"),
+            ("کارمند: ی تا الف", "operator_name:desc"),
+        ):
+            self.sort_combo.addItem(label, value)
+        filters.addWidget(self.sort_combo, 1)
+
+        self.apply_filter_button = QPushButton("اعمال فیلتر", self)
+        self.apply_filter_button.clicked.connect(self.apply_filters)
+        self.clear_filter_button = QPushButton("پاک‌کردن", self)
+        self.clear_filter_button.clicked.connect(self.clear_filters)
+        filters.addWidget(self.apply_filter_button)
+        filters.addWidget(self.clear_filter_button)
+        root.addLayout(filters)
+
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(["شناسه", "فاکتور اصلی", "تاریخ", "کارمند", "روش استرداد", "مبلغ"])
         self.table.setColumnHidden(0, True)
@@ -219,11 +272,38 @@ class ReturnsPage(QFrame):
     def refresh(self):
         if not self.window.api or not can_access(self.window.current_user, "returns", "read"):
             return
+        sort_by, sort_order = str(self.sort_combo.currentData() or "created_at:desc").split(":", 1)
         self.window.run_api(
-            lambda: self.window.api.list_returns_page(page=self.page, page_size=self.page_size),
+            lambda: self.window.api.list_returns_page(
+                q=self.search_input.text().strip() or None,
+                refund_method=self.refund_method_filter.currentData(),
+                start_date=(
+                    self.start_date_edit.date().toString("yyyy-MM-dd")
+                    if self.start_date_enabled.isChecked() else None
+                ),
+                end_date=(
+                    self.end_date_edit.date().toString("yyyy-MM-dd")
+                    if self.end_date_enabled.isChecked() else None
+                ),
+                sort_by=sort_by, sort_order=sort_order,
+                page=self.page, page_size=self.page_size,
+            ),
             self.populate,
             busy=self.refresh_button,
         )
+
+    def apply_filters(self, *_args):
+        self.page = 1
+        self.refresh()
+
+    def clear_filters(self, *_args):
+        self.search_input.clear()
+        self.refund_method_filter.setCurrentIndex(0)
+        self.start_date_enabled.setChecked(False)
+        self.end_date_enabled.setChecked(False)
+        self.sort_combo.setCurrentIndex(0)
+        self.page = 1
+        self.refresh()
 
     def populate(self, payload):
         self.rows = list(payload.get("items") or [])
