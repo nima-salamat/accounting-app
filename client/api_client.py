@@ -592,8 +592,18 @@ class AccountingApiClient:
             },
         )
 
-    def list_returns_page(self, page=1, page_size=25):
-        return self._request_page("GET", "/api/v1/returns", page=page, page_size=page_size)
+    def list_returns_page(
+        self, page=1, page_size=25, q=None, refund_method=None,
+        start_date=None, end_date=None, sort_by="created_at", sort_order="desc",
+    ):
+        return self._request_page(
+            "GET", "/api/v1/returns", page=page, page_size=page_size,
+            params={
+                "q": q, "refund_method": refund_method,
+                "start_date": start_date, "end_date": end_date,
+                "sort_by": sort_by, "sort_order": sort_order,
+            },
+        )
 
     def get_return(self, return_id):
         return self._request("GET", "/api/v1/returns/{}".format(return_id))
