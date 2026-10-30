@@ -1021,7 +1021,7 @@ class SalesPageLayoutTests(unittest.TestCase):
         })
         amount = receipts_page.table.item(0, 2).text()
         self.assertTrue("1,250" in amount or "12,500" in amount)
-        self.assertNotIn("0 تومان", amount)
+        self.assertNotEqual(amount.rsplit(" ", 1)[0], "0")
         self.assertEqual("پرداخت‌شده", receipts_page.table.item(0, 3).text())
         self.assertEqual("پرداخت‌نشده", receipts_page.table.item(1, 3).text())
 
