@@ -354,7 +354,7 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.page._cart_plus_buttons["product-1"].click()
         self.assertEqual(self.page._cart_quantity_labels["product-1"].text(), "3")
         self.assertEqual(self.page._cart_line_total_labels["product-1"].text(), format_currency(3))
-        self.assertEqual(self.page.total_label.text(), "جمع تخمینی: 3.00")
+        self.assertEqual(self.page.total_label.text(), "جمع تخمینی: {}".format(format_currency(3)))
 
     def test_search_suggestions_are_similar_results_and_load_more_is_paginated(self):
         self.page.search.setText("item")
