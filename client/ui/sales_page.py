@@ -10,13 +10,15 @@ from client.ui.invoice_dialog import InvoiceDialog, InvoicePreviewWidget, auto_p
 from client.ui.invoice_render import DEFAULT_TEMPLATE, SALES_INVOICE_TEMPLATE_KIND
 from client.ui.currency import currency_context, format_currency
 from client.ui.permissions import can_access
+from client.ui.receipt_utils import receipt_is_paid
+from client.ui.returns_page import ReturnDialog
 from client.ui.icons import apply_button_icons, set_button_icon
 
 from PySide6.QtWidgets import (
     QAbstractItemView, QBoxLayout, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFrame,
     QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
     QScrollArea, QSplitter, QStackedWidget, QTableWidget, QTableWidgetItem,
-    QVBoxLayout, QHeaderView, QWidget, QListWidget, QListWidgetItem,
+    QVBoxLayout, QHeaderView, QWidget, QListWidget, QListWidgetItem, QDateEdit,
     QSizePolicy, QTabBar, QTabWidget, QMenu, QApplication,
 )
 
@@ -645,6 +647,10 @@ class SalesPage(QFrame):
         self._can_edit_receipts = can_access(user, "sales", "update")
         if hasattr(self, "history_edit_button"):
             self.history_edit_button.setVisible(self._can_edit_receipts)
+        if hasattr(self, "history_return_button"):
+            self.history_return_button.setVisible(
+                can_read_receipts and can_access(user, "returns", "create")
+            )
         if not can_read_receipts and self.workspace_stack.currentWidget() is self.history_workspace:
             self.set_workspace_mode("sales")
 
@@ -2555,6 +2561,47 @@ class SalesPage(QFrame):
         search_row.addWidget(self.history_search_button)
         list_layout.addLayout(search_row)
 
+        history_filters = QHBoxLayout()
+        self.history_start_date_enabled = QCheckBox("از تاریخ", list_panel)
+        self.history_start_date = QDateEdit(list_panel)
+        self.history_start_date.setCalendarPopup(True)
+        self.history_start_date.setDisplayFormat("yyyy-MM-dd")
+        self.history_start_date.setEnabled(False)
+        self.history_start_date_enabled.toggled.connect(self.history_start_date.setEnabled)
+        history_filters.addWidget(self.history_start_date_enabled)
+        history_filters.addWidget(self.history_start_date)
+
+        self.history_end_date_enabled = QCheckBox("تا تاریخ", list_panel)
+        self.history_end_date = QDateEdit(list_panel)
+        self.history_end_date.setCalendarPopup(True)
+        self.history_end_date.setDisplayFormat("yyyy-MM-dd")
+        self.history_end_date.setEnabled(False)
+        self.history_end_date_enabled.toggled.connect(self.history_end_date.setEnabled)
+        history_filters.addWidget(self.history_end_date_enabled)
+        history_filters.addWidget(self.history_end_date)
+
+        self.history_sort_combo = QComboBox(list_panel)
+        for label, value in (
+            ("جدیدترین", "created_at:desc"),
+            ("قدیمی‌ترین", "created_at:asc"),
+            ("مبلغ: نزولی", "total_price:desc"),
+            ("مبلغ: صعودی", "total_price:asc"),
+            ("شماره فاکتور: نزولی", "day_receipt_id:desc"),
+            ("شماره فاکتور: صعودی", "day_receipt_id:asc"),
+        ):
+            self.history_sort_combo.addItem(label, value)
+        history_filters.addWidget(self.history_sort_combo, 1)
+
+        self.history_apply_filters_button = QPushButton("اعمال فیلتر", list_panel)
+        self.history_apply_filters_button.setObjectName("SalesToolbarButton")
+        self.history_apply_filters_button.clicked.connect(self._apply_recent_receipt_filters)
+        self.history_clear_filters_button = QPushButton("پاک‌کردن", list_panel)
+        self.history_clear_filters_button.setObjectName("SalesToolbarButton")
+        self.history_clear_filters_button.clicked.connect(self._clear_recent_receipt_filters)
+        history_filters.addWidget(self.history_apply_filters_button)
+        history_filters.addWidget(self.history_clear_filters_button)
+        list_layout.addLayout(history_filters)
+
         self.history_tabs = QTabWidget(list_panel)
         self.history_tabs.setObjectName("RecentInvoicesTabs")
         self.history_tabs.setDocumentMode(True)
@@ -2622,10 +2669,17 @@ class SalesPage(QFrame):
         self.history_edit_button.setObjectName("PrimaryButton")
         self.history_edit_button.setVisible(self._can_edit_receipts)
         self.history_edit_button.clicked.connect(self._edit_selected_recent_receipt)
+        self.history_return_button = QPushButton("مرجوعی / استرداد")
+        self.history_return_button.setObjectName("SalesToolbarButton")
+        self.history_return_button.setToolTip("ثبت مرجوعی برای فاکتور انتخاب‌شده")
+        self.history_return_button.setVisible(False)
+        self.history_return_button.setEnabled(False)
+        self.history_return_button.clicked.connect(self._return_selected_recent_receipt)
         actions.addWidget(self.history_status, 1)
         actions.addWidget(self.history_load_more_button)
         actions.addWidget(self.history_preview_button)
         actions.addWidget(self.history_edit_button)
+        actions.addWidget(self.history_return_button)
         list_layout.addLayout(actions)
 
         preview_panel = QFrame()
@@ -2690,9 +2744,9 @@ class SalesPage(QFrame):
 
     def _filtered_recent_receipts(self, key):
         if key == "unpaid":
-            return [record for record in self._history_records if not bool(record.get("payed"))]
+            return [record for record in self._history_records if not receipt_is_paid(record.get("payed"))]
         if key == "paid":
-            return [record for record in self._history_records if bool(record.get("payed"))]
+            return [record for record in self._history_records if receipt_is_paid(record.get("payed"))]
         return list(self._history_records)
 
     def _render_recent_receipt_tables(self):
@@ -2703,7 +2757,7 @@ class SalesPage(QFrame):
                 table.insertRow(row)
                 receipt_id = str(record.get("id") or "")
                 number = record.get("invoice_number") or record.get("day_receipt_id") or receipt_id[:8] or "—"
-                paid = bool(record.get("payed"))
+                paid = receipt_is_paid(record.get("payed"))
                 payment_method = {
                     "cash": "نقدی",
                     "card": "کارت",
@@ -2730,7 +2784,7 @@ class SalesPage(QFrame):
             index = self.history_tabs.indexOf(table.parentWidget())
             self.history_tabs.setTabText(index, "{} ({})".format(label, len(records)))
 
-        unpaid_count = sum(not bool(record.get("payed")) for record in self._history_records)
+        unpaid_count = sum(not receipt_is_paid(record.get("payed")) for record in self._history_records)
         paid_count = len(self._history_records) - unpaid_count
         self.history_status.setText(
             "{} از {} فاکتور بارگذاری شده · {} پرداخت‌نشده · {} پرداخت‌شده".format(
@@ -2771,11 +2825,42 @@ class SalesPage(QFrame):
         self._deselect_recent_receipt()
         self._load_recent_receipt_page(1, append=False)
 
+    def _recent_receipt_filter_arguments(self):
+        sort_by, sort_order = str(
+            self.history_sort_combo.currentData() or "created_at:desc"
+        ).split(":", 1)
+        return {
+            "start_date": (
+                self.history_start_date.date().toString("yyyy-MM-dd")
+                if self.history_start_date_enabled.isChecked() else None
+            ),
+            "end_date": (
+                self.history_end_date.date().toString("yyyy-MM-dd")
+                if self.history_end_date_enabled.isChecked() else None
+            ),
+            "sort_by": sort_by,
+            "sort_order": sort_order,
+        }
+
+    def _apply_recent_receipt_filters(self, *_args):
+        self.history_search_timer.stop()
+        self._commit_recent_receipt_search()
+
+    def _clear_recent_receipt_filters(self, *_args):
+        self.history_search_timer.stop()
+        self.history_search_input.clear()
+        self.history_start_date_enabled.setChecked(False)
+        self.history_end_date_enabled.setChecked(False)
+        self.history_sort_combo.setCurrentIndex(0)
+        self._commit_recent_receipt_search()
+
     def _load_recent_receipt_page(self, page, append=False):
         if not self.window.api:
             self.history_status.setText("برای دریافت فاکتورها ابتدا به سرور وصل شوید.")
             return
         query = self.history_search_input.text().strip()
+        filters = self._recent_receipt_filter_arguments()
+        signature = (query, tuple(filters.items()))
         self._history_search_query = query
         if not append:
             self.history_status.setText("در حال جست‌وجو و بارگذاری فاکتورها…")
@@ -2783,11 +2868,14 @@ class SalesPage(QFrame):
         self.history_load_more_button.setEnabled(False)
         self.window.run_api(
             lambda: self.window.api.list_recent_receipts_page(
-                q=query or None, page=page, page_size=self._history_page_size
+                q=query or None, page=page, page_size=self._history_page_size, **filters
             ),
-            lambda payload, requested_query=query: (
+            lambda payload, requested_signature=signature: (
                 self._populate_recent_receipts(payload, append=append)
-                if requested_query == self.history_search_input.text().strip() else None
+                if requested_signature == (
+                    self.history_search_input.text().strip(),
+                    tuple(self._recent_receipt_filter_arguments().items()),
+                ) else None
             ),
             failure=lambda error: (
                 self.history_status.setText("دریافت فاکتورها ناموفق بود."),
@@ -2850,6 +2938,8 @@ class SalesPage(QFrame):
             for table in tables
         )
         self.history_deselect_button.setEnabled(selected)
+        if hasattr(self, "history_return_button"):
+            self.history_return_button.setEnabled(self._selected_recent_receipt() is not None)
 
     def _current_history_table(self):
         current = self.history_tabs.currentWidget()
@@ -2903,6 +2993,58 @@ class SalesPage(QFrame):
         row = table.currentRow()
         cell = table.item(row, 0) if row >= 0 else None
         return cell.data(Qt.ItemDataRole.UserRole) if cell is not None else None
+
+    def _return_selected_recent_receipt(self):
+        record = self._selected_recent_receipt()
+        if not record:
+            self.window.show_error("ابتدا فاکتور اصلی را انتخاب کنید.")
+            return
+        if not can_access(self.window.current_user, "returns", "create"):
+            self.window.show_error("مجوز ثبت مرجوعی ندارید.")
+            return
+        self.window.run_api(
+            lambda: self.window.api.get_receipt(record["id"]),
+            self._open_recent_return_dialog,
+            busy=self.history_return_button,
+        )
+
+    def _open_recent_return_dialog(self, receipt):
+        dialog = ReturnDialog(receipt, self)
+        if dialog.exec() != ReturnDialog.DialogCode.Accepted:
+            return
+        values = dialog.values()
+        self.window.run_api(
+            lambda: self.window.api.create_return(
+                receipt["id"],
+                values["items"],
+                refund_method=values["refund_method"],
+                reason=values["reason"],
+                notes=values["notes"],
+            ),
+            self._recent_return_created,
+            busy=self.history_return_button,
+        )
+
+    def _recent_return_created(self, result):
+        QMessageBox.information(
+            self.history_workspace,
+            "مرجوعی ثبت شد",
+            "سند مرجوعی ثبت شد. مبلغ قابل استرداد: {}".format(
+                format_currency(result.get("total_amount"))
+            ),
+        )
+        self.window.set_status(
+            "مرجوعی برای فاکتور شمارهٔ {} ثبت شد.".format(
+                result.get("day_receipt_id", "—")
+            )
+        )
+        self._load_recent_receipt_page(1, append=False)
+        receipts_page = getattr(self.window, "receipts_page", None)
+        if receipts_page is not None:
+            receipts_page.refresh()
+        returns_page = getattr(self.window, "returns_page", None)
+        if returns_page is not None:
+            returns_page.refresh()
 
     def _preview_selected_recent_receipt(self):
         record = self._selected_recent_receipt()
