@@ -17,6 +17,7 @@ from client.ui.invoice_render import (
 )
 from client.ui.sales_page import SalesPage
 from client.ui.data_pages import ReceiptsPage
+from client.ui.returns_page import ReturnsPage
 from client.ui.currency import format_currency
 
 
@@ -37,6 +38,7 @@ class _PagedApi:
         self.list_calls = []
         self.recent_calls = []
         self.recent_filter_calls = []
+        self.return_filter_calls = []
         self.invoice_template_calls = []
         self.invoice_templates = {}
         self.invoice_template_error = None
@@ -74,6 +76,10 @@ class _PagedApi:
             "page_size": page_size,
             "total": 2,
         }
+
+    def list_returns_page(self, page=1, page_size=25, **filters):
+        self.return_filter_calls.append({"page": page, "page_size": page_size, **filters})
+        return {"items": [], "page": page, "page_size": page_size, "total": 0}
 
     def get_product(self, product_id):
         for product in self.products:
@@ -1025,6 +1031,26 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.assertNotEqual(amount.rsplit(" ", 1)[0], "0")
         self.assertEqual("پرداخت‌شده", receipts_page.table.item(0, 3).text())
         self.assertEqual("پرداخت‌نشده", receipts_page.table.item(1, 3).text())
+
+    def test_return_history_sends_search_date_method_and_sort_filters(self):
+        page = ReturnsPage(self.window)
+        page.search_input.setText("INV-123")
+        card_index = page.refund_method_filter.findData("card")
+        page.refund_method_filter.setCurrentIndex(card_index)
+        page.start_date_enabled.setChecked(True)
+        page.sort_combo.setCurrentIndex(2)  # Amount descending
+        page.apply_filters()
+        sent = self.window.api.return_filter_calls[-1]
+        self.assertEqual(sent["q"], "INV-123")
+        self.assertEqual(sent["refund_method"], "card")
+        self.assertEqual(
+            sent["start_date"], page.start_date_edit.date().toString("yyyy-MM-dd")
+        )
+        self.assertEqual(sent["sort_by"], "total_amount")
+        self.assertEqual(sent["sort_order"], "desc")
+        page.close()
+        page.deleteLater()
+        self.app.processEvents()
 
     def test_recent_invoice_history_sends_date_and_sort_filters_to_server(self):
         self.page.history_start_date_enabled.setChecked(True)
