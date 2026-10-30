@@ -117,10 +117,13 @@ def _sort_receipts(query, *, sort_by="created_at", sort_order="desc"):
         "day_receipt_id": Receipt.day_receipt_id,
         "invoice_number": Receipt.invoice_number,
     }
-    column = columns.get(str(sort_by or "created_at"), Receipt.created_at)
+    sort_key = str(sort_by or "created_at")
+    if sort_key not in columns:
+        sort_key = "created_at"
+    column = columns[sort_key]
     descending = str(sort_order or "desc").lower() != "asc"
     primary = column.desc() if descending else column.asc()
-    if column == Receipt.created_at:
+    if sort_key == "created_at":
         return query.order_by(primary)
     return query.order_by(primary, Receipt.created_at.desc())
 
