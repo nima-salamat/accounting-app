@@ -18,7 +18,7 @@ from client.ui.receipt_utils import receipt_is_paid
 def display_value(key, value):
     if key in ("payed", "is_admin", "is_active", "requires_session_activation", "custom_product", "track_stock"):
         if key == "is_active":
-            return "فعال" if receipt_is_paid(value) else "غیرفعال"
+            return "فعال" if value else "غیرفعال"
         return "بله" if receipt_is_paid(value) else "خیر"
     if key == "status":
         return {"pending": "در انتظار تأیید", "active": "فعال",
