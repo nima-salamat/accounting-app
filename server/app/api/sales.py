@@ -2,7 +2,7 @@
 import hashlib
 import json
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
@@ -61,6 +61,68 @@ def _receipt_detail(receipt):
             returnable_quantity=max(0, int(item.quantity) - returned_quantity),
         ))
     return result
+
+
+def _apply_receipt_filters(query, *, q=None, payed_filter=None, start_date=None, end_date=None):
+    """Apply consistent, server-side search and filters to receipt queries."""
+    if start_date is not None and end_date is not None and start_date > end_date:
+        raise HTTPException(status_code=422, detail="تاریخ شروع نباید بعد از تاریخ پایان باشد.")
+    if payed_filter == "paid":
+        query = query.where(Receipt.payed == True)
+    elif payed_filter == "unpaid":
+        query = query.where(Receipt.payed == False)
+    if start_date is not None:
+        query = query.where(Receipt.created_at >= datetime.combine(start_date, time.min))
+    if end_date is not None:
+        query = query.where(Receipt.created_at < datetime.combine(end_date + timedelta(days=1), time.min))
+
+    term = str(q or "").strip()
+    if not term:
+        return query
+    normalized = term.replace("ي", "ی").replace("ك", "ک").replace("\u200c", " ")
+    search_filter = (
+        Receipt.day_receipt_id.cast("text").contains(term)
+        | Receipt.invoice_number.contains(term)
+        | Receipt.id.cast("text").contains(term)
+        | Receipt.seat_number.contains(term)
+        | Receipt.payment_method.contains(term)
+        | Receipt.created_at.cast("text").contains(term)
+        | Receipt.total_price.cast("text").contains(term)
+        | Receipt.id.in_(
+            ReceiptProduct.select(ReceiptProduct.receipt).where(
+                ReceiptProduct.product_name.contains(term)
+            )
+        )
+    )
+    for label, method in (
+        ("نقدی", "cash"),
+        ("کارت", "card"),
+        ("انتقال بانکی", "bank_transfer"),
+        ("اعتباری", "store_credit"),
+    ):
+        if normalized and normalized in label:
+            search_filter |= Receipt.payment_method == method
+    if "پرداخت" in normalized and ("نشده" in normalized or "نشد" in normalized):
+        search_filter |= Receipt.payed == False
+    elif "پرداخت" in normalized and "شده" in normalized:
+        search_filter |= Receipt.payed == True
+    return query.where(search_filter)
+
+
+def _sort_receipts(query, *, sort_by="created_at", sort_order="desc"):
+    """Sort using a strict whitelist so user input never becomes a SQL expression."""
+    columns = {
+        "created_at": Receipt.created_at,
+        "total_price": Receipt.total_price,
+        "day_receipt_id": Receipt.day_receipt_id,
+        "invoice_number": Receipt.invoice_number,
+    }
+    column = columns.get(str(sort_by or "created_at"), Receipt.created_at)
+    descending = str(sort_order or "desc").lower() != "asc"
+    primary = column.desc() if descending else column.asc()
+    if column == Receipt.created_at:
+        return query.order_by(primary)
+    return query.order_by(primary, Receipt.created_at.desc())
 
 
 def _payload_hash(payload):
@@ -234,9 +296,14 @@ def list_recent_receipts(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
     q: Optional[str] = Query(None, max_length=200),
+    payed_filter: Optional[str] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    sort_by: str = Query("created_at"),
+    sort_order: str = Query("desc"),
     user=Depends(require_permission("receipts", "read")),
 ):
-    """Receipts within the configured history window, optionally filtered by query."""
+    """Receipts within the configured history window, optionally filtered and sorted."""
     with DBManager():
         hours = load_kiosk_settings()["receipt_history_hours"]
         cutoff = datetime.now() - timedelta(hours=hours)
@@ -244,38 +311,9 @@ def list_recent_receipts(
         if not user.is_admin:
             query = query.where(Receipt.user == user.id)
 
-        term = str(q or "").strip()
-        if term:
-            normalized = term.replace("ي", "ی").replace("ك", "ک").replace("\u200c", " ")
-            # Search common receipt fields as well as products that belong to a receipt.
-            search_filter = (
-                Receipt.day_receipt_id.cast("text").contains(term)
-                | Receipt.invoice_number.contains(term)
-                | Receipt.id.cast("text").contains(term)
-                | Receipt.seat_number.contains(term)
-                | Receipt.payment_method.contains(term)
-                | Receipt.created_at.cast("text").contains(term)
-                | Receipt.total_price.cast("text").contains(term)
-                | Receipt.id.in_(
-                    ReceiptProduct.select(ReceiptProduct.receipt).where(
-                        ReceiptProduct.product_name.contains(term)
-                    )
-                )
-            )
-            payment_aliases = (
-                ("نقدی", "cash"),
-                ("کارت", "card"),
-                ("انتقال بانکی", "bank_transfer"),
-                ("اعتباری", "store_credit"),
-            )
-            for label, method in payment_aliases:
-                if normalized and normalized in label:
-                    search_filter |= Receipt.payment_method == method
-            if "پرداخت" in normalized and ("نشده" in normalized or "نشد" in normalized):
-                search_filter |= Receipt.payed == False
-            elif "پرداخت" in normalized and "شده" in normalized:
-                search_filter |= Receipt.payed == True
-            query = query.where(search_filter)
+        query = _apply_receipt_filters(
+            query, q=q, payed_filter=payed_filter, start_date=start_date, end_date=end_date
+        )
 
         total = query.count()
         response.headers["X-Total-Count"] = str(total)
@@ -284,7 +322,7 @@ def list_recent_receipts(
         response.headers["X-History-Hours"] = str(hours)
         return [
             _serialize(item)
-            for item in query.order_by(Receipt.created_at.desc()).paginate(page, page_size)
+            for item in _sort_receipts(query, sort_by=sort_by, sort_order=sort_order).paginate(page, page_size)
         ]
 
 
@@ -293,17 +331,27 @@ def list_receipts(
     response: Response,
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=200),
+    q: Optional[str] = Query(None, max_length=200),
+    payed_filter: Optional[str] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    sort_by: str = Query("created_at"),
+    sort_order: str = Query("desc"),
     user=Depends(require_permission("receipts", "read")),
 ):
     with DBManager():
         query = Receipt.select()
         if not user.is_admin:
             query = query.where(Receipt.user == user.id)
+        query = _apply_receipt_filters(
+            query, q=q, payed_filter=payed_filter, start_date=start_date, end_date=end_date
+        )
         total = query.count()
         response.headers["X-Total-Count"] = str(total)
         response.headers["X-Page"] = str(page)
         response.headers["X-Page-Size"] = str(page_size)
-        return [_serialize(item) for item in query.order_by(Receipt.created_at.desc()).paginate(page, page_size)]
+        ordered = _sort_receipts(query, sort_by=sort_by, sort_order=sort_order)
+        return [_serialize(item) for item in ordered.paginate(page, page_size)]
 
 
 @router.get("/receipts/{receipt_id}", response_model=ReceiptDetailOut)
