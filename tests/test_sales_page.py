@@ -17,6 +17,7 @@ from client.ui.invoice_render import (
 )
 from client.ui.sales_page import SalesPage
 from client.ui.data_pages import ReceiptsPage
+from client.ui.currency import format_currency
 
 
 class _PagedApi:
@@ -210,7 +211,7 @@ class SalesPageLayoutTests(unittest.TestCase):
                 {"product_id": "product-25", "quantity": 3},
             ],
         )
-        self.assertEqual(self.page.total_label.text(), "جمع تخمینی: 77.00")
+        self.assertEqual(self.page.total_label.text(), "جمع تخمینی: {}".format(format_currency(77)))
         self.assertEqual(self.page.cart_status_label.text(), "2 نوع · 5 عدد")
 
     def test_search_resets_to_first_page_and_filters_the_server_catalog(self):
@@ -346,7 +347,7 @@ class SalesPageLayoutTests(unittest.TestCase):
         self.page._cart_plus_buttons["product-1"].click()
         self.page._cart_plus_buttons["product-1"].click()
         self.assertEqual(self.page._cart_quantity_labels["product-1"].text(), "3")
-        self.assertEqual(self.page._cart_line_total_labels["product-1"].text(), "3.00")
+        self.assertEqual(self.page._cart_line_total_labels["product-1"].text(), format_currency(3))
         self.assertEqual(self.page.total_label.text(), "جمع تخمینی: 3.00")
 
     def test_search_suggestions_are_similar_results_and_load_more_is_paginated(self):
