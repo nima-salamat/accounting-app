@@ -573,27 +573,41 @@ class ReceiptsPage(QFrame):
         for button in (self.refresh_button,self.detail_button,self.invoice_button,self.return_button,self.delete_button,self.export_button): header.addWidget(button)
         layout.addLayout(header)
 
-        filters = QHBoxLayout()
+        filters = QVBoxLayout()
+        search_row = QHBoxLayout()
         self.search_input = QLineEdit(self)
         self.search_input.setPlaceholderText("جست‌وجوی شماره فاکتور، شناسه، مبلغ، میز یا روش پرداخت…")
         self.search_input.setClearButtonEnabled(True)
         self.search_input.returnPressed.connect(self.apply_filters)
-        filters.addWidget(self.search_input, 2)
+        search_row.addWidget(self.search_input, 2)
 
         self.payed_filter = QComboBox(self)
         self.payed_filter.addItem("همهٔ وضعیت‌ها", "all")
         self.payed_filter.addItem("پرداخت‌شده", "paid")
         self.payed_filter.addItem("پرداخت‌نشده", "unpaid")
-        filters.addWidget(self.payed_filter)
+        search_row.addWidget(self.payed_filter)
+        self.sort_combo = QComboBox(self)
+        for label, value in (
+            ("جدیدترین", "created_at:desc"),
+            ("قدیمی‌ترین", "created_at:asc"),
+            ("مبلغ: نزولی", "total_price:desc"),
+            ("مبلغ: صعودی", "total_price:asc"),
+            ("شماره فاکتور: نزولی", "invoice_number:desc"),
+            ("شماره فاکتور: صعودی", "invoice_number:asc"),
+        ):
+            self.sort_combo.addItem(label, value)
+        search_row.addWidget(self.sort_combo, 1)
+        filters.addLayout(search_row)
 
+        date_row = QHBoxLayout()
         self.start_date_enabled = QCheckBox("از تاریخ", self)
         self.start_date_edit = QDateEdit(self)
         self.start_date_edit.setCalendarPopup(True)
         self.start_date_edit.setDisplayFormat("yyyy-MM-dd")
         self.start_date_edit.setEnabled(False)
         self.start_date_enabled.toggled.connect(self.start_date_edit.setEnabled)
-        filters.addWidget(self.start_date_enabled)
-        filters.addWidget(self.start_date_edit)
+        date_row.addWidget(self.start_date_enabled)
+        date_row.addWidget(self.start_date_edit)
 
         self.end_date_enabled = QCheckBox("تا تاریخ", self)
         self.end_date_edit = QDateEdit(self)
@@ -601,27 +615,17 @@ class ReceiptsPage(QFrame):
         self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
         self.end_date_edit.setEnabled(False)
         self.end_date_enabled.toggled.connect(self.end_date_edit.setEnabled)
-        filters.addWidget(self.end_date_enabled)
-        filters.addWidget(self.end_date_edit)
-
-        self.sort_combo = QComboBox(self)
-        for label, value in (
-            ("جدیدترین", "created_at:desc"),
-            ("قدیمی‌ترین", "created_at:asc"),
-            ("مبلغ: نزولی", "total_price:desc"),
-            ("مبلغ: صعودی", "total_price:asc"),
-            ("شماره فاکتور: نزولی", "day_receipt_id:desc"),
-            ("شماره فاکتور: صعودی", "day_receipt_id:asc"),
-        ):
-            self.sort_combo.addItem(label, value)
-        filters.addWidget(self.sort_combo)
+        date_row.addWidget(self.end_date_enabled)
+        date_row.addWidget(self.end_date_edit)
+        date_row.addStretch(1)
 
         self.filter_button = QPushButton("اعمال", self)
         self.filter_button.clicked.connect(self.apply_filters)
         self.clear_filter_button = QPushButton("پاک‌کردن", self)
         self.clear_filter_button.clicked.connect(self.clear_filters)
-        filters.addWidget(self.filter_button)
-        filters.addWidget(self.clear_filter_button)
+        date_row.addWidget(self.filter_button)
+        date_row.addWidget(self.clear_filter_button)
+        filters.addLayout(date_row)
         layout.addLayout(filters)
 
         self.table = QTableWidget(0,len(self.columns))
