@@ -2561,15 +2561,16 @@ class SalesPage(QFrame):
         search_row.addWidget(self.history_search_button)
         list_layout.addLayout(search_row)
 
-        history_filters = QHBoxLayout()
+        history_filters = QVBoxLayout()
+        history_date_row = QHBoxLayout()
         self.history_start_date_enabled = QCheckBox("از تاریخ", list_panel)
         self.history_start_date = QDateEdit(list_panel)
         self.history_start_date.setCalendarPopup(True)
         self.history_start_date.setDisplayFormat("yyyy-MM-dd")
         self.history_start_date.setEnabled(False)
         self.history_start_date_enabled.toggled.connect(self.history_start_date.setEnabled)
-        history_filters.addWidget(self.history_start_date_enabled)
-        history_filters.addWidget(self.history_start_date)
+        history_date_row.addWidget(self.history_start_date_enabled)
+        history_date_row.addWidget(self.history_start_date)
 
         self.history_end_date_enabled = QCheckBox("تا تاریخ", list_panel)
         self.history_end_date = QDateEdit(list_panel)
@@ -2577,8 +2578,8 @@ class SalesPage(QFrame):
         self.history_end_date.setDisplayFormat("yyyy-MM-dd")
         self.history_end_date.setEnabled(False)
         self.history_end_date_enabled.toggled.connect(self.history_end_date.setEnabled)
-        history_filters.addWidget(self.history_end_date_enabled)
-        history_filters.addWidget(self.history_end_date)
+        history_date_row.addWidget(self.history_end_date_enabled)
+        history_date_row.addWidget(self.history_end_date)
 
         self.history_sort_combo = QComboBox(list_panel)
         for label, value in (
@@ -2590,7 +2591,10 @@ class SalesPage(QFrame):
             ("شماره فاکتور: صعودی", "day_receipt_id:asc"),
         ):
             self.history_sort_combo.addItem(label, value)
-        history_filters.addWidget(self.history_sort_combo, 1)
+        history_date_row.addWidget(self.history_sort_combo, 1)
+        history_filters.addLayout(history_date_row)
+        history_action_row = QHBoxLayout()
+        history_action_row.addStretch(1)
 
         self.history_apply_filters_button = QPushButton("اعمال فیلتر", list_panel)
         self.history_apply_filters_button.setObjectName("SalesToolbarButton")
@@ -2598,8 +2602,9 @@ class SalesPage(QFrame):
         self.history_clear_filters_button = QPushButton("پاک‌کردن", list_panel)
         self.history_clear_filters_button.setObjectName("SalesToolbarButton")
         self.history_clear_filters_button.clicked.connect(self._clear_recent_receipt_filters)
-        history_filters.addWidget(self.history_apply_filters_button)
-        history_filters.addWidget(self.history_clear_filters_button)
+        history_action_row.addWidget(self.history_apply_filters_button)
+        history_action_row.addWidget(self.history_clear_filters_button)
+        history_filters.addLayout(history_action_row)
         list_layout.addLayout(history_filters)
 
         self.history_tabs = QTabWidget(list_panel)
