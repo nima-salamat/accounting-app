@@ -2587,8 +2587,8 @@ class SalesPage(QFrame):
             ("قدیمی‌ترین", "created_at:asc"),
             ("مبلغ: نزولی", "total_price:desc"),
             ("مبلغ: صعودی", "total_price:asc"),
-            ("شماره فاکتور: نزولی", "day_receipt_id:desc"),
-            ("شماره فاکتور: صعودی", "day_receipt_id:asc"),
+            ("شماره فاکتور: نزولی", "invoice_number:desc"),
+            ("شماره فاکتور: صعودی", "invoice_number:asc"),
         ):
             self.history_sort_combo.addItem(label, value)
         history_date_row.addWidget(self.history_sort_combo, 1)
