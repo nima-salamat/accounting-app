@@ -1,5 +1,5 @@
 """Receipt-linked returns and refunds with quantity limits, stock restoration and audit logging."""
-from datetime import date
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID
@@ -58,19 +58,58 @@ def list_returns(
     response: Response,
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
+    q: Optional[str] = Query(None, max_length=200),
+    refund_method: Optional[str] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    sort_by: str = Query("created_at"),
+    sort_order: str = Query("desc"),
     user=Depends(require_permission("returns", "read")),
 ):
     with DBManager():
+        if start_date is not None and end_date is not None and start_date > end_date:
+            raise HTTPException(status_code=422, detail="تاریخ شروع نباید بعد از تاریخ پایان باشد.")
         query = SaleReturn.select().join(Receipt)
         if not user.is_admin:
             query = query.where(SaleReturn.user == user.id)
+        if refund_method and refund_method != "all":
+            query = query.where(SaleReturn.refund_method == refund_method)
+        if start_date is not None:
+            query = query.where(SaleReturn.created_at >= datetime.combine(start_date, time.min))
+        if end_date is not None:
+            query = query.where(
+                SaleReturn.created_at < datetime.combine(end_date + timedelta(days=1), time.min)
+            )
+        term = str(q or "").strip()
+        if term:
+            query = query.where(
+                SaleReturn.id.cast("text").contains(term)
+                | SaleReturn.operator_name.contains(term)
+                | SaleReturn.refund_method.contains(term)
+                | SaleReturn.reason.contains(term)
+                | SaleReturn.total_amount.cast("text").contains(term)
+                | Receipt.day_receipt_id.cast("text").contains(term)
+                | Receipt.invoice_number.contains(term)
+                | Receipt.id.cast("text").contains(term)
+            )
+        columns = {
+            "created_at": SaleReturn.created_at,
+            "total_amount": SaleReturn.total_amount,
+            "day_receipt_id": Receipt.day_receipt_id,
+            "operator_name": SaleReturn.operator_name,
+        }
+        column = columns.get(str(sort_by or "created_at"), SaleReturn.created_at)
+        primary = column.desc() if str(sort_order or "desc").lower() != "asc" else column.asc()
+        ordered = query.order_by(primary) if column == SaleReturn.created_at else query.order_by(
+            primary, SaleReturn.created_at.desc()
+        )
         total = query.count()
         response.headers["X-Total-Count"] = str(total)
         response.headers["X-Page"] = str(page)
         response.headers["X-Page-Size"] = str(page_size)
         return [
             _return_payload(item, include_lines=False)
-            for item in query.order_by(SaleReturn.created_at.desc()).paginate(page, page_size)
+            for item in ordered.paginate(page, page_size)
         ]
 
 
