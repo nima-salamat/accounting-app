@@ -189,37 +189,19 @@ class ReturnsPage(QFrame):
         header.addWidget(self.print_button)
         root.addLayout(header)
 
-        filters = QHBoxLayout()
+        filters = QVBoxLayout()
+        search_row = QHBoxLayout()
         self.search_input = QLineEdit(self)
         self.search_input.setPlaceholderText("جست‌وجوی شماره فاکتور، شناسه، کارمند یا مبلغ…")
         self.search_input.setClearButtonEnabled(True)
         self.search_input.returnPressed.connect(self.apply_filters)
-        filters.addWidget(self.search_input, 2)
+        search_row.addWidget(self.search_input, 2)
 
         self.refund_method_filter = QComboBox(self)
         self.refund_method_filter.addItem("همهٔ روش‌های استرداد", "all")
         for key, label in REFUND_METHODS.items():
             self.refund_method_filter.addItem(label, key)
-        filters.addWidget(self.refund_method_filter)
-
-        self.start_date_enabled = QCheckBox("از تاریخ", self)
-        self.start_date_edit = QDateEdit(self)
-        self.start_date_edit.setCalendarPopup(True)
-        self.start_date_edit.setDisplayFormat("yyyy-MM-dd")
-        self.start_date_edit.setEnabled(False)
-        self.start_date_enabled.toggled.connect(self.start_date_edit.setEnabled)
-        filters.addWidget(self.start_date_enabled)
-        filters.addWidget(self.start_date_edit)
-
-        self.end_date_enabled = QCheckBox("تا تاریخ", self)
-        self.end_date_edit = QDateEdit(self)
-        self.end_date_edit.setCalendarPopup(True)
-        self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
-        self.end_date_edit.setEnabled(False)
-        self.end_date_enabled.toggled.connect(self.end_date_edit.setEnabled)
-        filters.addWidget(self.end_date_enabled)
-        filters.addWidget(self.end_date_edit)
-
+        search_row.addWidget(self.refund_method_filter)
         self.sort_combo = QComboBox(self)
         for label, value in (
             ("جدیدترین", "created_at:desc"),
@@ -232,14 +214,36 @@ class ReturnsPage(QFrame):
             ("کارمند: ی تا الف", "operator_name:desc"),
         ):
             self.sort_combo.addItem(label, value)
-        filters.addWidget(self.sort_combo, 1)
+        search_row.addWidget(self.sort_combo, 1)
+        filters.addLayout(search_row)
+
+        date_row = QHBoxLayout()
+        self.start_date_enabled = QCheckBox("از تاریخ", self)
+        self.start_date_edit = QDateEdit(self)
+        self.start_date_edit.setCalendarPopup(True)
+        self.start_date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.start_date_edit.setEnabled(False)
+        self.start_date_enabled.toggled.connect(self.start_date_edit.setEnabled)
+        date_row.addWidget(self.start_date_enabled)
+        date_row.addWidget(self.start_date_edit)
+
+        self.end_date_enabled = QCheckBox("تا تاریخ", self)
+        self.end_date_edit = QDateEdit(self)
+        self.end_date_edit.setCalendarPopup(True)
+        self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.end_date_edit.setEnabled(False)
+        self.end_date_enabled.toggled.connect(self.end_date_edit.setEnabled)
+        date_row.addWidget(self.end_date_enabled)
+        date_row.addWidget(self.end_date_edit)
+        date_row.addStretch(1)
 
         self.apply_filter_button = QPushButton("اعمال فیلتر", self)
         self.apply_filter_button.clicked.connect(self.apply_filters)
         self.clear_filter_button = QPushButton("پاک‌کردن", self)
         self.clear_filter_button.clicked.connect(self.clear_filters)
-        filters.addWidget(self.apply_filter_button)
-        filters.addWidget(self.clear_filter_button)
+        date_row.addWidget(self.apply_filter_button)
+        date_row.addWidget(self.clear_filter_button)
+        filters.addLayout(date_row)
         root.addLayout(filters)
 
         self.table = QTableWidget(0, 6)
