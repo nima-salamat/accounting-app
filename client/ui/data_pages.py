@@ -4,6 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFileDialog, QFrame, QHBoxLayout, QLabel, QMessageBox, QPushButton,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QHeaderView, QLineEdit, QComboBox,
+    QDateEdit, QCheckBox,
 )
 from client.ui.forms import RecordDialog
 from client.ui.permissions import can_access
@@ -11,12 +12,14 @@ from client.ui.invoice_dialog import InvoiceDialog
 from client.ui.invoice_render import SALES_INVOICE_TEMPLATE_KIND
 from client.ui.returns_page import ReturnDialog
 from client.ui.currency import format_currency
-from client.ui.currency import format_currency
+from client.ui.receipt_utils import receipt_is_paid
 
 
 def display_value(key, value):
     if key in ("payed", "is_admin", "is_active", "requires_session_activation", "custom_product", "track_stock"):
-        return ("فعال" if value else "غیرفعال") if key == "is_active" else ("بله" if value else "خیر")
+        if key == "is_active":
+            return "فعال" if receipt_is_paid(value) else "غیرفعال"
+        return "بله" if receipt_is_paid(value) else "خیر"
     if key == "status":
         return {"pending": "در انتظار تأیید", "active": "فعال",
                 "revoked": "لغوشده", "expired": "منقضی"}.get(value, value or "—")
@@ -569,6 +572,58 @@ class ReceiptsPage(QFrame):
         self.export_button = QPushButton("خروجی CSV"); self.export_button.clicked.connect(self.export_csv)
         for button in (self.refresh_button,self.detail_button,self.invoice_button,self.return_button,self.delete_button,self.export_button): header.addWidget(button)
         layout.addLayout(header)
+
+        filters = QHBoxLayout()
+        self.search_input = QLineEdit(self)
+        self.search_input.setPlaceholderText("جست‌وجوی شماره فاکتور، شناسه، مبلغ، میز یا روش پرداخت…")
+        self.search_input.setClearButtonEnabled(True)
+        self.search_input.returnPressed.connect(self.apply_filters)
+        filters.addWidget(self.search_input, 2)
+
+        self.payed_filter = QComboBox(self)
+        self.payed_filter.addItem("همهٔ وضعیت‌ها", "all")
+        self.payed_filter.addItem("پرداخت‌شده", "paid")
+        self.payed_filter.addItem("پرداخت‌نشده", "unpaid")
+        filters.addWidget(self.payed_filter)
+
+        self.start_date_enabled = QCheckBox("از تاریخ", self)
+        self.start_date_edit = QDateEdit(self)
+        self.start_date_edit.setCalendarPopup(True)
+        self.start_date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.start_date_edit.setEnabled(False)
+        self.start_date_enabled.toggled.connect(self.start_date_edit.setEnabled)
+        filters.addWidget(self.start_date_enabled)
+        filters.addWidget(self.start_date_edit)
+
+        self.end_date_enabled = QCheckBox("تا تاریخ", self)
+        self.end_date_edit = QDateEdit(self)
+        self.end_date_edit.setCalendarPopup(True)
+        self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.end_date_edit.setEnabled(False)
+        self.end_date_enabled.toggled.connect(self.end_date_edit.setEnabled)
+        filters.addWidget(self.end_date_enabled)
+        filters.addWidget(self.end_date_edit)
+
+        self.sort_combo = QComboBox(self)
+        for label, value in (
+            ("جدیدترین", "created_at:desc"),
+            ("قدیمی‌ترین", "created_at:asc"),
+            ("مبلغ: نزولی", "total_price:desc"),
+            ("مبلغ: صعودی", "total_price:asc"),
+            ("شماره فاکتور: نزولی", "day_receipt_id:desc"),
+            ("شماره فاکتور: صعودی", "day_receipt_id:asc"),
+        ):
+            self.sort_combo.addItem(label, value)
+        filters.addWidget(self.sort_combo)
+
+        self.filter_button = QPushButton("اعمال", self)
+        self.filter_button.clicked.connect(self.apply_filters)
+        self.clear_filter_button = QPushButton("پاک‌کردن", self)
+        self.clear_filter_button.clicked.connect(self.clear_filters)
+        filters.addWidget(self.filter_button)
+        filters.addWidget(self.clear_filter_button)
+        layout.addLayout(filters)
+
         self.table = QTableWidget(0,len(self.columns))
         self.table.setHorizontalHeaderLabels([label for _key, label in self.columns])
         self.table.setColumnHidden(0,True)
@@ -602,8 +657,22 @@ class ReceiptsPage(QFrame):
             self.window.run_api(self._load_receipts_payload, self.populate, busy=self.refresh_button)
 
     def _load_receipts_payload(self):
+        sort_by, sort_order = str(self.sort_combo.currentData() or "created_at:desc").split(":", 1)
         page_data = self.window.api.list_receipts_page(
-            page=self.current_page, page_size=self.page_size
+            q=self.search_input.text().strip() or None,
+            payed_filter=self.payed_filter.currentData(),
+            start_date=(
+                self.start_date_edit.date().toString("yyyy-MM-dd")
+                if self.start_date_enabled.isChecked() else None
+            ),
+            end_date=(
+                self.end_date_edit.date().toString("yyyy-MM-dd")
+                if self.end_date_enabled.isChecked() else None
+            ),
+            sort_by=sort_by,
+            sort_order=sort_order,
+            page=self.current_page,
+            page_size=self.page_size,
         )
         records = list(page_data.get("items") or [])
         custom = {"fields": [], "values": {}}
@@ -654,15 +723,14 @@ class ReceiptsPage(QFrame):
             for col, (key, _label) in enumerate(self.columns):
                 if key.startswith("custom:"):
                     value = (record.get("custom_fields") or {}).get(key.split(":", 1)[1])
-                elif key == "total_price":
-                    value = display_value(key, record.get(key))
-                elif key == "payed":
-                    value = "پرداخت‌شده" if record.get(key) else "پرداخت‌نشده"
                 elif key == "invoice_number":
                     value = record.get("invoice_number") or record.get("day_receipt_id")
                 else:
                     value = record.get(key)
-                item = QTableWidgetItem(display_value(key, value))
+                cell_text = (
+                    "پرداخت‌شده" if receipt_is_paid(value) else "پرداخت‌نشده"
+                ) if key == "payed" else display_value(key, value)
+                item = QTableWidgetItem(cell_text)
                 if col == 0:
                     item.setData(Qt.ItemDataRole.UserRole, record)
                 self.table.setItem(row, col, item)
@@ -673,6 +741,19 @@ class ReceiptsPage(QFrame):
         self.delete_button.setVisible(can_access(user, "receipts", "delete"))
         self.invoice_button.setVisible(can_access(user, "invoices", "read"))
         self.return_button.setVisible(can_access(user, "returns", "create") and can_access(user, "receipts", "read"))
+
+    def apply_filters(self, *_args):
+        self.current_page = 1
+        self.refresh()
+
+    def clear_filters(self, *_args):
+        self.search_input.clear()
+        self.payed_filter.setCurrentIndex(0)
+        self.start_date_enabled.setChecked(False)
+        self.end_date_enabled.setChecked(False)
+        self.sort_combo.setCurrentIndex(0)
+        self.current_page = 1
+        self.refresh()
 
     def _page_size_changed(self, *_args):
         self.page_size = int(self.page_size_combo.currentData() or 25)
