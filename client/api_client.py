@@ -469,9 +469,17 @@ class AccountingApiClient:
             params={"page": page, "page_size": page_size},
         )
 
-    def list_receipts_page(self, page=1, page_size=25):
+    def list_receipts_page(
+        self, page=1, page_size=25, q=None, payed_filter=None,
+        start_date=None, end_date=None, sort_by="created_at", sort_order="desc",
+    ):
         return self._request_page(
-            "GET", "/api/v1/receipts", page=page, page_size=page_size
+            "GET", "/api/v1/receipts", page=page, page_size=page_size,
+            params={
+                "q": q, "payed_filter": payed_filter,
+                "start_date": start_date, "end_date": end_date,
+                "sort_by": sort_by, "sort_order": sort_order,
+            },
         )
 
     def get_receipt(self, receipt_id):
@@ -691,10 +699,17 @@ class AccountingApiClient:
     def get_kiosk_config(self):
         return self._request("GET", "/api/v1/kiosk/config")
 
-    def list_recent_receipts_page(self, q=None, page=1, page_size=25):
+    def list_recent_receipts_page(
+        self, q=None, page=1, page_size=25, payed_filter=None,
+        start_date=None, end_date=None, sort_by="created_at", sort_order="desc",
+    ):
         return self._request_page(
             "GET", "/api/v1/sales/recent-receipts", page=page, page_size=page_size,
-            params={"q": q},
+            params={
+                "q": q, "payed_filter": payed_filter,
+                "start_date": start_date, "end_date": end_date,
+                "sort_by": sort_by, "sort_order": sort_order,
+            },
         )
 
     def list_partners_page(self, q=None, partner_type=None, page=1, page_size=25):
